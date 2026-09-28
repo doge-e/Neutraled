@@ -1,0 +1,11 @@
+{
+  "name": "HelloLive",
+  "author": "Neutraled",
+  "version": "1.0.0",
+  "description": "运行时 mod 测试：验证 NTL 脚本解释器",
+  "scripts": {
+    "on_init": "init.ntl",
+    "on_frame": "frame.ntl",
+    "on_room_load": "room.ntl"
+  }
+}

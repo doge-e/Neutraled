@@ -1,0 +1,19 @@
+# Neutraled 控制台自动化脚本示例
+# 用控制台执行:  run demo
+# 或以 mod 身份调用: ntl_console_run("demo")
+
+# 注释用 # 或 //
+log ===== 自动化脚本开始 =====
+
+# 查看版本与性能
+version
+profile
+
+# 环境信息
+room
+timing
+
+# 打开时截图
+screenshot auto_start
+
+log ===== 自动化脚本结束 =====

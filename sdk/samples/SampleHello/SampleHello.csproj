@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 示例插件 sample-hello 的构建工程。源码仍在插件目录里（plugins\sample-hello\SampleHello.cs），
+       这里只做「链接编译 + 把产物拷回插件目录」——插件目录里不放 .csproj / obj / bin。
+       构建：dotnet build sdk\samples\SampleHello\SampleHello.csproj -c Release -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SampleHello</AssemblyName>
+    <RootNamespace>SampleHello</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- 插件成品目录：plugin.json 的 entry 指向这里的 SampleHello.dll -->
+    <PluginDir>$(MSBuildThisFileDirectory)..\..\..\plugins\sample-hello</PluginDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)..\..\..\plugins\sample-hello\SampleHello.cs" Link="SampleHello.cs" />
+  </ItemGroup>
+
+  <!-- Private=false：只编译期引用 SDK，绝不把 ntl-builder.dll 复制到插件目录/输出目录 ——
+       插件目录里出现第二份宿主程序集正是「两份类型」事故的经典成因。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Neutraled.PluginSdk\Neutraled.PluginSdk.csproj" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyPluginToPluginDir" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PluginDir)" />
+    <Message Importance="high" Text="插件已就位: $(PluginDir)\$(TargetFileName)" />
+  </Target>
+
+</Project>

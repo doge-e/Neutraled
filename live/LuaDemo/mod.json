@@ -1,0 +1,6 @@
+﻿{
+  "name": "LuaDemo",
+  "author": "Neutraled",
+  "version": "1.0.0",
+  "scripts": { "on_init": "main.lua" }
+}

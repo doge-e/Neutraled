@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Neutraled 插件 SDK。第三方插件项目引用本项目的产物 ntl-builder.dll，
+       实现 Neutraled.Builder.INeutraledPlugin（或派生 PluginBase）。
+       构建：dotnet build sdk\Neutraled.PluginSdk\Neutraled.PluginSdk.csproj -c Release -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Neutraled.Builder</RootNamespace>
+    <Version>1.0.0</Version>
+
+    <!-- ★ 必须与主程序集同名（builder\Neutraled.Builder.csproj 的 AssemblyName=ntl-builder）。
+         插件 DLL 里的 TypeRef 指向 ntl-builder，运行时 PluginHost 的 Resolving 钩子把它短路回
+         主程序那一份；名字不一致 → 出现两份 INeutraledPlugin → 强转静默失败。 -->
+    <AssemblyName>ntl-builder</AssemblyName>
+    <!-- 与主程序一致，便于运行时/诊断核对 -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+
+    <!-- 插件作者能直接看到契约的中文注释 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

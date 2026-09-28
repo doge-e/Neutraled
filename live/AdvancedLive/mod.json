@@ -1,0 +1,10 @@
+{
+  "name": "AdvancedLive",
+  "author": "Neutraled",
+  "version": "1.0.0",
+  "description": "测试扩充内置函数与 AST 缓存",
+  "scripts": {
+    "on_init": "adv.ntl",
+    "on_frame": "tick.ntl"
+  }
+}

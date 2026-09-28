@@ -1,0 +1,31 @@
+/// {{NAME}} —— 挂事件回调（gml/main.gml 调用它；scripts/{{PREFIX}}_live.lua 也会调一次）
+///
+/// 【为什么要单独一个文件】
+///   入口脚本靠它把 on_frame / on_draw 挂到 Neutraled 的事件总线上。
+///   被调用两次也不会双跑：下面按帧号做了「同一帧只跑一次」的去重。
+///
+/// 【历史上的一件事：2026-09-26 已修，留这段当记录】
+///   旧版 api/ntl_hook_init.gml 会在 ntl_run_mods()（跑入口脚本，scr_ntl_init.gml:91）之后
+///   无条件重建 global.ntl_hooks（原第 2 行），于是入口脚本挂的订阅被整体丢掉，
+///   日志表现为「[hook] 已注册 0 个 hook（覆盖 0 个脚本）」、面板永远画不出来。
+///   现在 :9 是幂等建表、:12-13 记下注册表自己占用的 key、:39-50 只按 key 精确重置这些槽位 ——
+///   mod 的事件订阅槽不在其中，所以「在入口脚本里直接 ntl_hook(...)」就是推荐路径。
+///   （只有你还在用 09-26 之前的部署成果时，才会看到上面那行日志。）
+///
+/// 【为什么还留着 scripts/{{PREFIX}}_live.lua】
+///   不是绕那个 bug，而是为了：① 兼容 09-26 之前的旧 api 产物；② live 重载脚本 /
+///   再次广播 on_init（真机日志 [live] [Step] on_init 已广播）时把订阅补回来。
+///   两条路同时生效也不会双跑 —— 见上面的同帧去重。
+///
+/// 【改这里能改什么】
+///   想换回调脚本、想让某个回调不挂，改本文件即可（不用动入口脚本）。
+///
+/// 返回：1 = 两个回调都挂上了，0 = 至少一个没挂上（脚本没被编译进 data.win）
+
+var _fn_frame = asset_get_index("{{PREFIX}}_frame");
+var _fn_draw  = asset_get_index("{{PREFIX}}_draw");
+// ntl_hook 收到 undefined 会静默返回 -1，所以先用 asset_get_index 拿脚本索引再挂
+var _h_frame  = (_fn_frame != -1) ? ntl_hook("on_frame", _fn_frame) : -2;
+var _h_draw   = (_fn_draw  != -1) ? ntl_hook("on_draw",  _fn_draw)  : -2;
+ntl_log("chapter", "[{{NAME}}] 挂回调：on_frame=" + string(_h_frame) + " (脚本 " + string(_fn_frame) + ")、on_draw=" + string(_h_draw) + " (脚本 " + string(_fn_draw) + ")");
+return ((_h_frame >= 0) && (_h_draw >= 0)) ? 1 : 0;

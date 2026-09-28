@@ -1,0 +1,20 @@
+/// {{NAME}} —— Neutraled 自定义章节入口脚本（最小骨架）
+/// 脚本名 = 文件名；gml/main.gml 是本 mod 的入口，**游戏启动时执行一次**。
+/// 这个模板只做一件事：证明 mod 被加载了（证据在日志里）。想画东西 / 要一个能走动的房间，用 --template room。
+
+global.ntl_{{PREFIX}}_name = "{{NAME}}";
+
+ntl_log("chapter", "[{{NAME}}] 入口脚本已执行（mod id={{MOD_ID}}，作者 {{AUTHOR}}）");
+ntl_log("chapter", "[{{NAME}}] 模式={{MODE_LABEL}} order={{SLOT}} 基底={{BASE_CHAPTER}} mod 目录={{DIR_NAME}}");
+
+// 想每帧跑代码 / 画东西（在游戏里看到文字）：照 --template room 生成物的样子加三个文件 ——
+//   gml/{{PREFIX}}_frame.gml、gml/{{PREFIX}}_draw.gml、gml/{{PREFIX}}_hooks.gml。
+//   ★ 挂回调就这么写（推荐）：
+//       ntl_hook("on_frame", asset_get_index("{{PREFIX}}_frame"));
+//       ntl_hook("on_draw",  asset_get_index("{{PREFIX}}_draw"));
+//     2026-09-26 起 api/ntl_hook_init.gml 是幂等初始化，不会清空 mod 的订阅槽 —— 日志证据：
+//       [hook] [订阅] on_frame（第 1 个订阅者）
+//       [hook] 事件订阅槽: N 个（来自 mod 入口脚本的 ntl_hook()，未被初始化清空）
+//     所以就写在一个 hooks 脚本里即可，不必再加 mod.json 的 "scripts" 段与 Lua 桥
+//     （room 模板保留 Lua 桥只为兼容旧 api 产物与 live 重载，见那里的注释）。
+//     完整解释见 Neutraled/docs/CHAPTER_DEV.md 第 3 步。

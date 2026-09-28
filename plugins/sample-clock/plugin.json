@@ -1,0 +1,16 @@
+{
+  "id": "sample-clock",
+  "name": "示例时钟插件",
+  "version": "1.0.0",
+  "author": "Neutraled",
+  "description": "第二个示例插件：声明 3 个钩子，演示权限自检（files.read / files.write）与配置读写。",
+  "entry": "SampleClock.dll",
+  "type": "SampleClock.ClockPlugin",
+  "permissions": [
+    "files.read",
+    "files.write"
+  ],
+  "requires": [],
+  "conflicts": [],
+  "min_builder": "1.0.0"
+}

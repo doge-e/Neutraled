@@ -1,0 +1,58 @@
+/// {{NAME}} —— 每帧回调（由 gml/{{PREFIX}}_hooks.gml 用 ntl_hook("on_frame", …) 挂上）
+/// 参数：argument[0] 是 Neutraled 传来的参数数组（on_frame 时 = [帧号]），这段代码不需要它。
+///
+/// 演示两件事（改这个文件就能改章节行为）：
+///   ① 读玩家坐标 → 判断"玩家走出了房间"（右墙缺口，x >= {{EXIT_X}}）：写日志 + 让游戏自己截图
+///   ② 读交互计数 → 玩家在出口按 E 就标记"完成"（Neutraled 每帧自动调用 ntl_player_interact）
+
+// 没有玩家（覆盖层模式 / 地图载入失败）→ 什么也不做
+if (!variable_global_exists("ntl_player")) return 0;
+
+// 同一帧只跑一次：回调可能被挂了两次（入口脚本一次 + live 桥一次，见 gml/{{PREFIX}}_hooks.gml）
+// ★ 去重变量必须每个回调各用一个（_lastf = 每帧回调、_lastd = 绘制回调）：
+//   同一帧里 Step（on_frame）先跑、Draw（on_draw）后跑，共用一个变量会让绘制回调被当成"这一帧已经跑过"而整帧跳过。
+var _a  = argument[0];
+var _fr = -1;
+if (variable_global_exists("ntl_frames")) _fr = global.ntl_frames;
+if (is_array(_a) && array_length(_a) > 0) _fr = _a[0];
+if (_fr >= 0)
+{
+    if (_fr == global.ntl_{{PREFIX}}_lastf) return 0;
+    global.ntl_{{PREFIX}}_lastf = _fr;
+}
+
+global.ntl_{{PREFIX}}_frames += 1;
+if (global.ntl_{{PREFIX}}_frames == 1) ntl_log("chapter", "[{{NAME}}] 每帧回调已被调用（on_frame 生效）");
+var _p  = global.ntl_player;
+var _px = ds_map_find_value(_p, "x");
+var _py = ds_map_find_value(_p, "y");
+
+// ---------- ①「走出房间」判定 ----------
+var _was = global.ntl_{{PREFIX}}_out;
+global.ntl_{{PREFIX}}_out = (_px >= {{EXIT_X}}) ? 1 : 0;
+if (global.ntl_{{PREFIX}}_out != _was)
+{
+    if (global.ntl_{{PREFIX}}_out == 1)
+    {
+        ntl_log("chapter", "[{{NAME}}] 玩家走出了房间 @(" + string(_px) + "," + string(_py) + ")");
+        ntl_screenshot("{{PREFIX}}_out_of_room.png");
+    }
+    else ntl_log("chapter", "[{{NAME}}] 玩家回到了房间里");
+}
+
+// ---------- ② 交互判定 ----------
+if (variable_global_exists("ntl_interact_count")
+    && global.ntl_interact_count != global.ntl_{{PREFIX}}_interacts)
+{
+    global.ntl_{{PREFIX}}_interacts = global.ntl_interact_count;
+    var _who = variable_global_exists("ntl_interact_name") ? string(global.ntl_interact_name) : "?";
+    ntl_log("chapter", "[{{NAME}}] 交互触发: " + _who);
+    // 站在出口外按 E → 这一章的目标达成（走出房间 + 在出口交互）
+    if (global.ntl_{{PREFIX}}_out == 1 && string_lower(_who) == "exit")
+    {
+        global.ntl_{{PREFIX}}_done = 1;
+        ntl_log("chapter", "[{{NAME}}] ★ 完成：走出房间并在出口交互（{{MAP_ID}}）");
+        ntl_screenshot("{{PREFIX}}_done.png");
+    }
+}
+return 0;

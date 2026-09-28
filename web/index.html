@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neutraled</title>
+<!-- 零依赖：不引任何 CDN / 框架，样式与脚本都随包分发（离线可用） -->
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Neutraled<span class="tag">本地网页界面</span></div>
+    <div class="meta">
+      <span id="meta-platform" class="chip" title="运行平台">平台: —</span>
+      <span id="meta-root" class="chip mono" title="游戏根目录">游戏根: —</span>
+      <span id="meta-lang" class="chip">语言: —</span>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="面板"></nav>
+
+  <main id="view" class="view"><p class="muted">加载中…</p></main>
+
+  <footer class="footer">
+    <span id="foot-version" class="muted">版本 —</span>
+    <span id="foot-port" class="muted"></span>
+    <span class="spacer"></span>
+    <button id="btn-refresh" class="link">刷新</button>
+    <button id="btn-shutdown" class="link danger">关闭服务</button>
+  </footer>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 第二个示例插件 sample-clock：源码就在本目录，产物打成 sample-clock.ntlplugin，
+       用 ntl-builder 的 plugin-install 子命令安装到 plugins\sample-clock\。
+       构建：dotnet build sdk\samples\SampleClock\SampleClock.csproj -c Release
+       打包：powershell -File sdk\build-samples.ps1 -PackageOut <目录> -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SampleClock</AssemblyName>
+    <RootNamespace>SampleClock</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Neutraled.PluginSdk\Neutraled.PluginSdk.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- plugin.json 与 DLL 一起进包 -->
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

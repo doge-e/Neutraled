@@ -1,0 +1,19 @@
+// 每帧脚本（验证变量跨帧持久 + 动态调用游戏函数）
+count = count + 1;
+
+if (count == 120) {
+    log("第 120 帧: count=" + string(count) + " test_value=" + string(test_value));
+    set_global("ntl_live_marker", 1);
+}
+
+if (count == 240) {
+    log("动态调用游戏函数 snd_play(1,1,1)...");
+    r = snd_play(1, 1, 1);
+    log("snd_play 返回: " + string(r));
+}
+
+if (count == 360) {
+    log("调用 Neutraled 函数 ntl_log ✓");
+    ntl_log("live", "来自 live 脚本的日志");
+    ntl_screenshot("ntl_live_shot.png");
+}

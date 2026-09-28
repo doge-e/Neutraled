@@ -1,0 +1,72 @@
+/// {{NAME}} —— 绘制回调（由 gml/{{PREFIX}}_hooks.gml 挂上）
+/// 在 Neutraled 的 HUD / 控制台之后绘制，所以一定画在最上层。
+///
+/// 【必读】游戏主字体 fnt_main 只有 96 个 ASCII 字形，中文会整片画不出来；
+///         中文必须用 Neutraled 自带的 ntl_font_cjk，并且每次绘制都要重设字体（别处会改它）。
+
+// 没有玩家就说明我们只是叠加在官方章节上的覆盖层 —— 不抢画面，什么也不画
+if (!variable_global_exists("ntl_player")) return 0;
+
+// 同一帧只画一次：回调可能被挂了两次（入口脚本一次 + live 桥一次，见 gml/{{PREFIX}}_hooks.gml）
+// ★ 用自己的去重变量 _lastd。若和每帧回调共用，Step 先跑设了帧号 → 这里会误判成"画过了"而一帧都不画。
+var _a  = argument[0];
+var _fr = -1;
+if (variable_global_exists("ntl_frames")) _fr = global.ntl_frames;
+if (is_array(_a) && array_length(_a) > 0) _fr = _a[0];
+if (_fr >= 0)
+{
+    if (_fr == global.ntl_{{PREFIX}}_lastd) return 0;
+    global.ntl_{{PREFIX}}_lastd = _fr;
+}
+
+// 自检：绘制回调真的被调用了吗？（第一次调用写一行日志；下面那行"第 N 帧"也会一直涨）
+global.ntl_{{PREFIX}}_draws = (variable_global_exists("ntl_{{PREFIX}}_draws") ? global.ntl_{{PREFIX}}_draws : 0) + 1;
+if (global.ntl_{{PREFIX}}_draws == 1) ntl_log("chapter", "[{{NAME}}] 绘制回调已被调用（on_draw 生效）");
+
+var _f = asset_get_index("ntl_font_cjk");
+if (_f == -1) _f = asset_get_index("fnt_main");
+if (_f == -1) _f = 8;
+draw_set_font(_f);
+draw_set_alpha(1);
+draw_set_halign(fa_left);
+draw_set_valign(fa_top);
+gpu_set_texfilter(false);
+
+// 半透明底板，保证在任何背景上都看得清
+draw_set_color(c_black);
+draw_set_alpha(0.62);
+draw_rectangle(12, 340, 628, 468, false);
+draw_set_alpha(1);
+
+draw_set_color(c_yellow);
+draw_text(24, 346, "{{NAME}} · Neutraled 自定义章节");
+
+draw_set_color(c_white);
+draw_text(24, 368, "第 " + string(global.ntl_{{PREFIX}}_frames) + " 帧    地图 {{MAP_ID}}    order {{SLOT}}    基底 {{BASE_CHAPTER}}");
+draw_text(24, 388, "方向键 / WASD 移动     E / Z 交互     F2 控制台");
+
+if (global.ntl_{{PREFIX}}_done == 1)
+{
+    draw_set_color(c_lime);
+    draw_text(24, 410, "★ 完成：走出了房间（x 到 {{EXIT_X}}）并在出口按了 E");
+}
+else if (global.ntl_{{PREFIX}}_out == 1)
+{
+    draw_set_color(c_lime);
+    draw_text(24, 410, ">>> 你走出房间了！站在出口按 E 完成这一章");
+}
+else
+{
+    draw_set_color(c_silver);
+    draw_text(24, 410, "从右墙上的金色缺口走出去试试  →");
+}
+
+draw_set_color(c_orange);
+draw_text(24, 432, "x=" + string(floor(ds_map_find_value(global.ntl_player, "x")))
+    + " y=" + string(floor(ds_map_find_value(global.ntl_player, "y")))
+    + "   交互 " + string(global.ntl_{{PREFIX}}_interacts) + " 次"
+    + "   最近对象 " + (variable_global_exists("ntl_near_name") ? string(global.ntl_near_name) : "-"));
+
+draw_set_color(c_gray);
+draw_text(24, 452, "改 gml/{{PREFIX}}_draw.gml 就能改这块 HUD    日志 %LOCALAPPDATA%\\DRTL*\\Neutraled\\dr-api.log");
+return 0;

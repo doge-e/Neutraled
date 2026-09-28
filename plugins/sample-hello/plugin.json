@@ -1,0 +1,16 @@
+{
+  "id": "sample-hello",
+  "name": "示例插件（中文名）",
+  "version": "1.0.0",
+  "author": "Neutraled",
+  "description": "最小可用插件：启动/关闭时写日志，在部署前统计启用 mod 数，导入后写一行日志。",
+  "entry": "SampleHello.dll",
+  "type": "SampleHello.HelloPlugin",
+  "permissions": [
+    "mods.read"
+  ],
+  "requires": [],
+  "conflicts": [],
+  "min_builder": "1.0.0",
+  "enabled": true
+}

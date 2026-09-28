@@ -1,0 +1,36 @@
+// 高级能力测试
+log("[标记] AdvancedLive 测试开始 [标记]");
+
+// 数组 + while 循环
+arr = arr_new();
+i = 0;
+while (i < 5) {
+    arr_push(arr, i * i);
+    i = i + 1;
+}
+log("数组内容: " + arr_join(arr, ","));
+
+// 字典
+m = map_new();
+map_set(m, "name", "Neutraled");
+map_set(m, "ver", 1);
+log("字典: name=" + map_get(m, "name") + " has_ver=" + string(map_has(m, "ver")));
+
+// 字符串
+s = "Hello Live";
+log("字符串: len=" + string(str_len(s)) + " upper=" + str_upper(s) + " contains=" + string(str_contains(s, "Live")));
+
+// 数学
+log("数学: sqrt2=" + string(sqrt(2)) + " 2^10=" + string(power(2, 10)) + " clamp=" + string(clamp(150, 0, 100)));
+
+// 实例遍历
+n = arr_len(inst_all("obj_ntl_core"));
+log("obj_ntl_core 实例数 = " + string(n));
+
+// 条件嵌套
+score = 85;
+if (score >= 90) { grade = "A"; }
+else { if (score >= 80) { grade = "B"; } else { grade = "C"; } }
+log("分数 " + string(score) + " -> 等级 " + grade);
+
+log("[标记] AdvancedLive 测试结束 [标记]");

@@ -1,0 +1,40 @@
+/// {{NAME}} —— 自定义章节入口脚本（ntl-builder --new-chapter 生成，模板 {{TEMPLATE}}）
+///
+/// 【这个文件是什么】
+///   本 mod 的入口脚本。脚本名 = 文件名（main.gml → main），Neutraled 在游戏启动时执行它一次
+///   （api/scr_ntl_init.gml 里 ntl_run_mods() 按 mod.json 的内联清单调用各 mod 的入口）。
+///   这里做三件事：① 记下章节状态 ② 载入房间地图、放置可操控玩家 ③ 挂上每帧回调与绘制回调。
+///
+/// 【想改什么就改哪里】
+///   - 章节里的行为：改同目录下的 {{PREFIX}}_frame.gml（每帧）与 {{PREFIX}}_draw.gml（绘制）。
+///   - 房间长什么样：换 files/Neutraled/kristal-maps/{{MAP_ID}}.png 与 {{MAP_ID}}.map.json。
+///   - 运行日志：章节进程写在自己的存档目录 %LOCALAPPDATA%\DRTL<顺序号>_<短码>\Neutraled\dr-api.log
+///     （章节选择器/根阶段的日志在 %LOCALAPPDATA%\DELTARUNE\Neutraled\dr-api.log）；游戏里按 F2 看控制台。
+
+{{GUARD}}
+
+global.ntl_{{PREFIX}}_name      = "{{NAME}}";
+global.ntl_{{PREFIX}}_frames    = 0;    // 已经跑了多少帧
+global.ntl_{{PREFIX}}_draws     = 0;    // 绘制回调被调用过几次（自检用）
+global.ntl_{{PREFIX}}_out       = 0;    // 1 = 玩家已经走出房间
+global.ntl_{{PREFIX}}_interacts = 0;    // 已经看到的交互次数
+global.ntl_{{PREFIX}}_leave     = -1;   // >= 0 表示正在倒计时离开章节
+global.ntl_{{PREFIX}}_done      = 0;    // 1 = 在出口完成交互（本章目标达成）
+global.ntl_{{PREFIX}}_lastf     = -1;   // 每帧回调上次执行的帧号（同一帧只跑一次）
+global.ntl_{{PREFIX}}_lastd     = -1;   // 绘制回调上次执行的帧号（必须与上面分开，否则绘制会被整帧跳过）
+
+ntl_log("chapter", "[{{NAME}}] 入口脚本已执行（mod id = {{MOD_ID}}，模式 = {{MODE}}）");
+
+// ① 房间地图 + 可操控玩家（覆盖层模式不接管画面，这一步为空）
+{{BOOT}}
+
+// ② 挂事件回调：on_frame 每帧、on_draw 每帧绘制（都在 Neutraled 的 HUD / 控制台之后）
+//   实现放在 gml/{{PREFIX}}_hooks.gml（同一个函数被调两次不会重复执行，见那里的注释）。
+//   ★ 在入口脚本里挂就是推荐做法：2026-09-26 起 api/ntl_hook_init.gml 改成幂等初始化
+//     （:9 只在表不存在时建表、:39-50 只按 key 重置注册表自己的槽位），mod 的事件订阅槽
+//     不再被清空。日志里能看到这两行证据：
+//       [hook] [订阅] on_frame（第 1 个订阅者）        ← ntl_hook() 每次成功订阅都打一行
+//       [hook] 事件订阅槽: 1 个（来自 mod 入口脚本的 ntl_hook()，未被初始化清空）
+//     只有 09-26 之前的旧 api 产物才会打「[hook] 已注册 0 个 hook（覆盖 0 个脚本）」。
+//     （scripts/{{PREFIX}}_live.lua 仍会再挂一次，那是给旧部署与 live 重载兜底，不是必须的。）
+{{PREFIX}}_hooks();

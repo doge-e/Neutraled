@@ -1,0 +1,45 @@
+# {{NAME}}
+
+由 `ntl-builder --new-chapter "{{NAME}}" --author "{{AUTHOR}}" --mode {{MODE}}` 生成（{{DATE}}）。
+
+| 项 | 值 |
+| --- | --- |
+| 章节显示名 | {{NAME}} |
+| 时间线序号 order | {{SLOT}} |
+| 基底官方章节 | chapter{{BASE_CHAPTER}} |
+| mod id | {{MOD_ID}} |
+| mod 目录 | mods/{{DIR_NAME}}/{{AUTHOR}}/{{CHAPTER_FOLDER}}/ |
+| 房间地图 id | {{MAP_ID}} |
+| 生成模板 | {{TEMPLATE}} |
+
+## 目录里有什么
+
+- `mod.json` —— mod 元数据。`chapters` 段声明这是一个时间线章节（Neutraled 靠它把章节放进选择器）。
+- `gml/main.gml` —— 入口脚本，游戏启动时执行一次。
+- `gml/{{PREFIX}}_hooks.gml` —— 挂事件回调（on_frame / on_draw）：入口脚本调一次，live 桥再补一次（同帧去重，不会双跑）。
+- `gml/{{PREFIX}}_frame.gml` —— 每帧回调（判断玩家有没有走出房间）。
+- `gml/{{PREFIX}}_draw.gml` —— 绘制回调（画标题/HUD）。
+- `scripts/{{PREFIX}}_live.lua` —— live 桥：在 `on_init` 里再调一次 `{{PREFIX}}_hooks()`。
+  **不是为了绕 bug**：`api/ntl_hook_init.gml` 自 2026-09-26 起是幂等初始化，入口脚本挂的订阅不会再被清空；
+  保留它只为 ① 兼容 09-26 之前的旧 api 产物 ② live 重载时补挂订阅。
+  不想要可以删掉本文件与 `mod.json` 的 `scripts` 段。章节逻辑全在 `gml/` 里，这个 Lua 文件是唯一的例外。
+- `files/Neutraled/kristal-maps/{{MAP_ID}}.png` 与 `.map.json` —— 房间底图与碰撞/对象数据（部署时整棵 files/ 会被复制进章节目录）。
+- `../data/{{NAME}}/data.win` —— 时间线章节自带的基底数据（从官方 chapter{{BASE_CHAPTER}} 的原版备份复制）。
+
+## 怎么跑起来
+
+```
+ntl-builder.exe --deploy --chapter root     # 生成/更新章节产物
+ntl-builder.exe --launch root               # 部署并启动游戏，进章节选择器
+```
+
+进游戏后在章节选择器里翻到本 mod 的章节（名字 = {{NAME}}），按 Enter 进入。
+
+## 看日志 / 排错
+
+- 日志：**章节进程**写在 `%LOCALAPPDATA%\DRTL<顺序号>_<短码>\Neutraled\dr-api.log`（就是本 mod 的存档目录；
+  不知道是哪个就在 `%LOCALAPPDATA%` 里挑最新的 `DRTL*` 文件夹）。章节选择器/根阶段写在 `%LOCALAPPDATA%\DELTARUNE\Neutraled\dr-api.log`。
+- 游戏里按 F2 打开 Neutraled 控制台。
+- 章节没出现在选择器里：确认 `mod.json` 的 `enabled` 是 `true`、`chapters` 段没写错，
+  再确认叶子目录名以 `chapter` 开头且长度 > 7（Neutraled 只认这种目录）。
+- 详细教程：`Neutraled/docs/CHAPTER_DEV.md`

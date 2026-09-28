@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ntl-builder</AssemblyName>
+    <RootNamespace>Neutraled.Builder</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- UTMT 依赖库（UndertaleModLib / Underanalyzer / Newtonsoft.Json / Magick.NET）的位置。
+         默认 = 本仓库**上两级**目录的 UTMT\（builder\..\.. = 游戏根），也就是 <游戏根>\UTMT\（Neutraled 就装在游戏根里）。
+         换机器或换目录时：设置环境变量 NTL_UTMT_DIR 指向 UTMT 目录即可，不需要改本文件。
+         以前这里写死 E:\steam\... 的绝对路径，别处无法构建（跨平台收口时改掉）。 -->
+    <UtmtDir Condition="'$(NTL_UTMT_DIR)' != ''">$(NTL_UTMT_DIR)</UtmtDir>
+    <UtmtDir Condition="'$(UtmtDir)' == ''">$(MSBuildThisFileDirectory)..\..\UTMT</UtmtDir>
+  </PropertyGroup>
+
+  <!-- 缺依赖时给一句人话，而不是让编译器抛一堆 CS0246 -->
+  <Target Name="NtlCheckUtmtLibs" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(UtmtDir)\UndertaleModLib.dll')"
+           Text="找不到 UTMT 依赖库：$(UtmtDir)\UndertaleModLib.dll 不存在。请把 UTMT 放到游戏根的 UTMT/ 目录，或设置环境变量 NTL_UTMT_DIR 指向它。" />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="UndertaleModLib">
+      <HintPath>$(UtmtDir)\UndertaleModLib.dll</HintPath>
+    </Reference>
+    <Reference Include="Underanalyzer">
+      <HintPath>$(UtmtDir)\Underanalyzer.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(UtmtDir)\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="Magick.NET-Q8-AnyCPU">
+      <HintPath>$(UtmtDir)\Magick.NET-Q8-AnyCPU.dll</HintPath>
+    </Reference>
+    <Reference Include="Magick.NET.Core">
+      <HintPath>$(UtmtDir)\Magick.NET.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- 插件契约的唯一来源在 sdk\Neutraled.PluginSdk\Contract.cs：SDK 项目（AssemblyName 同为 ntl-builder）
+       编译它产出第三方引用的 ntl-builder.dll，builder 这里链接编译消费同一份源码。两边同名同签名，
+       插件 DLL 里的 TypeRef 才能在运行时被 Resolving 钩子解析回主程序那一份类型（见 PluginHost 类头注释）。 -->
+  <ItemGroup>
+    <Compile Include="..\sdk\Neutraled.PluginSdk\Contract.cs" Link="PluginContract.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(UtmtDir)\Magick.Native-Q8-x64.dll" CopyToOutputDirectory="PreserveNewest" Link="Magick.Native-Q8-x64.dll" Condition="Exists('$(UtmtDir)\Magick.Native-Q8-x64.dll')" />
+    <None Include="$(UtmtDir)\Magick.Native-Q8-arm64.dll" CopyToOutputDirectory="PreserveNewest" Link="Magick.Native-Q8-arm64.dll" Condition="Exists('$(UtmtDir)\Magick.Native-Q8-arm64.dll')" />
+    <None Include="$(UtmtDir)\Magick.Native-Q8-x64.dll.so" CopyToOutputDirectory="PreserveNewest" Link="Magick.Native-Q8-x64.dll.so" Condition="Exists('$(UtmtDir)\Magick.Native-Q8-x64.dll.so')" />
+    <None Include="$(UtmtDir)\Magick.Native-Q8-x64.dylib" CopyToOutputDirectory="PreserveNewest" Link="Magick.Native-Q8-x64.dylib" Condition="Exists('$(UtmtDir)\Magick.Native-Q8-x64.dylib')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 网页界面静态文件（WebUi 从 exe 目录或 Neutraled/web 读；随发布包一起走） -->
+    <Content Include="..\web\**" Link="web\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpCompress" Version="0.50.4" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,3 @@
+﻿set_global("ntl_ch_page", 1);
+set_global("ntl_ch_sel", 0);
+log("Page2: 已翻到第 2 页");

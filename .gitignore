@@ -1,0 +1,42 @@
+# Neutraled —— 只收工具链源码，不收游戏产物/第三方内容/构建产物
+
+# 游戏与部署产物
+*_windows/
+data.win
+*.win
+*.ios
+
+# 第三方 mod 内容（≈2.5GB，版权归各作者）
+mods/
+
+# 构建产物 / 依赖 / 二进制
+builder/bin/
+builder/obj/
+**/bin/
+**/obj/
+*.exe
+*.dll
+*.pdb
+*.zip
+
+# 备份 / 缓存 / 存档 / 日志
+backup/
+.backup_files/
+cache/
+save-backups/
+saves/
+mod-saves/
+snapshots/
+restore/
+logs/
+.tmp/
+_test/
+*.log
+*.tmp
+
+# 编辑器 / 系统
+.vs/
+.idea/
+.vscode/
+Thumbs.db
+desktop.ini

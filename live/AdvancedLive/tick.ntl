@@ -1,0 +1,7 @@
+// 每帧：AST 缓存性能测试（100 次循环即可感知开销）
+n = count;
+if (n == 0) { count = 0; }
+count = count + 1;
+if (count == 60) {
+    log("AdvancedLive: 60 帧到达（AST 缓存生效，游戏应保持流畅）");
+}

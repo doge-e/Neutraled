@@ -1,0 +1,1 @@
+﻿{ "name": "Page2", "author": "t", "version": "1.0.0", "scripts": { "on_ready": "p.ntl" } }

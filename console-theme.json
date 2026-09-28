@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "dark",
+  "name": "Тёмная (по умолчанию)",
+  "colors": {
+    "bg": "#101014",
+    "panel": "#16161e",
+    "fg": "#e6e6e6",
+    "dim": "#8a8a96",
+    "border": "#2a2a38",
+    "accent": "#4fc3f7",
+    "highlight": "#ffd54f",
+    "selection": "#2f5fd0",
+    "ok": "#7ee081",
+    "warn": "#ffb74d",
+    "error": "#ff6b6b"
+  },
+  "colors_bgr": {
+    "bg": 1314832,
+    "panel": 1971734,
+    "fg": 15132390,
+    "dim": 9865866,
+    "border": 3680810,
+    "accent": 16237391,
+    "highlight": 5232127,
+    "selection": 13655855,
+    "ok": 8511614,
+    "warn": 5093375,
+    "error": 7039999
+  }
+}
