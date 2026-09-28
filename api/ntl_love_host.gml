@@ -89,14 +89,14 @@ if (string_pos("/", _p2) > 0 || string_pos(chr(92), _p2) > 0) ntl_ensure_dir(_p2
         var _out = ntl_lua_table_new();
         var _idx = 0;
         var _fn = file_find_first(_d + "/*", fa_directory);
-        while (_fn != "")
+        while (_fn != "" && _fn != -1)
         {
             if (_fn != "." && _fn != "..") { _idx += 1; ntl_lua_table_set(_out, _idx, _fn); }
             _fn = file_find_next();
         }
         file_find_close();
         var _ff = file_find_first(_d + "/*", 0);
-        while (_ff != "")
+        while (_ff != "" && _ff != -1)
         {
             _idx += 1; ntl_lua_table_set(_out, _idx, _ff);
             _ff = file_find_next();

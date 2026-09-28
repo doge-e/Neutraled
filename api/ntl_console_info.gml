@@ -164,7 +164,7 @@ if (_cmd == "modinfo")
             var _e2 = ds_list_find_value(global.ntl_live_mods, _i2);
             if (string_pos(_kw2, string_lower(string(ds_map_find_value(_e2, "name")))) <= 0) continue;
             ntl_console_log(ntl_t("info.mod_live") + string(ds_map_find_value(_e2, "name")));
-            ntl_console_log(ntl_t("info.mod_dir") + string(ds_map_find_value(_e2, "dir")));
+            ntl_console_log(ntl_ts("info.mod_dir", [string(ds_map_find_value(_e2, "dir"))]));
             var _hj = ds_map_find_value(_e2, "hooks");
             if (!is_real(_hj) || !ds_exists(_hj, ds_type_map)) { _found += 1; continue; }
             var _hk = ntl_dsmap_keys(_hj);

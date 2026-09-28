@@ -6,6 +6,13 @@ if (_p == "") _p = "Neutraled/autorun.console";
 if (!file_exists(_p))
 {
     if (_explicit) ntl_console_log(ntl_ts("au.nofile", [_p]));
+    else
+    {
+        // ★ 反人类修复：默认脚本不存在时原来"什么都不打印"，用户以为命令坏了/没反应。
+        //   现在明确告知：没有启动脚本 + 默认路径 + 怎么用。
+        ntl_console_log(ntl_ts("au.none_default", [_p]));
+        ntl_console_log(ntl_t("au.howto"));
+    }
     return 0;
 }
 var _n = 0;

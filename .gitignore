@@ -40,3 +40,11 @@ _test/
 .vscode/
 Thumbs.db
 desktop.ini
+
+# 生成物（本轮整理新增：地图预览、API 注册表、构建输出、运行时残留）
+kristal-maps/
+api-registry.json
+dist/
+config.json.bak-*
+console-history.txt
+gui_lang.txt

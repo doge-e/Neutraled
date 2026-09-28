@@ -23,6 +23,7 @@ _out += ntl_ts("save.time", [_now]) + chr(10);
 _out += "Neutraled: " + global.ntl_version + "  live " + global.ntl_live_api + chr(10);
 _out += ntl_ts("save.lang", [global.ntl_lang]) + chr(10);
 _out += ntl_ts("save.lines", [string(_n)]) + chr(10);
+if (variable_global_exists("ntl_console_dropped") && global.ntl_console_dropped > 0) _out += ntl_ts("save.dropped", [string(global.ntl_console_dropped)]) + chr(10);
 _out += "================================" + chr(10) + chr(10);
 for (var _i = 0; _i < _n; _i += 1) _out += string(ds_list_find_value(global.ntl_console_lines, _i)) + chr(10);
 

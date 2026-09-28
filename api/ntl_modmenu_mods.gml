@@ -12,7 +12,7 @@ for (var _r = 0; _r < array_length(_roots); _r += 1)
     try
     {
         var _fn = file_find_first(_root + "*", fa_directory);
-        while (_fn != "")
+        while (_fn != "" && _fn != -1)
         {
             var _nm = string(_fn);
             // GM 返回的目录名带尾部分隔符

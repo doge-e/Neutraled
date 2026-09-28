@@ -20,6 +20,16 @@ if (_sp > 0)
     _rest = string_trim(string_delete(_line, 1, _sp));
 }
 
+// ★ 内置命令名大小写不敏感（用户实测：输入 MODS 会被判成"未识别的命令"）
+//   只对不含 ":" 的命令名折叠大小写 —— mod 命令 "modid:cmd" 的前缀原样保留。
+if (string_pos(":", _cmd) <= 0) _cmd = string_lower(_cmd);
+
+// ★★ 防御（2026-09-28 实测教训）：整段分派包在 try/catch 里。
+//   任何一条命令内部的运行时错误都只在控制台里打印出来，绝不把游戏进程带走。
+//   （事故：maps → 内部 file_find_next() 末尾越界 → 未捕获致命错误 → DELTARUNE 直接消失、日志无任何记录。）
+try
+{
+
 // ---------- 1) 别名展开 ----------
 if (variable_global_exists("ntl_console_aliases") && ds_map_exists(global.ntl_console_aliases, _cmd))
 {
@@ -58,7 +68,7 @@ if (_cmd == "goto" || _cmd == "loadmap" || _cmd == "spawn" || _cmd == "destroy" 
     _cmd == "setvar" || _cmd == "setflag" || _cmd == "screenshot")
 { ntl_console_action(_cmd, _rest); return 0; }
 if (_cmd == "reload")    { ntl_console_log(ntl_t("act.reloading")); try { ntl_live_reload(); } catch (e) { ntl_log("console", "[ntl] ntl_console_exec.gml:60 reload 失败: " + string(e)); } return 0; }
-if (_cmd == "clear")     { ds_list_clear(global.ntl_console_lines); ntl_console_log(ntl_t("act.cleared")); return 0; }
+if (_cmd == "clear")     { ds_list_clear(global.ntl_console_lines); global.ntl_console_dropped = 0; ntl_console_log(ntl_t("act.cleared")); return 0; }
 if (_cmd == "quit")      { global.ntl_console_open = false; return 0; }
 
 // ===== 调试类 =====
@@ -118,7 +128,13 @@ if (_cmd == "hist")
         ntl_console_log(ntl_t("hist.cleared"));
         return 0;
     }
-    if (_ha == "save") { ntl_console_history_save(); ntl_console_log(ntl_t("hist.saved")); return 0; }
+    if (_ha == "save")
+    {
+        var _hp = ntl_console_history_save();
+        if (_hp == "") ntl_console_log(ntl_t("hist.empty"));
+        else ntl_console_log(ntl_ts("hist.saved", [_hp]));
+        return 0;
+    }
     var _hh = global.ntl_console_history;
     if (array_length(_hh) == 0) { ntl_console_log(ntl_t("hist.empty")); return 0; }
     var _s2 = max(0, array_length(_hh) - 20);
@@ -219,5 +235,15 @@ if (string_length(_line) > 0)
         }
         if (_best != "" && _bestSc >= 3) ntl_console_log("  · " + ntl_ts("msg.did_you_mean", [_best]));
     }
+}
+
+}
+catch (e)
+{
+    // ★ 可读性修复（2026-09-28 实测）：以前把异常结构体直接 string() 出来，一次要滚 8 行 JSON。
+    //   现在只打一行 message + 一行「详情在日志里」的提示；完整堆栈照旧写进 dr-api.log。
+    ntl_console_log(ntl_ts("msg.cmd_error", [ntl_err_text(e)]));
+    ntl_console_log(ntl_t("msg.cmd_error_hint"));
+    ntl_log("console", "[ntl] 命令执行出错（已捕获，游戏继续运行）: " + string(e));
 }
 return 0;

@@ -10,11 +10,50 @@ if (_force == 0 && ntl_console_line_pass(_text) == 0) return 0;
 if (!variable_global_exists("ntl_console_lines")) global.ntl_console_lines = ds_list_create();
 
 var _parts = string_split(_text, chr(10));
-var _n = array_length(_parts);
-if (_n <= 0) ds_list_add(global.ntl_console_lines, "");
-else for (var _i = 0; _i < _n; _i++) ds_list_add(global.ntl_console_lines, _parts[_i]);
+var _n = 0;
+// ★ 反人类修复：超过面板宽度的行会被右边缘**静默裁掉**（长路径、长提示的结尾用户永远看不到）。
+//   这里按画面缓存下来的字宽把长行切成多行再入库 —— 滚动、行号、save 导出全部保持 1 行 1 条。
+var _ww = variable_global_exists("ntl_console_wrap_w") ? global.ntl_console_wrap_w : 0;
+var _wa = variable_global_exists("ntl_cw_ascii") ? global.ntl_cw_ascii : 0;
+var _wc = variable_global_exists("ntl_cw_cjk") ? global.ntl_cw_cjk : 0;
+for (var _i = 0; _i < array_length(_parts); _i += 1)
+{
+    var _ln = string(_parts[_i]);
+    if (_ww <= 0 || _wa <= 0 || _wc <= 0 || string_length(_ln) <= 0)
+    {
+        ds_list_add(global.ntl_console_lines, _ln);
+        _n += 1;
+        continue;
+    }
+    var _cur = "";
+    var _curw = 0;
+    var _lnn = string_length(_ln);
+    for (var _ci = 1; _ci <= _lnn; _ci += 1)
+    {
+        var _ch = string_char_at(_ln, _ci);
+        var _cwd = (ord(_ch) > 127) ? _wc : _wa;
+        if (_curw + _cwd > _ww && string_length(_cur) > 0)
+        {
+            ds_list_add(global.ntl_console_lines, _cur);
+            _n += 1;
+            _cur = "";
+            _curw = 0;
+        }
+        _cur += _ch;
+        _curw += _cwd;
+    }
+    ds_list_add(global.ntl_console_lines, _cur);
+    _n += 1;
+}
 
-while (ds_list_size(global.ntl_console_lines) > 200) ds_list_delete(global.ntl_console_lines, 0);
+// ★ 反人类修复：缓冲区满了会**静默丢掉最早的行**，用户用 save 导出的「全部输出」其实被截断过而不自知。
+//   现在：上限提到 400，并把丢掉的条数记在 global.ntl_console_dropped，由标题行与导出头部显示。
+if (!variable_global_exists("ntl_console_dropped")) global.ntl_console_dropped = 0;
+while (ds_list_size(global.ntl_console_lines) > 400)
+{
+    ds_list_delete(global.ntl_console_lines, 0);
+    global.ntl_console_dropped += 1;
+}
 // 新内容到来时：在底部就自动跟随；**已经翻到上面就把视口钉住**
 //   （scroll 是"距底部行数"，不跟着加就会每来一行整体上跳一行 —— 这就是"滚动出现了问题"）
 var _added = (_n <= 0) ? 1 : _n;

@@ -135,7 +135,8 @@ if (_cmd == "step")
 if (_cmd == "dump")
 {
     var _nm = (array_length(_args) > 0) ? _args[0] : ("room-" + string(room));
-    var _path = "Neutraled/logs/dump-" + _nm + ".txt";
+    // ★ 反人类修复：原来打相对路径（Neutraled/logs/...），用户不知道文件在哪；改成绝对路径。
+    var _path = program_directory + "Neutraled/logs/dump-" + _nm + ".txt";
     ntl_ensure_dir(_path);
     var _out = ntl_t("dump.title") + "\n";
     _out += ntl_ts("dump.room", [room_get_name(room), string(room)]) + "\n";

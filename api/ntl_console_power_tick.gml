@@ -89,7 +89,19 @@ if (variable_global_exists("ntl_freeze") && array_length(global.ntl_freeze) > 0)
 }
 
 // 无敌：每帧把 HP 拉满
-if (variable_global_exists("ntl_god") && global.ntl_god == 1) ntl_console_hp_fill();
+if (variable_global_exists("ntl_god") && global.ntl_god == 1)
+{
+    // ★ 2026-09-28 实测事故修复：本 tick 跑在 obj_ntl_core 的 Step 事件里，
+    //   ntl_console_exec 的 try/catch 兜不到这里 ⇒ 一旦 hp_fill 抛错，游戏当场 Code Error。
+    //   现在出错就自动关掉无敌，并把原因写进控制台与 dr-api.log。
+    try { ntl_console_hp_fill(); }
+    catch (e)
+    {
+        global.ntl_god = 0;
+        ntl_log("power", "god: 每帧拉满 HP 失败，已自动关闭无敌: " + string(e));
+        try { ntl_console_log(ntl_ts("god.auto_off", [string(e)])); } catch (e2) {}
+    }
+}
 
 // watch：逐帧把变量值写进日志（不动控制台，避免刷屏）
 if (variable_global_exists("ntl_watch") && array_length(global.ntl_watch) > 0)

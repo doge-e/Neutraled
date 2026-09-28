@@ -60,7 +60,15 @@ global.ntl_console_openkey_last = _openKey;
 //   god 回血 / 冻结下的单帧推进 / watch 变量跟踪
 //   （bind 的按键检查以前**从没被调用**过 —— 顺手接上，否则 bind 命令是死的）
 if (global.ntl_console_open) ntl_console_binds_check();
-ntl_console_power_tick();
+// ★ 2026-09-28 实测事故修复（god 崩机）：power_tick 里有每帧生效的强力效果（god 拉满 HP 等），
+//   它跑在 Step 事件里 —— ntl_console_exec 那层 try/catch 兜不到这里，任何抛错都会让游戏
+//   弹 Code Error 直接死。这里再兜一层：出错只写日志 + 在控制台说一句，游戏继续跑。
+try { ntl_console_power_tick(); }
+catch (e)
+{
+    ntl_log("power", "power_tick 出错（已捕获，游戏继续）: " + string(e));
+    try { ntl_console_log(ntl_ts("msg.cmd_error", [ntl_err_text(e)])); ntl_console_log(ntl_t("msg.cmd_error_hint")); } catch (e2) {}
+}
 
 // ---------- 2) 控制台打开时：读输入 + 屏蔽游戏 ----------
 var _foc = (global.ntl_console_open == 1) ? ntl_has_focus() : 0;   // 失焦时控制台不读任何键
@@ -87,22 +95,36 @@ if (global.ntl_console_open)
             if (global.ntl_console_scroll <= 0) { global.ntl_console_scroll = 0; global.ntl_console_autoscroll = 1; }
         }
     }
-    if (ntl_key_fire(vk_pageup, 0, 0) == 1)  { global.ntl_console_scroll += 14; global.ntl_console_autoscroll = 0; }
+    // ★ 2026-09-28 实测修复：翻页/跳顶的行数原来写死 14，但显示行数可以被 style lines 改（5-30）。
+    //   设成 10 行时按 PgUp 一次翻 14 行、Home 也跳不到真正顶部（实测指示器停在 [139/143]）。
+    //   这里统一按当前显示行数走。
+    var _pg = variable_global_exists("ntl_console_lines_shown") ? global.ntl_console_lines_shown : 14;
+    if (ntl_key_fire(vk_pageup, 0, 0) == 1)  { global.ntl_console_scroll += _pg; global.ntl_console_autoscroll = 0; }
     if (ntl_key_fire(vk_pagedown, 0, 0) == 1)
     {
-        global.ntl_console_scroll -= 14;
+        global.ntl_console_scroll -= _pg;
         if (global.ntl_console_scroll <= 0) { global.ntl_console_scroll = 0; global.ntl_console_autoscroll = 1; }
     }
     if (ntl_key_fire(vk_home, 0, 0) == 1)
     {
         var _ln = ds_list_size(global.ntl_console_lines);
-        global.ntl_console_scroll = max(0, _ln - 14);
+        global.ntl_console_scroll = max(0, _ln - _pg);
         global.ntl_console_autoscroll = 0;
     }
     if (ntl_key_fire(vk_end, 0, 0) == 1) { global.ntl_console_scroll = 0; global.ntl_console_autoscroll = 1; }
     // 滚轮
-    var _mw = (_foc == 1) ? (mouse_wheel_down() - mouse_wheel_up()) : 0;
-    if (_mw != 0) { global.ntl_console_scroll += _mw * 3; if (global.ntl_console_scroll <= 0) { global.ntl_console_scroll = 0; global.ntl_console_autoscroll = 1; } }
+    // ★ 2026-09-28 真机实测修复（两处）：
+    //   ① 方向原来是反的（mouse_wheel_down() - mouse_wheel_up()）—— 往下滚才看更早的行、
+    //      往上滚反而回到最新行；人类习惯是「往上滚 = 看更早的内容」，与 ↑ 键一致，故改成 up - down。
+    //   ② 滚动后没有关掉自动跟随（autoscroll）—— 只要新日志进来就立刻把画面拽回底部，
+    //      等于滚了也白滚；现在一旦离开底部就切手动，回到底部再交还自动。
+    var _mw = (_foc == 1) ? (mouse_wheel_up() - mouse_wheel_down()) : 0;
+    if (_mw != 0)
+    {
+        global.ntl_console_scroll += _mw * 3;
+        if (global.ntl_console_scroll <= 0) { global.ntl_console_scroll = 0; global.ntl_console_autoscroll = 1; }
+        else global.ntl_console_autoscroll = 0;
+    }
 
     // ===== 命令历史（Ctrl+↑/↓）=====
     // 边沿自己记（direct + prev）—— keyboard_check_pressed 会被 keyboard_clear_all 清掉，按住又会每帧连跳
@@ -138,6 +160,7 @@ if (global.ntl_console_open)
     // ===== Tab 补全 =====（补命令名）
     if (ntl_key_fire(vk_tab, 0, 0) == 1)
     {
+        if (!variable_global_exists("ntl_console_tab_idx")) { global.ntl_console_tab_idx = 0; global.ntl_console_tab_key = ""; }
         var _cur = global.ntl_console_input;
         if (string_length(_cur) > 0)
         {
@@ -145,15 +168,68 @@ if (global.ntl_console_open)
             if (variable_global_exists("ntl_console_cmds"))
             {
                 var _ck = ntl_dsmap_keys(global.ntl_console_cmds);
+                var _ms = [];
+                var _lc = string_lower(_cur);
                 for (var _ci = 0; _ci < array_length(_ck); _ci += 1)
                 {
                     var _cname = string(_ck[_ci]);
-                    if (string_pos(string_lower(_cur), string_lower(_cname)) == 1)
+                    if (string_pos(_lc, string_lower(_cname)) == 1) array_push(_ms, _cname);
+                }
+                var _mn = array_length(_ms);
+                // 插入排序（不依赖本运行时是否有 array_sort）→ 候选顺序永远一致
+                for (var _ai = 1; _ai < _mn; _ai += 1)
+                {
+                    var _av = _ms[_ai];
+                    var _aj = _ai - 1;
+                    while (_aj >= 0 && string_lower(_ms[_aj]) > string_lower(_av)) { _ms[_aj + 1] = _ms[_aj]; _aj -= 1; }
+                    _ms[_aj + 1] = _av;
+                }
+                if (_mn == 1)
+                {
+                    global.ntl_console_input = _ms[0] + " ";      // 唯一候选：补全 + 空格（可以接着打参数）
+                    global.ntl_console_tab_idx = 0;
+                    global.ntl_console_tab_key = "";
+                    _done = 1;
+                }
+                else if (_mn > 1)
+                {
+                    // ★ 反人类修复：以前取 ds_map 键序里的第一个匹配 —— 同一前缀多个候选时
+                    //   结果随机（"s" 可能补成 saves 也可能 style），无法预期。
+                    //   现在：先补到公共前缀；已经在公共前缀上就循环切换候选，并把候选列出。
+                    var _cp = _ms[0];
+                    for (var _mi = 1; _mi < _mn; _mi += 1)
                     {
-                        global.ntl_console_input = _cname;
-                        _done = 1;
-                        break;
+                        var _other = _ms[_mi];
+                        var _keep = "";
+                        var _lim = min(string_length(_cp), string_length(_other));
+                        for (var _li = 1; _li <= _lim; _li += 1)
+                        {
+                            if (string_char_at(string_lower(_cp), _li) != string_char_at(string_lower(_other), _li)) break;
+                            _keep += string_char_at(_cp, _li);
+                        }
+                        _cp = _keep;
                     }
+                    if (string_lower(_cp) != _lc)
+                    {
+                        global.ntl_console_input = _cp;
+                        global.ntl_console_tab_idx = 0;
+                        global.ntl_console_tab_key = "";
+                    }
+                    else
+                    {
+                        if (global.ntl_console_tab_key != _lc) { global.ntl_console_tab_idx = 0; global.ntl_console_tab_key = _lc; }
+                        else global.ntl_console_tab_idx = (global.ntl_console_tab_idx + 1) mod _mn;
+                        global.ntl_console_input = _ms[global.ntl_console_tab_idx];
+                        var _list = "";
+                        for (var _mi2 = 0; _mi2 < _mn; _mi2 += 1)
+                        {
+                            if (_mi2 == global.ntl_console_tab_idx) _list += "[" + _ms[_mi2] + "]";
+                            else _list += _ms[_mi2];
+                            if (_mi2 < _mn - 1) _list += "  ";
+                        }
+                        ntl_console_log(ntl_ts("tab.cands", [string(_mn), _list]));
+                    }
+                    _done = 1;
                 }
             }
             // 不是命令名 → 补文件路径（run 命令用）

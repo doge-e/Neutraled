@@ -16,6 +16,10 @@ var _panel_h = _header_h + _line_h * _max_lines + _footer_h;
 var _font = asset_get_index("ntl_font_cjk");
 if (_font == -1) _font = asset_get_index("fnt_main");
 if (_font != -1) draw_set_font(_font);
+// 供 ntl_console_log 换算换行宽度用的字宽缓存（每帧两次 string_width，可忽略）
+global.ntl_console_wrap_w = _gw - 26;
+global.ntl_cw_ascii = max(1, string_width("MMMMMMMMMMMMMMMMMMMM") / 20);
+global.ntl_cw_cjk = max(1, string_width("中文宽度测试中文") / 8);
 // 像素字体关掉线性过滤：否则缩放后发糊、字距看着不匀
 gpu_set_texfilter(false);
 
@@ -49,6 +53,9 @@ if (variable_global_exists("ntl_console_filter_mode") && string(global.ntl_conso
     draw_set_color(ntl_theme_c("selection"));
 }
 else draw_set_color(ntl_theme_c("accent"));
+// ★ 缓冲区上限丢行时明确告知（否则用户以为 save 导出的就是全部）
+if (variable_global_exists("ntl_console_dropped") && global.ntl_console_dropped > 0)
+    _ftr += "  " + ntl_ts("console.dropped", [string(global.ntl_console_dropped)]);
 draw_text(12, 6, ntl_t("console.title") + "  " + ntl_t("console.close") + _ftr);
 
 // 滚动位置指示（右上角）
@@ -84,7 +91,8 @@ for (var _i = _startIdx; _i < _endIdx; _i++)
         draw_set_color(ntl_theme_c("accent"));
     else
         draw_set_color(ntl_theme_c("fg"));
-    draw_text(12, _y, _line);
+    // 兼底：字宽缓存尚未建立时进来的旧行也不会冲出右边缘
+    draw_text(12, _y, ntl_text_fit(_line, _gw - 26));
     _y += _line_h;
 }
 

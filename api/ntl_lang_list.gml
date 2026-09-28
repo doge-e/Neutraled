@@ -7,7 +7,7 @@ try
 {
     var _dir = program_directory + "Neutraled/lang/";
     var _fn = file_find_first(_dir + "lang_*.json", 0);
-    while (_fn != "")
+    while (_fn != "" && _fn != -1)
     {
         var _code = string_replace(string_replace(_fn, "lang_", ""), ".json", "");
         if (string_length(_code) > 0) array_push(_names, _code);

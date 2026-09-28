@@ -14,7 +14,7 @@ if (!directory_exists(_dir))
 // 枚举 .map.json
 var _files = [];
 var _f = file_find_first(_dir + "*.map.json", 0);
-while (_f != "")
+while (_f != "" && _f != -1)
 {
     array_push(_files, _f);
     _f = file_find_next();

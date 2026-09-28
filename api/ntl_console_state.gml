@@ -110,20 +110,23 @@ if (_cmd == "maps")
     var _dir = program_directory + "Neutraled/kristal-maps/";
     if (!directory_exists(_dir)) { ntl_console_log(ntl_t("st.no_mapdir")); return 0; }
     var _files = ntl_file_list(_dir, "*.map.json");
-    ntl_console_log(ntl_ts("st.maps", [string(array_length(_files))]));
     var _kw2 = string_lower(string_trim(_rest));
-    var _shown = 0;
-    var _all = 0;
+    var _hit = [];
     for (var _i = 0; _i < array_length(_files); _i += 1)
     {
         var _nm = string_replace(string(_files[_i]), ".map.json", "");
         if (_kw2 != "" && string_pos(_kw2, string_lower(_nm)) <= 0) continue;
-        _all += 1;
-        if (_shown >= _LIMIT) continue;
-        _shown += 1;
-        ntl_console_log("  " + _nm);
+        array_push(_hit, _nm);
     }
-    if (_all > _shown) ntl_console_log(ntl_ts("list.more", [string(_all), string(_shown), "maps <关键词>"]));
+    // ★ 反人类修复（2026-09-28 实测）：原来无论有没有关键词都只打「可用地图: 123」，
+    //   关键词命中 0 条时整段输出就一行数字，看着像坏了。现在表头反映过滤结果、0 条时说明原因。
+    var _tot = array_length(_files);
+    if (_kw2 == "") ntl_console_log(ntl_ts("st.maps", [string(_tot)]));
+    else if (array_length(_hit) == 0) ntl_console_log(ntl_ts("st.maps_none", [_rest, string(_tot)]));
+    else ntl_console_log(ntl_ts("st.maps_kw", [_rest, string(array_length(_hit)), string(_tot)]));
+    var _shown = min(_LIMIT, array_length(_hit));
+    for (var _j2 = 0; _j2 < _shown; _j2 += 1) ntl_console_log("  " + _hit[_j2]);
+    if (array_length(_hit) > _LIMIT) ntl_console_log(ntl_ts("list.more", [string(array_length(_hit)), string(_shown), "maps <关键词>"]));
     return 0;
 }
 
@@ -158,15 +161,26 @@ if (_cmd == "cache")
 if (_cmd == "world")
 {
     ntl_console_log(ntl_t("st.world_head"));
+    // ★ 反人类修复：以前三项 global 都不存在时只打印一行标题就没了（看着像坏了）。
+    //   现在没有任何上下文时明确说清楚，并给出下一步该做什么。
+    var _any = 0;
     if (variable_global_exists("ntl_objects"))
+    {
+        _any = 1;
         ntl_console_log(ntl_ts("st.world_objs", [string(ds_list_size(global.ntl_objects))]));
+    }
     if (variable_global_exists("ntl_test_map"))
     {
+        _any = 1;
         var _mp = global.ntl_test_map;
         ntl_console_log(ntl_ts("st.world_map", [string(ds_map_find_value(_mp, "id"))]));
     }
     if (variable_global_exists("ntl_kristal_ready"))
+    {
+        _any = 1;
         ntl_console_log(ntl_t("st.world_ready"));
+    }
+    if (!_any) ntl_console_log(ntl_t("st.world_none"));
     return 0;
 }
 

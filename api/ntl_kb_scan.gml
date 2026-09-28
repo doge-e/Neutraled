@@ -27,6 +27,16 @@ if (_resetOnly)
         if (ds_map_exists(_prev, _kk)) ds_map_replace(_prev, _kk, _now);
         else ds_map_add(_prev, _kk, _now);
     }
+    // ★ 标点键（OEM VK 0xBA-0xDE + 空格）在字符扫描里用的是 "s"+vk 的键名，
+    //   这里必须同名同步，否则开着控制台时按住的标点会被下一帧误判成新输入。
+    var _symRst = [vk_space, 0xBD, 0xBB, 0xDB, 0xDD, 0xBA, 0xBC, 0xBE, 0xBF, 0xDC, 0xC0, 0xDE];
+    for (var _rx = 0; _rx < array_length(_symRst); _rx += 1)
+    {
+        var _xk = "s" + string(_symRst[_rx]);
+        var _xv = keyboard_check_direct(_symRst[_rx]);
+        if (ds_map_exists(_prev, _xk)) ds_map_replace(_prev, _xk, _xv);
+        else ds_map_add(_prev, _xk, _xv);
+    }
     var _hold2 = variable_global_exists("ntl_kb_hold") ? global.ntl_kb_hold : undefined;
     if (_hold2 != undefined && is_real(_hold2)) ds_map_clear(_hold2);
     return "";
@@ -85,9 +95,17 @@ for (var _n = 0; _n < 10; _n += 1)
 }
 
 // ---- 常用符号 ----
-var _symKeys = [vk_space, ord("-"), ord("="), ord("["), ord("]"), ord(";"), ord(","), ord("."), ord("/")];
-var _symNorm = [" ", "-", "=", "[", "]", ";", ",", ".", "/"];
-var _symShft = [" ", "_", "+", "{", "}", ":", "<", ">", "?"];
+// ★★ 修复（2026-09-28 真机实测确认）：GM 的 keyboard_check_direct 对标点键用的是 **Windows VK 码**，
+//   不是 ASCII 码。旧表里 ord("-")=45 / ord(".")=46 / ord("=")=61 / ord("[")=91 … 在 VK 表里分别是
+//   Insert(0x2D=45) / Delete(0x2E=46) / 未定义(0x3D) / 左Win(0x5B) 等，实测后果：
+//     · 真实标点键（VK 0xBD 减号、0xBE 句点、0xBB 等号 …）**一个字符都收不到** ——
+//       用户在控制台里根本打不出 "_ . / + = [ ] : < > ?"，于是 loadmap before_palace、
+//       eval 1+1、whatis obj_kris 这类输入全部作废（用户 m17451「全量测试控制台」实测抓到）；
+//     · 反过来按 Insert 会插入 "-"、按 Delete 会插入 "."（因为 45/46 就是这两个键的 VK）。
+//   现在改用 0xBA-0xDE 这组 OEM VK 码，并补齐 \ ` ' 三个键。
+var _symKeys = [vk_space, 0xBD, 0xBB, 0xDB, 0xDD, 0xBA, 0xBC, 0xBE, 0xBF, 0xDC, 0xC0, 0xDE];
+var _symNorm = [" ", "-", "=", "[", "]", ";", ",", ".", "/", chr(92), chr(96), chr(39)];
+var _symShft = [" ", "_", "+", "{", "}", ":", "<", ">", "?", chr(124), chr(126), chr(34)];
 for (var _s = 0; _s < array_length(_symKeys); _s += 1)
 {
     var _kk = _symKeys[_s];

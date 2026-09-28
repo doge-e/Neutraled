@@ -1,51 +1,7 @@
 [
   {
-    "id": "layer.60fps_layer.badartadventure",
-    "name": "60fps_layer",
-    "declared": [],
-    "implied": [
-      "code-replace"
-    ],
-    "undeclared": [
-      "code-replace"
-    ]
-  },
-  {
-    "id": "layer.bossrushlayer.primestrat",
-    "name": "BossRushLayer",
-    "declared": [],
-    "implied": [
-      "code-replace"
-    ],
-    "undeclared": [
-      "code-replace"
-    ]
-  },
-  {
-    "id": "layer.dojoobj.probe",
-    "name": "dojoobj",
-    "declared": [],
-    "implied": [
-      "code-replace"
-    ],
-    "undeclared": [
-      "code-replace"
-    ]
-  },
-  {
-    "id": "layer.friendyellowlayer.bluebeast3",
-    "name": "FriendYellowLayer",
-    "declared": [],
-    "implied": [
-      "code-replace"
-    ],
-    "undeclared": [
-      "code-replace"
-    ]
-  },
-  {
-    "id": "layer.pctobj.probe",
-    "name": "pctobj",
+    "id": "ntl.chapter.c3a8e36c4",
+    "name": "\u6211\u7684\u623F\u95F4",
     "declared": [],
     "implied": [
       "code-replace"

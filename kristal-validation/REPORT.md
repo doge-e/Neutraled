@@ -1,0 +1,64 @@
+# Kristal 批量验证报告
+
+- 文件总数: 780
+- 语法通过: 765
+- 语法可疑: 15
+
+## 未实现的 API
+- coroutine. : 3 次
+- load( : 2 次
+- love.event. : 2 次
+- loadstring : 1 次
+- debug. : 1 次
+
+## 风险最高的脚本
+- [40] libraries\kristal-chapter4-lib-main\scripts\world\events\climbentry.lua coroutine. x3, debug. x1
+- [20] libraries\flux.lua loadstring x1, load( x1
+- [15] scripts\world\cutscenes\dwcuts_main.lua love.event. x1
+- [12] scripts\world\cutscenes\lwcuts.lua love.event. x1
+- [10] libraries\kristal-chapter4-lib-main\lib.lua load( x1
+- [5] preview.lua 
+- [3] libraries\kristal-chapter4-lib-main\scripts\objects\ProphecySprite.lua 
+- [3] libraries\kristal-chapter4-lib-main\scripts\objects\ProphecyPanel.lua 
+- [3] libraries\kristal-chapter4-lib-main\scripts\objects\ProphecyText.lua 
+- [3] mod.lua 
+- [2] scripts\world\maps\before_palace.lua 
+- [2] scripts\world\maps\spawn_right2.lua 
+- [2] scripts\world\maps\spawn_right.lua 
+- [2] scripts\world\maps\spawn_puzzleresult.lua 
+- [2] scripts\world\maps\spawn_palaceview.lua 
+- [2] scripts\world\maps\spawn_palace.lua 
+- [2] scripts\world\maps\spawn_morepuzzles.lua 
+- [2] scripts\world\maps\spawn_right3.lua 
+- [2] scripts\world\maps\spawn_dronetopalace.lua 
+- [2] scripts\world\maps\spawn_afterpalace.lua 
+- [2] scripts\world\maps\shelter_2.lua 
+- [2] scripts\world\maps\shelter_1.lua 
+- [2] scripts\world\maps\shelter.lua 
+- [2] scripts\world\maps\palace_uptocode.lua 
+- [2] scripts\world\maps\palace_topuzzle.lua 
+- [2] scripts\world\maps\spawn_deactivate.lua 
+- [2] scripts\world\maps\palace_strange3.lua 
+- [2] scripts\world\maps\spawn_right4.lua 
+- [2] scripts\world\maps\spawn_unfortunate.lua 
+- [2] scripts\hooks\Battle.lua 
+- [2] scripts\battle\waves\impossible_shooter.lua 
+- [2] libraries\kristal-chapter4-lib-main\scripts\hooks\Player.lua 
+- [2] scripts\world\maps\_used.lua 
+- [2] scripts\world\maps\_tem.lua 
+- [2] scripts\world\maps\_3rd.lua 
+- [2] scripts\world\maps\spawn_thirdsegment.lua 
+- [2] scripts\world\maps\third_8.lua 
+- [2] scripts\world\maps\third_6.lua 
+- [2] scripts\world\maps\third_5.lua 
+- [2] scripts\world\maps\third_4.lua 
+- [2] scripts\world\maps\third_3.lua 
+- [2] scripts\world\maps\third_2.lua 
+- [2] scripts\world\maps\third_1.lua 
+- [2] scripts\world\maps\third_7.lua 
+- [2] scripts\battle\waves\n_final.lua 
+- [2] scripts\world\maps\palace_strange2.lua 
+- [2] scripts\world\maps\palace_stairs.lua 
+- [2] scripts\world\maps\palace_garden.lua 
+- [2] scripts\world\maps\palace_gamblinglmao.lua 
+- [2] scripts\world\maps\palace_dmgcalc.lua 

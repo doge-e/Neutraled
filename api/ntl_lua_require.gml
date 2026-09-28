@@ -47,14 +47,14 @@ if (_found == "" && _modDir != "")
             var _cur = _stack[0];
             array_delete(_stack, 0, 1);
             var _fn = file_find_first(_cur + "/*", fa_directory);
-            while (_fn != "")
+            while (_fn != "" && _fn != -1)
             {
                 if (_fn != "." && _fn != "..") array_push(_stack, _cur + "/" + _fn + "/");
                 _fn = file_find_next();
             }
             file_find_close();
             var _ff = file_find_first(_cur + "/*.lua", 0);
-            while (_ff != "")
+            while (_ff != "" && _ff != -1)
             {
                 if (string_pos(_dot, _ff) > 0) { _found = _cur + "/" + _ff; break; }
                 _ff = file_find_next();
