@@ -67,6 +67,8 @@ if (_cmd == "room" || _cmd == "inst" || _cmd == "objs" || _cmd == "flags" ||
 if (_cmd == "goto" || _cmd == "loadmap" || _cmd == "spawn" || _cmd == "destroy" ||
     _cmd == "setvar" || _cmd == "setflag" || _cmd == "screenshot")
 { ntl_console_action(_cmd, _rest); return 0; }
+// ★ 干跑开关（破坏性命令的演练模式）
+if (_cmd == "dry")       { ntl_console_dry(_rest); return 0; }
 if (_cmd == "reload")    { ntl_console_log(ntl_t("act.reloading")); try { ntl_live_reload(); } catch (e) { ntl_log("console", "[ntl] ntl_console_exec.gml:60 reload 失败: " + string(e)); } return 0; }
 if (_cmd == "clear")     { ds_list_clear(global.ntl_console_lines); global.ntl_console_dropped = 0; ntl_console_log(ntl_t("act.cleared")); return 0; }
 if (_cmd == "quit")      { global.ntl_console_open = false; return 0; }

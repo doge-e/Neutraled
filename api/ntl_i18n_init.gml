@@ -140,6 +140,8 @@ ds_map_add(_zh, "cmd.cache.d", "部署缓存状态");
 
 ds_map_add(_zh, "cmd.world.d", "Kristal world 状态");
 
+ds_map_add(_zh, "cmd.dry.d",  "干跑开关：破坏性命令只报告会发生什么，不真的执行");
+ds_map_add(_zh, "cmd.dry.u",  "dry [on|off]");
 ds_map_add(_zh, "cmd.goto.d", "跳转到指定章节");
 ds_map_add(_zh, "cmd.goto.u", "goto <1-7>");
 ds_map_add(_zh, "cmd.loadmap.d", "加载地图并放置玩家");
@@ -330,6 +332,8 @@ ds_map_add(_en, "cmd.cache.d", "Deploy cache status");
 
 ds_map_add(_en, "cmd.world.d", "Kristal world status");
 
+ds_map_add(_en, "cmd.dry.d",  "Dry-run switch: destructive commands only report what would happen");
+ds_map_add(_en, "cmd.dry.u",  "dry [on|off]");
 ds_map_add(_en, "cmd.goto.d", "Jump to a chapter");
 ds_map_add(_en, "cmd.goto.u", "goto <1-7>");
 ds_map_add(_en, "cmd.loadmap.d", "Load a map and place player");

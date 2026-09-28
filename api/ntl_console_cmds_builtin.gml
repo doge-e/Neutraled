@@ -43,6 +43,8 @@ _R("cache", "cmd.cache.d", "cmd.cache.u", "state");
 _R("world", "cmd.world.d", "cmd.world.u", "state");
 
 // ==================== 操作类 ====================
+// ★ 破坏性命令的干跑开关 —— 放在操作类第一位，用户最先看到
+_R("dry", "cmd.dry.d", "cmd.dry.u", "action");
 _R("goto", "cmd.goto.d", "cmd.goto.u", "action");
 _R("loadmap", "cmd.loadmap.d", "cmd.loadmap.u", "action");
 _R("spawn", "cmd.spawn.d", "cmd.spawn.u", "action");

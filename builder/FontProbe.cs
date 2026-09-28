@@ -82,6 +82,14 @@ public static class FontProbe
                 Console.WriteLine($"        U+{cp:X4} -> {gl.SourceWidth}x{gl.SourceHeight} @({gl.SourceX},{gl.SourceY}) Shift={gl.Shift} Offset={gl.Offset}");
             }
         }
+        // 字形矩形表（供「探针导出页 + 逐格墨迹」外部校验：验证部署后的字体里真的画得出来）
+        foreach (var f in data.Fonts)
+        {
+            var gname = Sanitize(f.Name?.Content ?? "x");
+            var rows = f.Glyphs.Select(g => "{\"c\":" + (int)g.Character + ",\"x\":" + g.SourceX + ",\"y\":" + g.SourceY +
+                ",\"w\":" + g.SourceWidth + ",\"h\":" + g.SourceHeight + "}");
+            File.WriteAllText(Path.Combine(outDir, "glyphs_" + gname + ".json"), "[" + string.Join(",", rows) + "]");
+        }
         Console.WriteLine(L("字符表已导出 chars_*.txt"));
         return 0;
     }

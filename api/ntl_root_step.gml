@@ -3,8 +3,8 @@
 // 退出后由外面的启动器（GUI / --watch-external）看到请求文件并拉起 Kristal。
 if (variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1)
 {
-    // 探针：确认常驻分支真的被执行（排查"改了没生效"用）
-    if (!variable_global_exists("ntl_ext_probe")) { global.ntl_ext_probe = 1; ntl_log("ext", "[ext] 探针：常驻分支已接管，剩余帧 " + string(global.ntl_ext_wait)); }
+    // 探针：确认后台分支真的被执行（排查"改了没生效"用）
+    if (!variable_global_exists("ntl_ext_probe")) { global.ntl_ext_probe = 1; ntl_log("ext", "[ext] 探针：后台分支已接管，剩余帧 " + string(global.ntl_ext_wait)); }
     global.ntl_ext_wait -= 1;
     // ★ 只在"尚未转入"时执行一次：以前这里只判 <= 0，归零后**每帧**都成立 →
     //   日志被刷爆（实测 3 秒 94 行）+ ntl_ext_frames 每帧清零（45 分钟超时兜底永久失效）。
@@ -17,7 +17,7 @@ if (variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1
         global.ntl_ext_frames = 0;
         try { audio_master_gain(0); } catch (e) { }                 // 常驻期间静音，别和 Kristal 抢声音
         try { window_set_caption(ntl_t("root.caption")); } catch (e) { }
-        ntl_log("ext", "[ext] 转入常驻等待：外部章节退出后会自动回到这里（不再重启进程）");
+        ntl_log("ext", "[ext] 转入后台等待：外部章节退出后会自动回到这里（不再重启进程）");
     }
     if (variable_global_exists("ntl_ext_running") && global.ntl_ext_running == 1)
     {

@@ -91,7 +91,7 @@ for (var _mi = 0; _mi < array_length(_modNames); _mi += 1)
             var _mjPath = _cd + "mod.json";
             if (!file_exists(_mjPath)) continue;
 
-            // 幂等守卫：同一个 mod 叶子（同一目录）只进表一次。
+            // 重复加载守卫：同一个 mod 叶子（同一目录）只进表一次。
             //   ntl_live_init() 与 Step_1 第 2 帧都会调用本函数，热重载也会重跑；
             //   以前没有这个守卫 → 章节进程里同一个 mod 进表两次（on_init 多跑、hook 重复注册）。
             var _dup = 0;
@@ -142,7 +142,7 @@ for (var _mi = 0; _mi < array_length(_modNames); _mi += 1)
 if (_added > 0)
     ntl_log("live", "[mod脚本] 已加载 " + string(_added) + " 个: " + ntl_string_join_ext(", ", _names));
 else if (_dupSkipped > 0)
-    ntl_log("live", "[mod脚本] " + string(_dupSkipped) + " 个已加载过（幂等跳过，避免重复注册 hook）");
+    ntl_log("live", "[mod脚本] " + string(_dupSkipped) + " 个已加载过（重复加载跳过，避免重复注册 hook）");
 else
     ntl_log("live", "[mod脚本] 没有找到可加载的 mod 脚本（检查 mods/<mod>/<author>/" + _chap + "/mod.json）");
 return _added;

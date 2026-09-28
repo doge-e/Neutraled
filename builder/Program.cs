@@ -232,6 +232,7 @@ public static class Program
                 case "--ttf": CjkTtf = args[++i]; break;
                 case "--size": CjkSize = int.Parse(args[++i]); break;
                 case "--charset": CjkCharset = args[++i]; break;
+                case "--chars": CjkChars = args[++i]; break;
                 case "--font-name": CjkName = args[++i]; break;
                 case "--from-font": CjkFromWin = args[++i]; break;
                 case "--source-font": CjkSourceFont = args[++i]; break;
@@ -1499,6 +1500,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         }
         var target = string.IsNullOrEmpty(outDir) ? Path.Combine(root, "fonts") : outDir;
         Console.WriteLine(L("生成中文字体包: {0} / {1}px / 字符集={2} → {3}", Path.GetFileName(ttf), CjkSize, CjkCharset, target));
+        if (CjkCharset == "list") Console.WriteLine(L("  显式字表（--chars）: {0} 个字符", CjkChars.Length));
         if (!string.IsNullOrEmpty(CjkFromWin))
         {
             try
@@ -1515,7 +1517,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         try
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var (glyphs, sheets) = CjkFont.Make(target, ttf, CjkSize, CjkCharset, CjkName, root);
+            var (glyphs, sheets) = CjkFont.Make(target, ttf, CjkSize, CjkCharset, CjkName, root, CjkChars);
             sw.Stop();
             Console.WriteLine(L("✓ 完成: {0} 字形 / {1} 张 sheet，用时 {2:N1} 秒", glyphs, sheets, sw.Elapsed.TotalSeconds));
             Console.WriteLine(L("  下一步：--deploy 会自动导入（Neutraled/fonts/*.json）"));
@@ -2886,6 +2888,8 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     static string CjkTtf = "";
     static int CjkSize = 12;
     static string CjkCharset = "cjk";
+    /// <summary>--chars：配合 --charset list 用的显式字表（只渲这几个字），补空白格用。</summary>
+    static string CjkChars = "";
     static string CjkName = "ntl_font_cjk";
     static string CjkFromWin = "";
     static string CjkSourceFont = "fnt_main";

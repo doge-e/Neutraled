@@ -17,6 +17,7 @@ else if (!ds_map_exists(global.ntl_lua_globals, "sprint_check")) ntl_lua_stdlib(
 if (!variable_global_exists("ntl_lua_env")) global.ntl_lua_env = ntl_lua_env_new(global.ntl_lua_globals);
 
 global.ntl_lua_err = "";
+global.ntl_lua_unknown = "";
 try
 {
     var _lc = ntl_lua_compile(_src);
@@ -38,6 +39,12 @@ if (global.ntl_lua_err != "")
 {
     ntl_console_log(ntl_t("exec.fail") + ntl_err_friendly(global.ntl_lua_err, "<exec>", -1));
     global.ntl_lua_err = "";
+}
+else if (global.ntl_lua_unknown != "")
+{
+    // 与 eval 同理：调用不存在的函数时**不能**报「已执行」
+    ntl_console_log(ntl_ts("eval.unknown", [global.ntl_lua_unknown]));
+    global.ntl_lua_unknown = "";
 }
 else ntl_console_log(ntl_t("exec.ok"));
 return 0;

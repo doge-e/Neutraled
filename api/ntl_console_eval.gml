@@ -23,6 +23,7 @@ else if (!ds_map_exists(global.ntl_lua_globals, "sprint_check")) ntl_lua_stdlib(
 if (!variable_global_exists("ntl_lua_env")) global.ntl_lua_env = ntl_lua_env_new(global.ntl_lua_globals);
 
 global.ntl_lua_err = "";
+global.ntl_lua_unknown = "";
 try
 {
     // 直接走 Lua 编译路径：ntl_live_compile 只对 .lua 结尾的路径走 Lua 分支，
@@ -47,5 +48,12 @@ if (global.ntl_lua_err != "")
 {
     ntl_console_log(ntl_t("eval.fail") + ntl_err_friendly(global.ntl_lua_err, "<eval>", -1));
     global.ntl_lua_err = "";
+}
+// ★ 以前这里漏了「调用了不存在的函数」这一种失败：ntl_call_host 只写日志、不置 ntl_lua_err，
+//   于是 eval instance_number(obj_time) 在控制台上**什么都不打印**（用户以为命令没反应）。
+if (global.ntl_lua_unknown != "")
+{
+    ntl_console_log(ntl_ts("eval.unknown", [global.ntl_lua_unknown]));
+    global.ntl_lua_unknown = "";
 }
 return 0;

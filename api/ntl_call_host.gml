@@ -336,6 +336,9 @@ if (_name == "mod_data_save" || _name == "ntl_mod_data_save") return ntl_mod_dat
     var _idx = asset_get_index(_name);
     if (_idx < 0)
     {
+        // ★ 专用标记：调用方（eval/exec）可以据此给出「未知函数」的友好提示；
+        //   故意不走 ntl_lua_rt_err —— 那会改动 live/hook/mod 各路径的错误语义。
+        global.ntl_lua_unknown = _name;
         ntl_log("live", "[错误] 未知函数: " + _name);
         return undefined;
     }

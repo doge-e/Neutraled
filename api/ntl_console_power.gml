@@ -49,6 +49,8 @@ if (_cmd == "warp")
         ntl_console_log(ntl_t("out.fail") + ntl_ts("warp.no", [_rn]));
         return 1;
     }
+    // ★ 干跑：只报告会跳到哪个房间（含当前房间号）
+    if (ntl_console_dry_block("warp", ntl_ts("dry.d_warp", [_rn, string(_rid), string(room)]))) return 1;
     ntl_console_log(ntl_ts("warp.ok", [_rn, string(_rid)]));
     try { room_goto(_rid); } catch (e) { ntl_console_log(ntl_ts("warp.roomfail", [e])); }
     return 1;

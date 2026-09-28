@@ -21,8 +21,18 @@ public static class CjkFont
     private const int MaxSheetH = 4096;
     private const int Batch = 64;
 
-    public static List<int> Charset(string kind, string? scanRoot)
+    public static List<int> Charset(string kind, string? scanRoot, string? charList = null)
     {
+        // ★ list 模式：只出 --chars 里点名的那几个字。
+        //   用途：字体包里有些字是**空白格**（汉化字库缺字 / 系统字体没有这个字），界面上就是一片空白。
+        //   按需用系统字体补渲这几个字（例：--chars "한국어⚠✓" --font C:/Windows/Fonts/segoeui.ttf），
+        //   再由 _feat/merge-fonts.mjs 以 replace 方式顶掉空白格。
+        if (kind == "list")
+        {
+            var only = new SortedSet<int>();
+            foreach (var ch in charList ?? "") if (ch >= 0x20) only.Add(ch);
+            return only.ToList();
+        }
         var set = new SortedSet<int>();
         if (kind == "used" && !string.IsNullOrEmpty(scanRoot))
             foreach (var ch in ScanUsed(scanRoot)) set.Add(ch);
@@ -137,7 +147,7 @@ public static class CjkFont
 
     /// <summary>渲染一批字符，返回切好的小图（步进一致）。</summary>
     private static List<(int ch, MagickImage img, int shift, int w, int h)> RenderBatch(
-        List<int> cps, MagickReadSettings rs, bool uniform, int sizePt)
+        List<int> cps, MagickReadSettings rs, bool uniform, int sizePt, List<int> dropped)
     {
         var outp = new List<(int, MagickImage, int, int, int)>();
         if (cps.Count == 0) return outp;
@@ -159,6 +169,11 @@ public static class CjkFont
                 {
                     var im = new MagickImage("label:" + char.ConvertFromUtf32(cp), rs);
                     if (im.Width == 0 || im.Height == 0) { im.Dispose(); continue; }
+                    // ★ 墨迹门禁：字体里没有这个字时 ImageMagick 给的是一张全透明图；
+                    //   留下它 = 界面上一个空白（而"已覆盖"还会把它算进去）。
+                    var _rgba = PageRgba(im);
+                    if (_rgba != null && !HasInkIn(_rgba, (int)im.Width, 0, 0, (int)im.Width, (int)im.Height))
+                    { im.Dispose(); dropped.Add(cp); continue; }
                     outp.Add((cp, im, (int)im.Width + 1, (int)im.Width, (int)im.Height));
                 }
                 catch { }
@@ -170,6 +185,8 @@ public static class CjkFont
         MagickImage row;
         try { row = new MagickImage("label:" + sb, rs); }
         catch { return outp; }
+        // ★ 整行只解一次 RGBA，逐格判断有没有墨迹（每格一次 ToByteArray 会慢十倍）
+        var rowRgba = PageRgba(row);
         int step = (int)Math.Round((double)row.Width / cps.Count);
         if (step <= 0) { row.Dispose(); return outp; }
         for (int i = 0; i < cps.Count; i++)
@@ -177,6 +194,7 @@ public static class CjkFont
             int x = i * step;
             int w = Math.Min(step, (int)row.Width - x);
             if (w <= 0) break;
+            if (rowRgba != null && !HasInkIn(rowRgba, (int)row.Width, x, 0, w, (int)row.Height)) { dropped.Add(cps[i]); continue; }
             try
             {
                 var cell = (MagickImage)row.Clone();
@@ -189,12 +207,12 @@ public static class CjkFont
         return outp;
     }
 
-    public static (int glyphs, int sheets) Make(string outDir, string ttf, int size, string charset, string fontName, string? scanRoot)
+    public static (int glyphs, int sheets) Make(string outDir, string ttf, int size, string charset, string fontName, string? scanRoot, string? charList = null)
     {
         if (!File.Exists(ttf)) throw new FileNotFoundException(L("找不到字体文件: ") + ttf);
         Directory.CreateDirectory(outDir);
 
-        var chars = Charset(charset, scanRoot);
+        var chars = Charset(charset, scanRoot, charList);
         Paths.Log(L("  中文字体: 字符集={0} 共 {1} 个字符，源字体={2}，字号={3}", charset, chars.Count, Path.GetFileName(ttf), size));
 
         var rs = new MagickReadSettings
@@ -211,13 +229,16 @@ public static class CjkFont
         Paths.Log(L("  渲染: 全宽 {0} 个（每批 {1}），窄体 {2} 个", wide.Count, Batch, narrow.Count));
 
         var items = new List<(int ch, MagickImage img, int shift, int w, int h)>();
-        items.AddRange(RenderBatch(narrow, rs, false, size));
+        var dropped = new List<int>();
+        items.AddRange(RenderBatch(narrow, rs, false, size, dropped));
         for (int i = 0; i < wide.Count; i += Batch)
         {
             var slice = wide.GetRange(i, Math.Min(Batch, wide.Count - i));
-            items.AddRange(RenderBatch(slice, rs, true, size));
+            items.AddRange(RenderBatch(slice, rs, true, size, dropped));
             if (i % (Batch * 20) == 0) Paths.Log(L("    …已渲染 {0} 个字形", items.Count));
         }
+        if (dropped.Count > 0)
+            Paths.Log(L("  ★ 跳过 {0} 个空白字形（源字体里没有这些字，留下只会在界面上画空白）: {1}", dropped.Count, SampleChars(dropped)));
         if (items.Count == 0) throw new Exception(L("没有渲染出任何字形（字体可能不支持这些字符）"));
         Paths.Log(L("  渲染完成: {0} 个字形", items.Count));
 
@@ -317,15 +338,25 @@ public static class CjkFont
         srcImg.Write(Path.Combine(outDir, sheetName), MagickFormat.Png32);
         Paths.Log(L("  源纹理页已原样导出: {0} {1}x{2}（字形坐标不改）", sheetName, srcW, srcH));
 
+        // ★ 墨迹门禁：源字体里**格子是空的**（汉化字库缺字）时必须跳过。
+        //   搬过去只会让上层以为"这个字有了"，画面上却是空白（实测 ja 页 1414/1938 是空白格）。
+        var pageRgba = PageRgba(srcImg);
         var glyphs = new List<GlyphDef>();
         var seen = new HashSet<int>();
-        int skipped = 0;
+        int skipped = 0, noInk = 0;
+        var noInkSample = new List<int>();
         foreach (var g in font.Glyphs)
         {
             int ch = g.Character;
             if (!seen.Add(ch)) continue;
             int w = g.SourceWidth, h = g.SourceHeight;
             if (w <= 0 || h <= 0 || g.SourceX + w > srcW || g.SourceY + h > srcH) { skipped++; continue; }
+            if (pageRgba != null && !HasInkIn(pageRgba, srcW, g.SourceX, g.SourceY, w, h))
+            {
+                noInk++;
+                if (noInkSample.Count < 40) noInkSample.Add(ch);
+                continue;
+            }
             glyphs.Add(new GlyphDef
             {
                 Char = ch, File = "", Sheet = sheetName,
@@ -380,9 +411,48 @@ public static class CjkFont
         };
         File.WriteAllText(Path.Combine(outDir, packName + ".json"),
             System.Text.Json.JsonSerializer.Serialize(def, Paths.Json), new UTF8Encoding(false));
-        Paths.Log(L("  搬字形完成: {0} 个（跳过 {1}），页 {2}x{3}", def.Glyphs.Count, skipped, srcW, srcH));
+        Paths.Log(L("  搬字形完成: {0} 个（跳过 {1}，其中源里就是空白格 {2}），页 {3}x{4}", def.Glyphs.Count, skipped, noInk, srcW, srcH));
+        if (noInk > 0)
+            Paths.Log(L("  ★ 空白格已丢弃（源字体里没有墨迹）: {0} 个，样例: {1}", noInk, SampleChars(noInkSample)));
         return (def.Glyphs.Count, 1);
     }
 
     private static int NextPow2(int v) { int p = 1; while (p < v) p <<= 1; return p; }
+
+    /// <summary>整页取 RGBA 原始字节；位深不是 8 位时返回 null（= 放弃检测：宁可不判，也不误杀真字形）。</summary>
+    private static byte[]? PageRgba(MagickImage img)
+    {
+        try
+        {
+            var bytes = img.ToByteArray(MagickFormat.Rgba);
+            if (bytes.Length != (int)img.Width * (int)img.Height * 4) return null;
+            return bytes;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>矩形里有没有「不透明且不是纯黑」的像素 —— 这就是"字体里真画得出这个字"的判据。</summary>
+    private static bool HasInkIn(byte[] rgba, int pageW, int x0, int y0, int w, int h)
+    {
+        int pw = Math.Max(1, pageW);
+        int ph = rgba.Length / 4 / pw;
+        for (int y = y0; y < y0 + h; y++)
+        {
+            if (y < 0 || y >= ph) continue;
+            for (int x = x0; x < x0 + w; x++)
+            {
+                if (x < 0 || x >= pw) continue;
+                int i = (y * pw + x) * 4;
+                if (rgba[i + 3] > 8 && Math.Max(rgba[i], Math.Max(rgba[i + 1], rgba[i + 2])) > 8) return true;
+            }
+        }
+        return false;
+    }
+
+    private static string SampleChars(List<int> cps)
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < cps.Count && i < 12; i++) if (cps[i] >= 0x20) sb.Append(char.ConvertFromUtf32(cps[i]));
+        return sb.Length > 0 ? sb.ToString() : L("（都是控制字符）");
+    }
 }

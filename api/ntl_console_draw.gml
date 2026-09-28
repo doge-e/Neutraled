@@ -56,6 +56,9 @@ else draw_set_color(ntl_theme_c("accent"));
 // ★ 缓冲区上限丢行时明确告知（否则用户以为 save 导出的就是全部）
 if (variable_global_exists("ntl_console_dropped") && global.ntl_console_dropped > 0)
     _ftr += "  " + ntl_ts("console.dropped", [string(global.ntl_console_dropped)]);
+// ★ 干跑状态常驻显示（否则用户会奇怪"为什么命令没反应"）
+if (variable_global_exists("ntl_console_dry") && global.ntl_console_dry)
+    _ftr += "  " + ntl_t("console.dry");
 draw_text(12, 6, ntl_t("console.title") + "  " + ntl_t("console.close") + _ftr);
 
 // 滚动位置指示（右上角）
