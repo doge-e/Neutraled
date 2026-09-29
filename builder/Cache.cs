@@ -75,7 +75,12 @@ public static class Cache
         {
             var dir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "fonts"));
             if (!Directory.Exists(dir)) return "nofonts";
+            // ★ 只统计**影响渲染**的文件（*.json 与 *.png）：fonts/ 下的许可文档（OFL-NOTICE.txt、
+            //   ofl/*.txt）与渲染无关，算进指纹会让「改文档」触发一次没必要的全量重建
+            //   （独立复核发现的 medium：加 OFL-NOTICE.txt 已让 root/chapter1/chapter2 必然重建）。
             var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories)
+                                 .Where(f => f.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                                          || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                                  .OrderBy(f => f, StringComparer.Ordinal).ToArray();
             var sb = new StringBuilder();
             foreach (var f in files)

@@ -48,6 +48,13 @@ public static class Doctor
         var ntl = Paths.NeutraledRoot(gameRoot);
         var api = Path.Combine(ntl, "api");
 
+        // 没有 api/ 时不要崩栈（--game 指到空目录/半装环境时医生该报错，不该抛异常）。
+        // 2026-09-29 实测：api/ 不存在时 Doctor.CheckScripts 会在 Directory.GetFiles 抛
+        // DirectoryNotFoundException 并打印调用栈、exit 1。脚本类检查各自跳过，配置/部署检查照跑。
+        if (!Directory.Exists(api))
+            rep.Add("error", L("安装"), L("找不到 api/ 目录: {0}", api),
+                    L("--doctor 应在已安装 Neutraled 的游戏根里运行；缺少 api/ 时脚本类检查会跳过。"));
+
         Console.WriteLine(L("===== Neutraled 自检 (doctor) ====="));
         Console.WriteLine();
 
@@ -122,6 +129,7 @@ public static class Doctor
     // ============ 1. 宿主函数完整性 ============
     private static void CheckHostFunctions(string apiDir, Report rep)
     {
+        if (!Directory.Exists(apiDir)) return;   // 没有 api/ 由 Run 统一报一次错，这里静默跳过
         var hostFile = Path.Combine(apiDir, "ntl_call_host.gml");
         var luaHostFile = Path.Combine(apiDir, "ntl_lua_host.gml");
         if (!File.Exists(hostFile)) { rep.Add("error", L("宿主"), L("找不到 ntl_call_host.gml")); return; }
@@ -176,6 +184,7 @@ public static class Doctor
     // ============ 2. 脚本完整性 ============
     private static void CheckScripts(string apiDir, Report rep)
     {
+        if (!Directory.Exists(apiDir)) return;   // 没有 api/ 由 Run 统一报一次错，这里静默跳过
         var files = Directory.GetFiles(apiDir, "*.gml", SearchOption.AllDirectories);
         int mismatch = 0;
         var examples = new List<string>();
@@ -209,6 +218,7 @@ public static class Doctor
     // ============ 3. 不可达代码 ============
     private static void CheckUnreachable(string apiDir, Report rep)
     {
+        if (!Directory.Exists(apiDir)) return;   // 没有 api/ 由 Run 统一报一次错，这里静默跳过
         var hits = new List<string>();
         foreach (var f in Directory.GetFiles(apiDir, "*.gml", SearchOption.AllDirectories))
         {
@@ -253,6 +263,7 @@ public static class Doctor
     // ============ 4. 变量定义 ============
     private static void CheckVariables(string apiDir, Report rep)
     {
+        if (!Directory.Exists(apiDir)) return;   // 没有 api/ 由 Run 统一报一次错，这里静默跳过
         var hits = new List<string>();
         foreach (var f in Directory.GetFiles(apiDir, "*.gml", SearchOption.AllDirectories))
         {
@@ -317,7 +328,13 @@ public static class Doctor
         if (!File.Exists(p)) { rep.Add("info", L("配置"), L("没有 config.json（全部用默认值）")); return; }
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(p));
+            // 口径必须与 ConfigFile.ConvertText 一致（容忍尾逗号与 // 注释），
+            // 否则手工整理的合法配置会被 --doctor 判成硬错（exit 1）——独立复核发现的 high。
+            using var doc = JsonDocument.Parse(File.ReadAllText(p), new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip
+            });
             var dups = new List<string>();
             FindDupKeys(doc.RootElement, dups, "");
             if (dups.Count > 0)
@@ -392,6 +409,7 @@ public static class Doctor
     // ============ 7. 空 catch ============
     private static void CheckEmptyCatch(string apiDir, Report rep)
     {
+        if (!Directory.Exists(apiDir)) return;   // 没有 api/ 由 Run 统一报一次错，这里静默跳过
         int empty = 0;
         var examples = new List<string>();
 

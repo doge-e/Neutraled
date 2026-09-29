@@ -88,7 +88,7 @@ foreach ($m in @('ExampleMod', 'InteropA', 'InteropB', 'HookExample')) {
     if (Test-Path -LiteralPath $s) { Copy-Item -LiteralPath $s -Destination (Join-Path $modsDst $m) -Recurse -Force; Write-Host ('  + mods/' + $m + '/') }
 }
 
-foreach ($f in @('README.md', 'launch.ps1', 'test.bat', 'test.ps1', 'console-theme.json', 'api-registry.json', 'kristal-scripts.txt')) {
+foreach ($f in @('README.md', 'LICENSE', 'NOTICE', 'launch.ps1', 'test.bat', 'test.ps1', 'console-theme.json', 'api-registry.json', 'kristal-scripts.txt')) {
     $s = Join-Path $N $f
     if (Test-Path -LiteralPath $s) { Copy-Item -LiteralPath $s (Join-Path $srcDir $f) -Force; Write-Host ('  + ' + $f) }
 }

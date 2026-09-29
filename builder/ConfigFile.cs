@@ -14,6 +14,12 @@ namespace Neutraled.Builder;
 ///     （root 产物受 GameMaker 沙箱遮蔽，只看得到那份；见 Paths.SaveMirrorConfigPath）。</summary>
 public static class ConfigFile
 {
+    /// <summary>上一次 Load 是否遇到「解析不了」的 config.json（跨调用状态，见 Save 的坏文件备份）。
+    /// ★ 为什么需要它（2026-09-29 独立复核发现的 high）：Load 解析失败时返回**空对象**，紧接着
+    ///   Set/SetMany 的写回会把整个文件覆盖成只剩新写入的键（实测 226 B → 20 B 只剩 "lang"），
+    ///   而日志还写着「文件保持原样」。有了这个标记，Save 会在覆盖前先备份成 .bad-<时间戳>。</summary>
+    private static bool _loadFailed;
+
     /// <summary>读取整个 config.json（不存在或损坏时返回空对象，不抛）。
     /// ★ 2026-09-29 重复键容错：JsonObject 是字典，遇到重复键会抛
     ///   「An item with the same key has already been added」。历史缺陷（游戏内按 L 切语言时
@@ -29,7 +35,13 @@ public static class ConfigFile
             if (!File.Exists(p)) return new JsonObject();
             var text = File.ReadAllText(p);
             var obj = ConvertText(text, out bool dup);
-            if (obj == null) { Paths.Log(L("[配置] config.json 解析失败，本次按空配置继续（文件保持原样，可用 --doctor 查看原因）")); return new JsonObject(); }
+            if (obj == null)
+            {
+                _loadFailed = true;
+                Paths.Log(L("[配置] config.json 解析失败，本次按空配置继续（本次只读；若还要写配置，会先把原文件备份成 .bad-<时间戳>；原因见 --doctor）"));
+                return new JsonObject();
+            }
+            _loadFailed = false;
             if (dup)
             {
                 // 有重复键：把清理后的版本写回（自愈），下次读取就是干净的
@@ -93,6 +105,24 @@ public static class ConfigFile
 
     public static void Save(string gameRoot, JsonObject obj)
     {
+        // ★ 坏文件保护：Load 解析失败（_loadFailed）后写回会把整个文件覆盖掉，
+        //   所以覆盖前先备份一份 .bad-<时间戳>。备份失败也不阻断写入（最坏情形 = 旧行为）。
+        if (_loadFailed)
+        {
+            try
+            {
+                var src = Paths.ConfigPath(gameRoot);
+                if (File.Exists(src))
+                {
+                    var bak = src + ".bad-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                    File.Copy(src, bak, true);
+                    Paths.Log(L("[配置] 原 config.json 无法解析，已备份为 {0} 再写入新配置", Path.GetFileName(bak)));
+                }
+            }
+            catch { }
+            _loadFailed = false;
+        }
+
         var dir = Paths.NeutraledRoot(gameRoot);
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
         var json = obj.ToJsonString(new JsonSerializerOptions
