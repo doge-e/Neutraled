@@ -51,3 +51,17 @@ dist/
 config.json.bak-*
 console-history.txt
 gui_lang.txt
+
+# 本机运行时状态（不进仓库：含本机游戏路径、已装 mod 清单、语言/base_mod 等）
+installed.json
+config.json
+mods.json
+mods-shared.json
+chapters.json
+ns-registry.json
+permissions.json
+hook-registry.json
+launch-request.json
+scope.json
+conflicts.json
+blacklist.json

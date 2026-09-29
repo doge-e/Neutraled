@@ -180,30 +180,33 @@ public static class CjkFont
             }
             return outp;
         }
-        var sb = new StringBuilder();
-        foreach (var cp in cps) sb.Append(char.ConvertFromUtf32(cp));
-        MagickImage row;
-        try { row = new MagickImage("label:" + LabelLiteral(sb.ToString()), rs); }
-        catch { return outp; }
-        // ★ 整行只解一次 RGBA，逐格判断有没有墨迹（每格一次 ToByteArray 会慢十倍）
-        var rowRgba = PageRgba(row);
-        int step = (int)Math.Round((double)row.Width / cps.Count);
-        if (step <= 0) { row.Dispose(); return outp; }
-        for (int i = 0; i < cps.Count; i++)
+        // ★★ 全宽组也必须**逐字渲染**：早期版本把一批 64 个字拼成一行 label: 再按
+        //   step = round(行宽 / 字数) 均匀切片。只要批里有一个字形的前进宽度不等于平均值
+        //   （全角标点、源字体缺字被渲成空白的字），该批**后续所有格子的切片边界就整体漂移**：
+        //   实测主包 14/20 个抽样字的格子里装的是别的字（U+FF08（ 的格子装的是 U+FF09）），
+        //   而同一批里步进恰好等于 size 的汉字看起来正常 —— 于是"标点错位、汉字没事"。
+        //   逐字渲染后每个字形自带精确矩形，格位不再依赖任何平均值。
+        //   前进宽度仍统一取 size（全角字在游戏里按 size 步进排版，汉字格宽不能用墨迹宽度）。
+        foreach (var cp in cps)
         {
-            int x = i * step;
-            int w = Math.Min(step, (int)row.Width - x);
-            if (w <= 0) break;
-            if (rowRgba != null && !HasInkIn(rowRgba, (int)row.Width, x, 0, w, (int)row.Height)) { dropped.Add(cps[i]); continue; }
+            if (cp == 0x20 || cp == 0xA0 || cp == 0x3000)
+            {
+                var blank = new MagickImage(MagickColors.Transparent, (uint)Math.Max(1, sizePt), (uint)Math.Max(1, sizePt));
+                blank.Format = MagickFormat.Png32;
+                outp.Add((cp, blank, sizePt, sizePt, sizePt));
+                continue;
+            }
             try
             {
-                var cell = (MagickImage)row.Clone();
-                cell.Crop(new MagickGeometry(x, 0, (uint)w, (uint)row.Height));
-                outp.Add((cps[i], cell, step, w, (int)row.Height));
+                var im = new MagickImage("label:" + LabelLiteral(char.ConvertFromUtf32(cp)), rs);
+                if (im.Width == 0 || im.Height == 0) { im.Dispose(); continue; }
+                var _rgba = PageRgba(im);
+                if (_rgba != null && !HasInkIn(_rgba, (int)im.Width, 0, 0, (int)im.Width, (int)im.Height))
+                { im.Dispose(); dropped.Add(cp); continue; }
+                outp.Add((cp, im, sizePt, (int)im.Width, (int)im.Height));
             }
             catch { }
         }
-        row.Dispose();
         return outp;
     }
 
@@ -251,11 +254,14 @@ public static class CjkFont
         int cx = 0, cy = 0;
         foreach (var (ch, img, shift, w, h) in items)
         {
-            if (cx + shift > SheetW) { cx = 0; cy += lineH + 2; }
+            // ★ 排版步进 = max(声明前进宽度, 墨迹宽度) + 1：全角字的墨迹可能比 size 宽 1px，
+            //   若按 shift 摆放会让相邻格子重叠、右边缘的字形被后一格盖掉（Copy 合成）。
+            int adv = Math.Max(shift, w) + 1;
+            if (cx + adv > SheetW) { cx = 0; cy += lineH + 2; }
             if (cy + lineH > MaxSheetH) { plan.Add(cur); cur = new(); cx = 0; cy = 0; }
             int gy = cy + Math.Max(0, lineH - descentPad - h);
             cur.Add((ch, img, cx, gy, shift, w, h));
-            cx += shift;
+            cx += adv;
         }
         if (cur.Count > 0) plan.Add(cur);
 
