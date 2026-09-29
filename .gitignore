@@ -2,6 +2,9 @@
 
 # 游戏与部署产物
 *_windows/
+*_linux/
+*_macos/
+*_unix/
 data.win
 *.win
 *.ios

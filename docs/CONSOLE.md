@@ -1,7 +1,7 @@
 # 控制台（CONSOLE）
 
 > **打开/关闭**：`F2` 开关，`Esc` 也可关闭。控制台不会暂停游戏（需要暂停用 `pause`）。
-> **本文档已与源码全量核对（2026-09-28）**：与 `api/ntl_console_cmds_builtin.gml` 的注册表逐条一致 —— **63 条内置命令 / 7 个分类**；旧版本写的"内置 41 条 / 5 类"是过期数字。
+> **本文档已与源码全量核对（2026-09-28）**：与 `api/ntl_console_cmds_builtin.gml` 的注册表逐条一致 —— **64 条内置命令 / 7 个分类**（info 14 · state 9 · action 11 · power 5 · debug 16 · auto 9）；旧版本写的"内置 41 条 / 5 类"是过期数字（2026-09-29 复核：注册表实际 **64** 条，比 09-28 多出 `dry`）。
 > 对照代码：`api/ntl_console_exec.gml`（分派）、`api/ntl_console_cmds_builtin.gml`（注册）、各 `api/ntl_console_*.gml`（实现）、`api/ntl_i18n_init.gml` + `api/ntl_i18n_out.gml`（文案/用法）。
 
 ---
@@ -25,7 +25,7 @@
 - **着色**：`[错误]` 红、`[警告]` 黄、`> ` 回显的命令、`==` 分类标题各有颜色。
 - **状态指示**：右上角 `[已滚行数/最大行数]`；回到底部时变绿。
 - **过滤器生效时**标题栏追加 `[filter: xxx]`。
-- 输出缓冲 200 行，超出自动丢弃最早的；`style lines <5-30>` 控制可见行数。
+- 输出缓冲 **400 行**（源码 `api/ntl_console_log.gml:49-56`），超出会丢弃最早的行，并把**丢弃条数**记在 `global.ntl_console_dropped`（标题行与 `save` 导出的头部会显示，避免「导出其实是截断过的」而不自知）；`style lines <5-30>` 控制可见行数。
 
 **已知限制（Tab 补全）**：补全逻辑在 `api/events/Step_1.gml`（控制台输入处理，本次审计的改动范围之外），它遍历注册表取**第一个**前缀匹配项 —— 同一前缀有多个候选时（例如 `s` 对应 `save/style/saves/setvar/...`）结果取决于 `ds_map` 键序，可能不稳定；唯一候选时正常。修法见 `docs/CONSOLE.md` 所在目录的审计报告"未决问题"。
 
@@ -59,7 +59,7 @@
 
 ---
 
-## 三、命令总账（63 条 / 7 类）
+## 三、命令总账（64 条 / 7 类）
 
 用 `cmds` 看全部（开头就报总数与分类数），`cmds <分类>` 只看一类，`help <命令>` 看单条用法。
 
@@ -96,7 +96,7 @@
 | `cache` | — | 部署缓存状态 |
 | `world` | — | Kristal world 状态 |
 
-### 操作类 action（10）
+### 操作类 action（11）
 
 | 命令 | 用法 | 说明 |
 |---|---|---|
@@ -110,6 +110,7 @@
 | `reload` | — | 热重载 live 脚本 |
 | `clear` | — | 清空控制台输出 |
 | `quit` | `quit` | 关闭控制台（**不退出游戏**；退出游戏请关窗口） |
+| `dry` | `dry [on\|off\|status]` | 破坏性命令的**干跑**开关（详见文末「dry」节） |
 
 ### 强力类 power（5）
 
@@ -198,13 +199,13 @@ flag[0] = 0
 
 ```
 > cmds
-共 63 条命令 / 7 个分类（看某类：cmds <分类>）
+共 64 条命令 / 7 个分类（看某类：cmds <分类>）
 
 == 信息类 (14) ==
   api   api <关键词>
       搜索游戏资源（脚本/对象/精灵/声音）
 ...
-共 63 条命令
+共 64 条命令
 提示: help <命令> 看详细用法；mod 命令带前缀如 mymod:cmd
 ```
 
@@ -362,7 +363,7 @@ end
 ```
 按 F2 打开控制台
 
-> cmds                  看所有命令（63 条 / 7 类）
+> cmds                  看所有命令（64 条 / 7 类）
 > cmds mod              只看 mod 提供的命令
 > help goto             查 goto 的用法
 > mods                  看本产物已加载的 mod
@@ -383,7 +384,7 @@ end
 |---|---|---|
 | `mods` 只列 1 个 mod | 改读本产物 `Neutraled/mods.json`（`ntl_modmenu_loaded()`）+ 磁盘目录数，支持关键词过滤与 30 条截断提示 | `api/ntl_console_info.gml`、新建 `api/ntl_console_mod_dir.gml` |
 | `modinfo` 查不到已加载 mod | 先查已加载清单再查 live 层 | `api/ntl_console_info.gml` |
-| `save/style/timeit/hist` 能用但 help/cmds 里看不到 | 补注册（59 → 63 条），与 i18n 的 63 组 `cmd.*` 完全对齐 | `api/ntl_console_cmds_builtin.gml` |
+| `save/style/timeit/hist` 能用但 help/cmds 里看不到 | 补注册（59 → 63 条；2026-09-29 又加入 `dry` ⇒ 现 **64 条**），与 i18n 的 `cmd.*` 组（现 64 组）完全对齐 | `api/ntl_console_cmds_builtin.gml` |
 | `exec` 与 `eval` 是同一个实现 | `exec` 改为真正执行 Lua 代码块（`ntl_console_exec_lua`） | `api/ntl_console_exec.gml`、新建 `api/ntl_console_exec_lua.gml` |
 | `sleep` 交互态只打提示 | 真的排队延时执行 | `api/ntl_console_exec.gml` |
 | `macro` / `loop` 注册了却无效 | 分派时传错子命令名（`macro_split`/`loop_split`） | `api/ntl_console_exec.gml` |

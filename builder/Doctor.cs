@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using static Neutraled.Builder.Lang;
 
@@ -52,37 +53,42 @@ public static class Doctor
 
         // ---------- 1. 宿主函数完整性 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[1/7] 宿主函数完整性..."));
+        Console.WriteLine(L("[1/8] 宿主函数完整性..."));
         CheckHostFunctions(api, rep);
 
         // ---------- 2. 脚本编译完整性 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[2/7] 脚本完整性..."));
+        Console.WriteLine(L("[2/8] 脚本完整性..."));
         CheckScripts(api, rep);
 
         // ---------- 3. 不可达代码 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[3/7] 不可达代码..."));
+        Console.WriteLine(L("[3/8] 不可达代码..."));
         CheckUnreachable(api, rep);
 
         // ---------- 4. 未定义变量 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[4/7] 变量定义..."));
+        Console.WriteLine(L("[4/8] 变量定义..."));
         CheckVariables(api, rep);
 
         // ---------- 5. 部署目标一致性 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[5/7] 部署目标一致性..."));
+        Console.WriteLine(L("[5/8] 部署目标一致性..."));
         CheckDeployTargets(gameRoot, rep);
 
-        // ---------- 6. mod 加载验证 ----------
+        // ---------- 6. config.json 完整性 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[6/7] mod 加载..."));
+        Console.WriteLine(L("[6/8] config.json 完整性..."));
+        CheckConfigJson(gameRoot, rep);
+
+        // ---------- 7. mod 加载验证 ----------
+        rep.ChecksRun++;
+        Console.WriteLine(L("[7/8] mod 加载..."));
         CheckMods(ntl, rep);
 
         // ---------- 7. 空 catch ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[7/7] 异常处理..."));
+        Console.WriteLine(L("[8/8] 异常处理..."));
         CheckEmptyCatch(api, rep);
 
         // ---------- 报告 ----------
@@ -296,6 +302,50 @@ public static class Doctor
                     L("如果游戏停在章节选择器，跑的是 root 的代码。部署时务必两个目标都做。"));
         else
             rep.Add("info", L("部署"), L("✅ root 与章节部署时间接近"));
+    }
+
+    // ============ 6. config.json 完整性 ============
+    /// <summary>重复键检测：JsonObject 是字典，重复键会让**所有**读配置的命令在启动时抛
+    /// 「An item with the same key has already been added」（实测 --plugin-hooks / --lang-coverage /
+    /// --plugin-list 全崩；--lint / --version 不读配置所以看着正常）。
+    /// 成因见 api/ntl_config_set_lang.gml：旧判据「替换后文本没变 = 没有 lang 字段」，
+    /// 当要写的语言码与现值相同时会追加第二个 "lang"。ConfigFile.Load 现在会自动清理并写回，
+    /// 这里只做「有没有发生过」的体检（出现即 warn，提示成因与自愈行为）。</summary>
+    private static void CheckConfigJson(string gameRoot, Report rep)
+    {
+        var p = Paths.ConfigPath(gameRoot);
+        if (!File.Exists(p)) { rep.Add("info", L("配置"), L("没有 config.json（全部用默认值）")); return; }
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(p));
+            var dups = new List<string>();
+            FindDupKeys(doc.RootElement, dups, "");
+            if (dups.Count > 0)
+                rep.Add("warn", L("配置"), L("config.json 有重复键: {0}", string.Join(", ", dups.Take(5))),
+                        L("读取时按「后者覆盖」自动清理并写回；成因是旧版 api/ntl_config_set_lang.gml 的判据缺陷。"));
+            else
+                rep.Add("info", L("配置"), L("✅ config.json 键唯一"));
+        }
+        catch (Exception ex) { rep.Add("error", L("配置"), L("config.json 解析失败: ") + ex.Message); }
+    }
+
+    /// <summary>递归找同层重复键（JsonDocument 允许重复键，所以能读出来体检）。</summary>
+    private static void FindDupKeys(JsonElement el, List<string> dups, string path)
+    {
+        if (el.ValueKind == JsonValueKind.Object)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var prop in el.EnumerateObject())
+            {
+                if (!seen.Add(prop.Name)) dups.Add(path + prop.Name);
+                FindDupKeys(prop.Value, dups, path + prop.Name + ".");
+            }
+        }
+        else if (el.ValueKind == JsonValueKind.Array)
+        {
+            int i = 0;
+            foreach (var item in el.EnumerateArray()) FindDupKeys(item, dups, path + i++ + ".");
+        }
     }
 
     // ============ 6. mod 加载 ============

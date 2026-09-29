@@ -167,7 +167,7 @@ public static class CjkFont
                 }
                 try
                 {
-                    var im = new MagickImage("label:" + char.ConvertFromUtf32(cp), rs);
+                    var im = new MagickImage("label:" + LabelLiteral(char.ConvertFromUtf32(cp)), rs);
                     if (im.Width == 0 || im.Height == 0) { im.Dispose(); continue; }
                     // ★ 墨迹门禁：字体里没有这个字时 ImageMagick 给的是一张全透明图；
                     //   留下它 = 界面上一个空白（而"已覆盖"还会把它算进去）。
@@ -183,7 +183,7 @@ public static class CjkFont
         var sb = new StringBuilder();
         foreach (var cp in cps) sb.Append(char.ConvertFromUtf32(cp));
         MagickImage row;
-        try { row = new MagickImage("label:" + sb, rs); }
+        try { row = new MagickImage("label:" + LabelLiteral(sb.ToString()), rs); }
         catch { return outp; }
         // ★ 整行只解一次 RGBA，逐格判断有没有墨迹（每格一次 ToByteArray 会慢十倍）
         var rowRgba = PageRgba(row);
@@ -448,6 +448,13 @@ public static class CjkFont
         }
         return false;
     }
+
+    /// <summary>ImageMagick 的 label:/caption: 会把文本当「文件名转义」再解释一遍：
+    /// 单个反斜杠被吃掉（TranslateText 把它当转义起始）⇒ 渲染结果是全透明图，
+    /// 于是「反斜杠」这个 ASCII 字形永远进不了字体包
+    /// （实测：--chars "\\" 报「没有渲染出任何字形」，而同样的字在 5666 字整表里被静默跳过）。
+    /// 这里按 IM 的规则把反斜杠写成双写，让渲染的是字面字符。</summary>
+    internal static string LabelLiteral(string s) => s.Replace("\\", "\\\\");
 
     private static string SampleChars(List<int> cps)
     {

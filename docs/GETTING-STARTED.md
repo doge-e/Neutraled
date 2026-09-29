@@ -51,7 +51,7 @@ install\ntl-builder.exe --install --game "…\DELTARUNE"    # 手动指定
 
 装完就是普通的开发布局：`<游戏>\Neutraled\` 里有全部载荷，工具在 `<游戏>\Neutraled\bin\ntl-builder.exe`。
 想从源码自己编译：在 `src/builder/` 下 `dotnet build -c Release`（需要 .NET 9 SDK）；
-打发布包本身用 `src/tools/package.ps1`（`-Flavor trim|full` 选择是否裁剪）。
+打发布包本身用 `src/tools/package.ps1` —— **只支持 `-Flavor full`**：`-Flavor trim` 自 2026-09-28 起被**明确禁用**（`PublishTrimmed` 会剪掉 `System.Text.Json` 的反射序列化 ⇒ `mod.json` 读不进来 ⇒ **静默少 mod**，`--conflicts` 的退出码会从 2 变 0 而看不出问题）；打包脚本遇到 `-Flavor trim` 直接以**退出码 2 拒绝**。
 
 ### 卸载 / 还原
 

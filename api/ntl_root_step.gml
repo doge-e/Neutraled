@@ -178,8 +178,11 @@ if (ntl_key_fire(38, 250000, 90000) == 1)        // Up
             if (_ixU >= 0)
             {
                 var _mU = global.ntl_ch[_ixU];
-                // 有内容 = 已部署(enabled) 或 非官方章节（与 draw 的判定一致）
-                if (ds_map_find_value(_mU, "enabled") == 1 || ds_map_find_value(_mU, "kind") != "official") break;
+                // 有内容 = 已部署(enabled) 或 外部引擎章节（与 draw 的判定一致）
+                // 修复 2026-09-29：旧条件把「非官方」一律当成有内容，于是未部署的平行时间线
+                //   （enabled=0 / kind=timeline，画面上是灰字 无内容）会把光标停住，按 Enter 毫无反应。
+                var _kU = string(ds_map_find_value(_mU, "kind"));
+                if (ds_map_find_value(_mU, "enabled") == 1 || (_kU != "official" && _kU != "timeline")) break;
             }
             _skippedU += 1;
         }
@@ -207,7 +210,10 @@ if (ntl_key_fire(40, 250000, 90000) == 1)        // Down
             if (_ixD >= 0)
             {
                 var _mD = global.ntl_ch[_ixD];
-                if (ds_map_find_value(_mD, "enabled") == 1 || ds_map_find_value(_mD, "kind") != "official") break;
+                // 有内容 = 已部署(enabled) 或 外部引擎章节（与 draw 的判定一致）
+                // 修复 2026-09-29：同上移，未部署的平行时间线不再停光标。
+                var _kD = string(ds_map_find_value(_mD, "kind"));
+                if (ds_map_find_value(_mD, "enabled") == 1 || (_kD != "official" && _kD != "timeline")) break;
             }
             _skippedD += 1;
         }

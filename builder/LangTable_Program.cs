@@ -213,6 +213,7 @@ public static class LangTable_Program
         d["[跳过] {0} 内容未变（签名 {1}）—— 产物已是这个内容，无需重新部署"] = "[Skip] {0} content unchanged (signature {1}) -- the output already has this content, no redeploy needed";
         d["[输出] 平行时间线产物 -> {0}"] = "[Output] Parallel timeline output -> {0}";
         d["[重做] {0} 内容未变（签名 {1}），但产物缺失（{2}）—— 必须重新部署才能生成"] = "[Redo] {0} content unchanged (signature {1}) but the output is missing ({2}) -- a redeploy is required to generate it";
+        d["[重做] {0} 输入未变（签名 {1}），但产物内容对不上（记录 {2} / 当前 {3}）—— 产物被还原或替换过，必须重新部署"] = "[Redo] {0} inputs unchanged (signature {1}) but the output content does not match (recorded {2} / current {3}) -- the output was restored or replaced, a redeploy is required";
         d["[错误] "] = "[Error] ";
         d["[错误] {0}"] = "[Error] {0}";
         d["[错误] {0}: {1}"] = "[Error] {0}: {1}";

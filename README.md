@@ -68,7 +68,7 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 | **一条龙下载转换** | `--fetch-mod <gamebananaId>` 下载 + 自动识别格式 + 转换（含 Kristal） |
 | 部署缓存 | 硬链接复用 21s → 0.8s，签名含 api 指纹自动失效 |
 | 质量工具 | `--lint` / `--doctor` / `--smoke` / `--api-doc` / `--selftest` |
-| 控制台 | 59 条命令 + 滚动/历史/宏/别名，中英双语（6 种语言） |
+| 控制台 | **64 条命令** + 滚动/历史/宏/别名，中英双语（6 种语言） |
 | **配置档 / 快照 / 恢复点** | `--profile-*`（启用集合 + 游戏设置）、`--snapshot-*`（每 mod 版本快照，真实复制）、`--restore-*`（整游戏恢复点，跨机导出/导入） |
 | **GameBanana + 下载队列** | `--gb-search` / `--gb-files` / `--gb-install`（下载→识别→导入一条龙）、`--queue-*`（断点续传、黑名单） |
 | **插件系统** | C# DLL 插件 + `plugin.json` 清单/权限，`AssemblyLoadContext` 可卸载加载（见 `sdk/`） |

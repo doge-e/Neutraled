@@ -357,6 +357,25 @@ public static class Chapters
 			e.Note = "based on " + chapterEntry3.Id;
 			Paths.Log(L("  章节引用: {0} -> 基于 {1}（产物独立）", e.Id, chapterEntry3.Id));
 		}
+		// ★ 2026-09-29 修复 timeline:1:kristal_storynarrators_test 悬空条目（没有自带 data 的平行时间线）：
+		//   平行时间线的基底只有两条路：① mod 自带 data（mods/<mod名>/<作者>/data/<章节名>/data.win）
+		//   ② 同名时间线的产物（BaseDir，见上面的 list6 解析）。两者都没有时，部署阶段
+		//   （Program.cs:2557-2567）只会打一行 [错误] 然后 continue —— 产物目录永远不存在，
+		//   注册表里却留下一条 Enabled=false 的「幽灵章节」，章节选择器还要把光标停在它上面
+		//   （按 Enter 毫无反应，玩家只看到灰字 无内容）。与 :205-215「缺章节名就 continue」
+		//   的既有先例一致：这种条目根本不生成。注册表每次部署现算 —— mod 补上 data.win 后
+		//   条目会自动回来，不会永久丢失。
+		for (int tlIndex = list.Count - 1; tlIndex >= 0; tlIndex--)
+		{
+			ChapterEntry tlEntry = list[tlIndex];
+			if (tlEntry.Kind != "timeline" || !string.IsNullOrEmpty(tlEntry.OwnData) || !string.IsNullOrEmpty(tlEntry.BaseDir))
+			{
+				continue;
+			}
+			Paths.Log(L("  [跳过] {0}: 平行时间线「{1}」既没有自带 data，也没有同名时间线可参照", tlEntry.Source, tlEntry.Name));
+			Paths.Log(L("         —— 不生成章节条目（自带 data 应放在 mods/<mod名>/<作者>/data/{0}/data.win）", tlEntry.Name));
+			list.RemoveAt(tlIndex);
+		}
 		foreach (ChapterEntry item6 in list)
 		{
 			if (item6.Kind == "official")

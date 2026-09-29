@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-28T23:28:32",
+  "generated": "2026-09-29T23:30:50",
   "maxOrder": 9,
   "chapters": [
     {
@@ -38,25 +38,6 @@
       "Exe": "E:\\steam\\steamapps\\common\\DELTARUNE\\Neutraled\\tools\\love\\love.exe",
       "Args": "E:\\steam\\steamapps\\common\\DELTARUNE\\Kristal-main",
       "Cwd": "E:\\steam\\steamapps\\common\\DELTARUNE\\Kristal-main"
-    },
-    {
-      "Id": "timeline:1:kristal_storynarrators_test:storynarrators_test",
-      "Order": 1,
-      "Name": "StoryNarrators Test",
-      "Kind": "timeline",
-      "Source": "StoryNarrators Test",
-      "Author": "unknown",
-      "Dir": "ntl_timeline_1_kristal_storynarrators_test_storynarrators_test",
-      "Mods": [
-        "kristal.storynarrators_test"
-      ],
-      "Enabled": false,
-      "Note": "not deployed",
-      "BaseDir": "",
-      "OwnData": "",
-      "Exe": "",
-      "Args": "",
-      "Cwd": ""
     },
     {
       "Id": "timeline:1:external_frostveil:冰封帷幕_frostveil",

@@ -88,10 +88,10 @@ public static class Lang
         try
         {
             if (string.IsNullOrWhiteSpace(gameRoot)) return;
-            var f = Path.Combine(Paths.NeutraledRoot(gameRoot), "config.json");
-            if (!File.Exists(f)) return;
-            var node = JsonNode.Parse(File.ReadAllText(f));
-            Set(node?["lang"]?.GetValue<string>());
+            // 统一走 ConfigFile：裸 JsonNode.Parse 在「config.json 有重复键」时必抛，
+            // 而这里 catch 之后会静默保持 zh（玩家选了别的语言却仍显示中文）。
+            var node = ConfigFile.Load(gameRoot);
+            Set(node["lang"]?.GetValue<string>());
         }
         catch { /* 配置读不了就保持 zh，绝不影响部署 */ }
     }

@@ -1,0 +1,89 @@
+Neutraled — NOTICE / 第三方组件与许可声明
+版本：1.0.0 · 生成日期：2026-09-29 · 适用对象：随包分发的 Neutraled 发布物（源码与 install/src 载荷）
+
+本文件汇总本项目的许可信息。它是便于阅读的摘要，**不替代**各许可证正文：
+项目自身许可见仓库根「LICENSE」，字体许可全文见「fonts/ofl/」下 5 份 OFL 文本，
+字体来源与逐页对应关系见「fonts/OFL-NOTICE.txt」。
+
+================================================================================
+(a) 本项目自身代码 —— MIT License
+================================================================================
+
+Neutraled 自身编写的代码（builder/、gui/、studio/、api/、web/、tools/、sdk/、scripts/、
+templates/、themes/、plugins/ 等，以及文档与示例 mod）采用 **MIT License** 授权：
+
+    Copyright (c) 2026 Neutraled contributors
+
+许可证正文：仓库根「LICENSE」文件（逐字为 SPDX 标准 MIT 文本）。
+SPDX-License-Identifier: MIT
+
+要点（非正式摘要，正式条款以 LICENSE 为准）：
+  - 允许使用、复制、修改、合并、发布、分发、再许可与销售；
+  - 必须保留版权声明与本许可证声明；
+  - 软件按「原样」提供，不附带任何明示或默示担保。
+
+随包引用但不属于本项目的第三方二进制组件（其版权与许可归各自作者/组织，
+本项目只做引用，未修改它们）：
+  - UndertaleModTool 的 UndertaleModLib.dll / Underanalyzer.dll（读写 data.win 所需）
+  - Magick.NET / ImageMagick（Magick.NET-Q8-AnyCPU.dll、Magick.Native-Q8-x64.dll）
+  - .NET 9 运行时（自包含发布时随包）
+再分发这些组件时请遵守它们各自的许可证；本项目不对它们作任何再许可。
+
+================================================================================
+(b) 随包分发的字体页 —— SIL Open Font License 1.1（OFL-1.1）
+================================================================================
+
+Neutraled 的像素字体包（fonts/ntl_font_cjk.json + fonts/ntl_font_cjk_o*.png）是由下列
+**OFL 1.1 授权字体**在构建期渲染得到的**派生位图页**（字形栅格 + 坐标表），
+**包内不含任何字体文件（无 .ttf/.otf/.ttc）**，随包分发的是渲染结果。
+
+逐页对应关系（页号 = 文件名），完整来源（版本 / 本地 TTF 文件名 / SHA-256 / 上游下载地址 /
+各字体的 OFL 版权行 / 再生成命令）见 fonts/OFL-NOTICE.txt：
+
+    o1  fonts/ntl_font_cjk_o1.png   ← Noto Sans SC            （简体中文主体，4679 个字形引用）
+    o2  fonts/ntl_font_cjk_o2.png   ← Noto Sans SC（补字页）   （简体补字，19 个字形引用）
+    o3  fonts/ntl_font_cjk_o3.png   ← Noto Sans JP            （日文，当前 0 引用：备用页）
+    o4  fonts/ntl_font_cjk_o4.png   ← Noto Sans KR            （韩文，3 个字形引用）
+    o5  fonts/ntl_font_cjk_o5.png   ← Noto Sans Symbols 2     （符号 / 标点，232 个字形引用）
+    o6  fonts/ntl_font_cjk_o6.png   ← Noto Emoji              （emoji，3 个字形引用）
+
+用到的字体（5 款，均以 SIL Open Font License 1.1 授权）：
+    Noto Sans SC · Noto Sans JP · Noto Sans KR · Noto Sans Symbols 2 · Noto Emoji
+    版权行：Noto Sans SC / JP / KR → "Copyright 2014-2021 Adobe (http://www.adobe.com/),
+            with Reserved Font Name 'Source'."
+            Noto Sans Symbols 2 → "Copyright 2022 The Noto Project Authors
+            (https://github.com/notofonts/symbols)"
+            Noto Emoji          → "Copyright 2013 Google LLC"
+
+OFL 1.1 全文（随包分发，共 5 份 94 行的完整文本）：
+    fonts/ofl/OFL-notosanssc.txt        （Noto Sans SC）
+    fonts/ofl/OFL-notosansjp.txt        （Noto Sans JP）
+    fonts/ofl/OFL-notosanskr.txt         （Noto Sans KR）
+    fonts/ofl/OFL-notosanssymbols2.txt   （Noto Sans Symbols 2）
+    fonts/ofl/OFL-notoemoji.txt         （Noto Emoji）
+
+合规做法（与 OFL 1.1 的要求对应）：
+  1. 版权声明与许可证全文随包传递（本文件 + fonts/ofl/ 下 5 份全文）；
+  2. 保留字体名（Reserved Font Name）未被用作本项目或产品的名称；
+     游戏内资源名「ntl_font_cjk」与本项目名「Neutraled」均与上述字体名无关；
+  3. 字体页（派生位图）未单独售卖、未作为独立字体产品或字库分发；
+  4. 派生位图页可自由再分发，条件同上（保留声明与许可全文）；
+  5. 可追溯：任何人可依 fonts/OFL-NOTICE.txt 第五节给出的命令，
+     用相同字体版本重新渲染并逐字节比对。
+
+================================================================================
+(c) 免责与商标 / Third-party game and mods
+================================================================================
+
+  - DELTARUNE 及其全部素材（图形、音频、文本、代码等）版权归 **Toby Fox** 所有。
+    本项目与 Toby Fox 无任何从属或赞助关系。
+  - 本项目**不随包分发游戏本体，也不随包分发任何原版游戏资源**；
+    其工作方式是在**用户本机**、对**用户自己安装的**游戏文件做部署期修改，
+    并在修改前备份原版文件（Neutraled/backup/），卸载时还原。
+  - 使用本项目需要用户自行拥有合法的 DELTARUNE 副本。
+  - 与本项目无关的第三方 mod、语言包、插件、主题、Kristal 项目及其素材，
+    版权归各自的作者所有；本项目不对它们作任何授权、担保或再许可。
+  - 「Steam」为 Valve Corporation 的商标；本项目仅通过 Steam 启动游戏，
+    以保留游戏计时、云存档与成就，与 Valve 无隶属关系。
+
+如有许可相关问题，请在项目仓库提交 issue 或联系维护者。

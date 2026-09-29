@@ -461,6 +461,7 @@ public static class CliFeatures
         catch (Exception ex)
         {
             Console.Error.WriteLine(L("[错误] {0}", ex.Message));
+            if (Environment.GetEnvironmentVariable("NTL_DEBUG") == "1") Console.Error.WriteLine(ex.ToString());
             return 1;
         }
     }

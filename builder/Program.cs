@@ -2067,6 +2067,23 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         //        ⚠ 时间线的签名必须用「它自己的 mod 子集 + 基底 data 指纹」：沿用 srcChapter 的
         //          全量扫描会出现「时间线的 mod 变了、签名却没变」→ 产物永久过期。
         var sigFile = Path.Combine(Path.GetDirectoryName(win) ?? ".", ".ntl-deploy-" + chapter + ".sig");
+        // 产物内容指纹（SHA-256 前 16 字节 + 字节数）：输入签名只描述"用什么料"，描述不了"碗里现在是什么"。
+        //   输入没变、产物却被换掉（--restore-chapter 还原、手工覆盖、外部补丁、别的工具重写）时，
+        //   光比输入签名会得出"内容未变"并静默跳过 —— 实测踩过：还原 chapter3/4/5 后再 --deploy-all，
+        //   6 项各约 2.1s 全部跳过，章节其实是原版 data.win，游戏里既没有面板也没有字体补全。
+        //   用内容哈希而不是 (长度, 写入时间)：NTFS 的目录项时间戳是惰性刷新的，刚写完读可能拿到旧值。
+        string OutFp()
+        {
+            try
+            {
+                if (!File.Exists(win)) return "missing";
+                using var fs = File.OpenRead(win);
+                using var sha = System.Security.Cryptography.SHA256.Create();
+                var h = sha.ComputeHash(fs);
+                return Convert.ToHexString(h.AsSpan(0, 16)).ToLowerInvariant() + ":" + new FileInfo(win).Length;
+            }
+            catch { return "?"; }
+        }
         var isTimelineProduct = outDirOverride != null;
         var skipAllowed = isTimelineProduct ? !ForceTimelines : (!ForceDeploy && modsOverride == null);
         if (skipAllowed && !NoCache && !Injector.FastDeploy)
@@ -2074,7 +2091,15 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             try
             {
                 var sig = DeploySignature();
-                var sigSame = File.Exists(sigFile) && File.ReadAllText(sigFile).Trim() == sig;
+                // .sig 两行：第 1 行输入签名，第 2 行产物内容指纹（旧版只有 1 行 ⇒ 产物状态未知，重建一次）
+                var sigText = File.Exists(sigFile) ? File.ReadAllText(sigFile).Trim() : "";
+                var sigLines = sigText.Split('\n');
+                var recSig = sigLines.Length > 0 ? sigLines[0].Trim() : "";
+                var recOut = sigLines.Length > 1 ? sigLines[1].Trim() : "";
+                var inputSame = recSig == sig;
+                var curOut = OutFp();
+                var outSame = recOut.Length > 0 && recOut == curOut;
+                var sigSame = inputSame && outSame;
                 // 产物齐全性也要参与幂等判断：新增产物时部署签名不会变（签名只由 api 版本/mods/
                 // 外部签名决定），于是「新产物当前不存在」会让跳过永久生效、产物永远不生成。
                 var missing = isTimelineProduct ? MissingTimelineProduct(outDirOverride!) : MissingProducts(gameRoot, chapter);
@@ -2082,7 +2107,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 if (!sigSame && SigDebug)
                 {
                     Console.WriteLine(L("[签名调试] {0}: 记录 {1} / 本次 {2}", sigLabel,
-                        File.Exists(sigFile) ? File.ReadAllText(sigFile).Trim() : "(无)", Cache.SigShort(sig)));
+                        recSig.Length > 0 ? recSig : "(无)", Cache.SigShort(sig)));
                     Console.WriteLine(L("[签名原文·检查] {0}: {1}", sigLabel, DeploySignature(true)));
                 }
                 if (sigSame && missing == null)
@@ -2096,6 +2121,8 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 }
                 if (sigSame)
                     Console.WriteLine(L("[重做] {0} 内容未变（签名 {1}），但产物缺失（{2}）—— 必须重新部署才能生成", sigLabel, Cache.SigShort(sig), missing));
+                else if (inputSame && !outSame)
+                    Console.WriteLine(L("[重做] {0} 输入未变（签名 {1}），但产物内容对不上（记录 {2} / 当前 {3}）—— 产物被还原或替换过，必须重新部署", sigLabel, Cache.SigShort(sig), recOut.Length > 0 ? recOut : "(无)", curOut));
             }
             catch (Exception ex) { if (SigDebug) Console.WriteLine(L("[签名调试] 异常: {0}", ex.Message)); }
         }
@@ -2203,16 +2230,11 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             string? effectiveBase = BaseModId;
             if (string.IsNullOrEmpty(effectiveBase))
             {
-                try
-                {
-                    var cf = Path.Combine(Paths.NeutraledRoot(gameRoot), "config.json");
-                    if (File.Exists(cf) && JsonNode.Parse(File.ReadAllText(cf)) is JsonObject co)
-                    {
-                        var bm = co["base_mod"]?.GetValue<string>();
-                        if (!string.IsNullOrEmpty(bm)) { effectiveBase = bm; Console.WriteLine(L("[2/5] 基底取自 config.json base_mod: {0}", bm)); }
-                    }
-                }
-                catch { }
+                // ★ 走 ConfigFile：裸 JsonNode.Parse 在「config.json 有重复键」时不会立刻抛，
+                //   而是在访问 co["base_mod"] 时才从 JsonObject.InitializeDictionary 抛（同样会被这里吃掉，
+                //   但换用统一入口还能顺带触发重复键自愈）。
+                var bm = ConfigFile.GetString(gameRoot, "base_mod");
+                if (!string.IsNullOrEmpty(bm)) { effectiveBase = bm; Console.WriteLine(L("[2/5] 基底取自 config.json base_mod: {0}", bm)); }
             }
 
             ModEntry? inheritMod = null;
@@ -2396,7 +2418,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         Console.WriteLine(L("部署完成 ✓  {0}  ({1} MB)", win, new FileInfo(win).Length / 1024 / 1024));
         try
         {
-            File.WriteAllText(sigFile, DeploySignature());
+            File.WriteAllText(sigFile, DeploySignature() + "\n" + OutFp());
             if (SigDebug) Console.WriteLine(L("[签名原文·写回] {0}: {1}", chapter, DeploySignature(true)));
         }
         catch { }
@@ -2900,13 +2922,10 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         // 玩家设置的缓存上限写回 config.json
         if (!string.IsNullOrEmpty(cacheMaxMb) && long.TryParse(cacheMaxMb, out var mb) && mb > 0)
         {
-            var cfg = Path.Combine(Paths.NeutraledRoot(gameRoot), "config.json");
-            JsonObject cfgObj = File.Exists(cfg)
-                ? (JsonNode.Parse(File.ReadAllText(cfg)) as JsonObject ?? new JsonObject())
-                : new JsonObject();
-            cfgObj["cache_max_mb"] = mb;
-            File.WriteAllText(cfg, cfgObj.ToJsonString(new JsonSerializerOptions
-            { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+            // ★ 2026-09-29：这里以前是**裸 JsonNode.Parse** —— config.json 里一旦有重复键就抛
+            //   「An item with the same key has already been added」（整条 --launch 路径崩）。
+            //   统一走 ConfigFile（重复键自愈 + 无 BOM + 镜像到存档区）。
+            ConfigFile.Set(gameRoot, "cache_max_mb", JsonValue.Create(mb));
             Console.WriteLine(L("缓存上限已设为 {0} MB", mb));
         }
 

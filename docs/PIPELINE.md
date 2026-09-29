@@ -860,27 +860,51 @@ ntl-builder.exe --conflicts --chapter chapter5
 
 ## 中文字体（Neutraled 自带字体包）
 
-> DELTARUNE 自带字体只有 ASCII（`fnt_main` **96 个字形**），Neutraled 控制台/章节选择界面里的中文会**整片画不出来**。
-> 解决：从**汉化 mod 的中文版游戏字体**搬字形，做成 Neutraled 自带字体包，部署时自动注入每个章节。
+> DELTARUNE 自带字体只有 ASCII（`fnt_main` **96 个字形**），Neutraled 控制台 / 章节选择界面里的中文会**整片画不出来**。
+> 解决：Neutraled 自带一个**多语言字形包**（`Neutraled/fonts/ntl_font_cjk.json` + `ntl_font_cjk_o1..o6.png`），
+> 部署时自动注入每个章节；字形全部由 **SIL Open Font License 1.1** 的开源字体（Google Noto 家族）**离屏渲染**。
 
-### 字体来源
+### 字体来源（2026-09-29 起：OFL 开源字体）
 
-`mods/hanhua/hanhuazu/*/ref/data.win` 的 `fnt_main` 是**翻译组为这款游戏配的字体**：
-原版像素风格 + **3580 字形**（EmSize=12、无抗锯齿 AA=0、度量与英文原版完全一致）。
+| 位图页 | 源字体 | 字形数 | 内容 |
+|---|---|---|---|
+| `ntl_font_cjk_o1.png` | Noto Sans SC | 4679 | 主表：拉丁/希腊/西里尔扩展、标点、汉字、全角符号 |
+| `ntl_font_cjk_o2.png` | Noto Sans SC（补渲） | 19 | 首轮仍缺的字 |
+| `ntl_font_cjk_o3.png` | Noto Sans JP | **0（备用）** | 当前成品未引用：它那 18 个字由 `o2` 提供 |
+| `ntl_font_cjk_o4.png` | Noto Sans KR | 3 | 语言名「한국어」 |
+| `ntl_font_cjk_o5.png` | Noto Sans Symbols 2 | 232 | 符号 / 箭头 / 方框绘制 |
+| `ntl_font_cjk_o6.png` | Noto Emoji | 3 | ℹ ✅ ❌ |
 
-```powershell
-ntl-builder.exe --make-cjk-font Neutraled\fonts \
-    --from-font Neutraled\mods\hanhua\hanhuazu\root\ref\data.win --source-font fnt_main
-# → 3580 字形 / 页 1024x1024 / JSON 394KB + PNG 134KB / 用时 1 秒
-```
+- 包格式：`EmSize=12`、`LineHeight=18`、`Page=""`（**多 sheet 模式**，导入端按每个字形的 `Sheet` 重新拼页，见 `builder/FontImport.cs:42-48`、`:94-131`）。
+- **许可**：每张页的源字体版本 / 上游文件 / SHA-256 / 版权行，以及随包分发的 **5 份 OFL 全文**（`fonts/ofl/`），
+  见 `Neutraled/fonts/OFL-NOTICE.txt`。**发布包必须带上这两样**（换字体＝换许可义务）。
+- 历史（已废弃）：早先用的是「从汉化 mod 的 `fnt_main` 原样搬运 3580 字形」的**专有来源**方案；
+  该路径已由 OFL 渲染取代，旧的 `ntl_font_ja/ko/latin/scripts/sym/wave_sheet0.png` 已删除。
 
-### 关键设计：**原样搬运，绝不重排**
+~~~powershell
+# 渲染（每个字体一轮；字符表 = 产物真正会用到的文本，与部署自检同口径）
+ntl-builder.exe --make-cjk-font <输出目录> --ttf <NotoSansSC-VF.ttf> --charset list --chars <字符表文件> --font-name ntl_font_cjk
+
+# 合并进 fonts/ntl_font_cjk.json（Page 置空 → 多 sheet 模式；sheet 改名 ntl_font_cjk_oN.png）
+
+# 复核
+ntl-builder.exe --font-probe chapter4_windows\data.win   # 字形数与字形表自检（逆序对应应为 0）
+node E:/aiwork/out/Neutraled2/_feat/font-audit.mjs       # 缺字 / 空白格门禁（退出码 1 = 有缺口）
+~~~
+
+### 关键设计：字形坐标以 JSON 为准，位图只是「画布」
 
 早期版本把字形重新打包到新 sheet，结果出现「间距不对 + 引号状杂点」：
 **空格字形指向 sheet 的 (0,0)，而 (0,0) 正好落在某个汉字格上** → 每个空格都画出一小条汉字。
 
-现在 `FromDataWin` 的做法是：**把源纹理页原样导出成 PNG 当字体页，字形坐标一个都不改** ✓
-重排没有任何好处，只会引入坐标 bug（重排只用于从系统 TTF 现渲染的场景）。
+现在两条路径都不会踩这个坑：
+
+1. **从 TTF 渲染**（当前发布包走这条）：按字符集重新排版新页，坐标由渲染器写进 JSON，不存在「指向别人格子」的问题；
+2. **从 `data.win` 搬字形**（`--make-cjk-font --from-font <win> --source-font fnt_main`，给像素风字体用）：
+   **源纹理页原样导出成 PNG 当字体页，字形坐标一个都不改**。
+
+两条路径都带**墨迹门禁**（`builder/CjkFont.cs` 的 `HasInkIn`）：源字体里没有这个字时渲染出来的是一张**全透明格**，
+留下它只会让上层以为「这个字有了」、画面上却是一片空白 —— 所以渲染期就丢掉并打印样例（`builder/CjkFont.cs:172-241`、`:341-342`）。
 
 ### 用到中文字体的地方
 
@@ -894,12 +918,15 @@ ntl-builder.exe --make-cjk-font Neutraled\fonts \
 ### 部署侧
 
 - `--deploy` **自动导入** `Neutraled/fonts/*.json`（与 mod 无关，每个章节都注入）
-- 用**预拼页模式**：整张页直接当纹理页 → 3580 字形导入 **32 ms**（旧路径逐字形裁剪+PNG重编码要 10.6 秒）
-- root 部署总耗时 **4.2 秒**（与完全没有字体时一致）
+- **多 sheet 模式**：JSON 里 `Page=""`、每个字形带 `Sheet` 名 ⇒ 导入端把各 sheet 拼回一张纹理页
+  （`builder/FontImport.cs:94-131`，单页上限 4096；找不到 sheet 会打印 `[警告] {0}: 找不到页图 {1}` 并跳过）
+- 缺字由**部署期补字**兜底：只补产物真正会用到的字符（见 `docs/MANAGE.md` §11.2）
 
 ### 覆盖率
 
-3580 字形（原版 96）→ Neutraled 自己的中文文案覆盖 **98%**（缺的是 emoji 与 函/栈/渲/幂 这类生僻技术字）。
+- 本包按**实际用到的字符集**渲染，所以对当前文案基本不缺；但**没有渲染到的字符在游戏里仍会空白**（不是方框、不是报错）。
+- 判定口径：部署自检的「内容级文本 × 字体」检查（目标「缺 0」）+ `font-audit.mjs` 的空白格门禁。
+- 换字体 / 加语言时**不要只改 JSON**：位图页与坐标表必须成套生成。
 
 ### 踩过的坑（都已进 CLAUDE.md）
 
@@ -1259,6 +1286,10 @@ chapter1 再拆细：`4 首次编译 (Import #1)` 4.1 s（21%）、`5.35-6 控�
 
 证据：chapter1 第二次的日志是「主产物 19.3 s + 3 行
 `[跳过] E:\...\ntl_timeline_*\data.win 内容未变（签名 …）—— 产物已是这个内容，无需重新部署`」；
+
+> ★ **2026-09-29 起幂等判定不只看输入签名**：`.ntl-deploy-<章节>.sig` 是**两行**（第 1 行输入签名 = api 版本 + mods + 外部签名 + 基底指纹；第 2 行 = **产物内容指纹**，SHA-256 前 16 字节 + 字节数）。
+> 两行都对得上（且产物齐全）才跳过；否则打印 `[重做] … 输入未变（签名 …），但产物内容对不上（记录 … / 当前 …）—— 产物被还原或替换过，必须重新部署` 并重建。
+> 修前踩过的坑：`--restore-chapter` 还原产物后再 `--deploy-all` 会 6 项各 ~2.1 s 全打印「[跳过] 内容未变」，游戏里却没有面板与字体补全（`builder/Program.cs:2093-2125`）。
 `--deploy-all --force` 的关键路径仍是 chapter5（v7 里 91.3 s），父进程再花约 1 s 检查 3 个时间线（全跳过），
 日志里有 `===== 平行时间线（由父进程统一部署，worker 已跳过） =====`。
 

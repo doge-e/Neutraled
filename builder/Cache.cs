@@ -358,13 +358,10 @@ public static class Cache
     {
         try
         {
-            var cfg = Path.Combine(Paths.NeutraledRoot(gameRoot), "config.json");
-            if (File.Exists(cfg))
-            {
-                var j = JsonNode.Parse(File.ReadAllText(cfg)) as JsonObject;
-                var mb = j?["cache_max_mb"]?.GetValue<long>();
-                if (mb.HasValue && mb.Value > 0) return mb.Value * 1024 * 1024;
-            }
+            // ★ 走 ConfigFile（统一入口，且重复键会自愈）；裸 JsonNode.Parse 的重复键异常
+            //   会在访问下标时才抛，见 ConfigFile.Load 的注释。
+            var mb = ConfigFile.GetInt(gameRoot, "cache_max_mb");
+            if (mb.HasValue && mb.Value > 0) return (long)mb.Value * 1024 * 1024;
         }
         catch { }
         return DefaultMaxBytes;

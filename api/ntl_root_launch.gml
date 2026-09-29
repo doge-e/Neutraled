@@ -7,6 +7,10 @@ if (_idx < 0) return 0;
 var _m = global.ntl_ch[_idx];
 if (ds_map_find_value(_m, "enabled") != 1)
 {
+    // 修复 2026-09-29：以前只写日志，屏幕上毫无反应（玩家以为按键坏了）。
+    //   复用章节选择器自己的短暂提示（绘制见 ntl_root_draw.gml:113-120）。
+    global.ntl_root_toast = ntl_t("menu.ch_none");
+    global.ntl_root_toast_frames = 90;
     ntl_log("root", "该章节无内容（未启用）");
     return 0;
 }

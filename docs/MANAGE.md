@@ -347,8 +347,8 @@ Back                           ← 原版第 7 行，顺移到第 8 行
   4. 所有已启用 mod 的 `files/lang_*.json`；5. `lang/lang_*.json`（4 份）；6. `chapters.json` 的章节名。
   ⇒ **别在运行时拼文案**（`"速度 " + string(n)` 这种扫不到，画出来是空洞），字面量写在 `gml/` 里。
 * 目标字体是 `fnt_main` / `fnt_mainbig` / `fnt_small` / `fnt_legend`（游戏四种正文/说明字体）。
-* 缺的字从内置像素字体包 `fonts/ntl_font_cjk.json`（5666 字形）里裁出来补：
-  旧纹理页整页贴到新页 (0,0)（旧字形坐标全部保持有效），新字形按 `目标 EmSize / 包 EmSize` 等比缩放后货架式摆在下方的空白带，
+* 缺的字从内置字体包 `fonts/ntl_font_cjk.json`（**4936 字形 / 6 张位图页** `ntl_font_cjk_o1..o6.png`；字形全部由 **OFL 1.1 开源字体**（Noto Sans SC/JP/KR/Symbols 2/Emoji）离屏渲染，来源与许可见 `fonts/OFL-NOTICE.txt`）里裁出来补：
+  各个 sheet 整页贴到新页 (0,0)（旧字形坐标全部保持有效；本包是 `Page=""` 的**多 sheet 模式**，导入端会重新拼页），新字形按 `目标 EmSize / 包 EmSize` 等比缩放后货架式摆在下方的空白带，
   字形表按 `Character` 升序重排（GMS2 运行期是二分查找，乱序会成片丢字）。
 * 只补**真的缺**的：纯英文产物一个字形都不补，产物大小不受影响。
 * 部署日志里能看到：
@@ -366,6 +366,7 @@ Back                           ← 原版第 7 行，顺移到第 8 行
 * **分工**：Neutraled 只负责**字体/字形层面的支持**（能显示、不缺字、不缺标点）；
   具体文本的**翻译**由人工本地化组维护，随包分发的 `lang\lang_*.json` 只是参考译法
   （见 [THEMES-LANGS.md](THEMES-LANGS.md) 与 `--lang-coverage`）。
+* **许可**：内置字体包的字形由 **OFL 1.1** 开源字体（Noto Sans SC / JP / KR / Symbols 2 / Emoji）离屏渲染；随包分发 `fonts/OFL-NOTICE.txt`（逐张页的来源/版本/SHA-256/版权行）与 `fonts/ofl/` 下的 5 份 OFL 全文。
 * 实现：`builder/FontMerge.cs`（补字）、`builder/ContentCheck.cs`（算出需要哪些字符，与部署自检共用一份口径）、
   `builder/FontImport.cs`（写字体页与字形表）、`builder/CjkFont.cs`（生成内置包 `--make-cjk-font`）。
 ### 11.3 字距（CJK 排字步进）
@@ -515,7 +516,7 @@ dump 里应看到 `ntl_cfg_row(`（每行一个）、`_ntl_cfg_off`、`ntl_cfg_s
 | 硬链接（缓存加速 / 快照） | Windows `CreateHardLinkW`、Unix `link()`；跨卷或文件系统不支持时**自动回退复制** |
 | 窗口抢焦点（截图/自动化用） | 仅 Windows 实现，其它平台整体退化为空操作（`--focus-test` 会明确提示） |
 | 下载 | 有 `curl` 走断点续传，否则内置 HTTP |
-| 自包含发布 | `tools/package.ps1`（Windows）、`tools/package-unix.sh`（macOS/Linux） |
+| 自包含发布 | `release-pack/make-release.mjs`（跨平台打包器，Windows 用 `make-release.ps1`、macOS/Linux 用 `tools/package-unix.sh` 调用；产物 = 只有安装器的 zip）；旧的 `tools/package.ps1` 仍在但会**先删后建**整个发布目录，不推荐 |
 
 自检命令：
 

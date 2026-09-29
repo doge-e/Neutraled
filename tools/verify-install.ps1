@@ -3,7 +3,8 @@
 param(
     [string]$Out = 'E:\aiwork\out',
     [string]$Game = 'E:\steam\steamapps\common\DELTARUNE',
-    [string]$Sandbox = 'E:\aiwork\sandbox-game'
+    [string]$Sandbox = 'E:\aiwork\sandbox-game',
+    [string]$Src = ''
 )
 $ErrorActionPreference = 'Continue'
 Write-Host '===== verify packaged release =====' -ForegroundColor Cyan
@@ -16,14 +17,39 @@ $before = (Get-FileHash (Join-Path $Sandbox 'data.win') -Algorithm SHA256).Hash
 $beforeCh1 = (Get-FileHash (Join-Path $Sandbox 'chapter1_windows\data.win') -Algorithm SHA256).Hash
 Write-Host '  sandbox ready (DELTARUNE.exe + data.win + chapter1_windows/data.win)'
 
-$exe = Join-Path $Out 'bin\ntl-builder.exe'
-if (-not (Test-Path -LiteralPath $exe)) { Write-Host ('  [ERROR] not found: ' + $exe) -ForegroundColor Red; exit 1 }
+# Layout compatibility: installer layout -> <release root>\install\ntl-builder.exe
+#                      legacy layout    -> <release root>\bin\ntl-builder.exe
+$exeCands = @(
+    (Join-Path $Out 'install\ntl-builder.exe'),
+    (Join-Path $Out 'bin\ntl-builder.exe')
+)
+$exe = $exeCands | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $exe) { Write-Host ('  [ERROR] not found: ' + ($exeCands -join '   or   ')) -ForegroundColor Red; exit 1 }
+Write-Host ('  builder: ' + $exe)
+
+# Source dir: an installer-only package has no src/ next to the exe, so -Src is required there.
+# Fallbacks: sibling ..\src (legacy layout), then <Game>\Neutraled (dev checkout).
+$srcArgs = @()
+if ($Src) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Src 'api'))) { Write-Host ('  [ERROR] -Src has no api/: ' + $Src) -ForegroundColor Red; exit 1 }
+    $srcArgs += @('--src', (Resolve-Path -LiteralPath $Src).Path)
+} else {
+    $sib = Join-Path (Split-Path $exe -Parent) '..\src'
+    if (Test-Path -LiteralPath (Join-Path $sib 'api')) {
+        $srcArgs += @('--src', (Resolve-Path -LiteralPath $sib).Path)
+    } elseif (Test-Path -LiteralPath (Join-Path $Game 'Neutraled\api')) {
+        Write-Host '  [info] no src/ in package (installer layout) -> using <Game>\Neutraled as source'
+        $srcArgs += @('--src', (Join-Path $Game 'Neutraled'))
+    } else {
+        Write-Host '  [warn] source dir not found: pass -Src <dir containing api/ and docs/>' -ForegroundColor Yellow
+    }
+}
 
 Write-Host ''; Write-Host '--- 1) --version ---'
 & $exe --version 2>&1 | Select-Object -First 4
 
 Write-Host ''; Write-Host '--- 2) --install ---'
-& $exe --install --game $Sandbox 2>&1 | Select-Object -First 22
+& $exe --install --game $Sandbox @srcArgs 2>&1 | Select-Object -First 22
 Write-Host ('  exit=' + $LASTEXITCODE)
 
 Write-Host ''; Write-Host '--- 3) install result ---'
