@@ -347,7 +347,7 @@ Back                           ← 原版第 7 行，顺移到第 8 行
   4. 所有已启用 mod 的 `files/lang_*.json`；5. `lang/lang_*.json`（4 份）；6. `chapters.json` 的章节名。
   ⇒ **别在运行时拼文案**（`"速度 " + string(n)` 这种扫不到，画出来是空洞），字面量写在 `gml/` 里。
 * 目标字体是 `fnt_main` / `fnt_mainbig` / `fnt_small` / `fnt_legend`（游戏四种正文/说明字体）。
-* 缺的字从内置字体包 `fonts/ntl_font_cjk.json`（**4936 字形 / 6 张位图页** `ntl_font_cjk_o1..o6.png`；字形全部由 **OFL 1.1 开源字体**（Noto Sans SC/JP/KR/Symbols 2/Emoji）离屏渲染，来源与许可见 `fonts/OFL-NOTICE.txt`）里裁出来补：
+* 缺的字从内置字体包 `fonts/ntl_font_cjk.json`（**4974 字形 / 4 张位图页** `ntl_font_cjk_o1..o4.png`；2026-09-30 全量重渲；字形全部由 **OFL 1.1 开源字体**（Noto Sans SC/JP/KR/Symbols 2/Emoji）离屏渲染，来源与许可见 `fonts/OFL-NOTICE.txt`）里裁出来补：
   各个 sheet 整页贴到新页 (0,0)（旧字形坐标全部保持有效；本包是 `Page=""` 的**多 sheet 模式**，导入端会重新拼页），新字形按 `目标 EmSize / 包 EmSize` 等比缩放后货架式摆在下方的空白带，
   字形表按 `Character` 升序重排（GMS2 运行期是二分查找，乱序会成片丢字）。
 * 只补**真的缺**的：纯英文产物一个字形都不补，产物大小不受影响。

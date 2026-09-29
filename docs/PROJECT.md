@@ -33,7 +33,7 @@ DELTARUNE 的 Everest 式 mod 管理器 / API：mod 平等叠加、**绝不修�
 | Kristal 兼容层 | 类系统（22 基类）/对象/敌人/LOVE 桥接 |
 | 外部章节 | 成品程序（Kristal / 冰封帷幕）注册为章节，窗口隐藏 + 0.7 s 回程 |
 | 安装器 | `--install` / `--uninstall`，沙箱往返实测 data.win **逐字节还原** |
-| 中文字体 | 内置 **OFL 开源字体（Noto Sans SC/JP/KR/Symbols 2/Emoji）离屏渲染**的字形包：4936 字形 / 6 张位图页（许可见 `fonts/OFL-NOTICE.txt`）；内容级自检保证「文本 × 字体」匹配 |
+| 中文字体 | 内置 **OFL 开源字体（Noto Sans SC/JP/KR/Symbols 2/Emoji）离屏渲染**的字形包：**4974 字形 / 4 张位图页**（2026-09-30 全量重渲；许可见 `fonts/OFL-NOTICE.txt`）；内容级自检保证「文本 × 字体」匹配 |
 | 启动性能 | 冷启动 **2.94 s** 出窗口并接管章节选择器（修复前 22.39 s） |
 
 ### 全量回归（`Neutraled/_test/`）

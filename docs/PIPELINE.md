@@ -861,19 +861,21 @@ ntl-builder.exe --conflicts --chapter chapter5
 ## 中文字体（Neutraled 自带字体包）
 
 > DELTARUNE 自带字体只有 ASCII（`fnt_main` **96 个字形**），Neutraled 控制台 / 章节选择界面里的中文会**整片画不出来**。
-> 解决：Neutraled 自带一个**多语言字形包**（`Neutraled/fonts/ntl_font_cjk.json` + `ntl_font_cjk_o1..o6.png`），
+> 解决：Neutraled 自带一个**多语言字形包**（`Neutraled/fonts/ntl_font_cjk.json` + `ntl_font_cjk_o1..o4.png`），
 > 部署时自动注入每个章节；字形全部由 **SIL Open Font License 1.1** 的开源字体（Google Noto 家族）**离屏渲染**。
 
 ### 字体来源（2026-09-29 起：OFL 开源字体）
 
 | 位图页 | 源字体 | 字形数 | 内容 |
 |---|---|---|---|
-| `ntl_font_cjk_o1.png` | Noto Sans SC | 4679 | 主表：拉丁/希腊/西里尔扩展、标点、汉字、全角符号 |
-| `ntl_font_cjk_o2.png` | Noto Sans SC（补渲） | 19 | 首轮仍缺的字 |
-| `ntl_font_cjk_o3.png` | Noto Sans JP | **0（备用）** | 当前成品未引用：它那 18 个字由 `o2` 提供 |
-| `ntl_font_cjk_o4.png` | Noto Sans KR | 3 | 语言名「한국어」 |
-| `ntl_font_cjk_o5.png` | Noto Sans Symbols 2 | 232 | 符号 / 箭头 / 方框绘制 |
-| `ntl_font_cjk_o6.png` | Noto Emoji | 3 | ℹ ✅ ❌ |
+| `ntl_font_cjk_o1.png` | Noto Sans SC | 4689 | 主表：拉丁/希腊/西里尔扩展、标点、汉字、全角符号 |
+| `ntl_font_cjk_o2.png` | Noto Sans KR | 3 | 语言名「한국어」 |
+| `ntl_font_cjk_o3.png` | Noto Sans Symbols 2 | 232 | 符号 / 箭头 / 方框绘制 |
+| `ntl_font_cjk_o4.png` | Noto Emoji | 50 | emoji 区符号（↩ ↪ ♈ … ⛽ ⛺）、ℹ ✅ ❌ |
+
+- **合计 4974 字形 / 4 页**（2026-09-30 全量重渲：修全角标点错位后重渲，页数 6 → 4）。
+  重渲时 **Noto Sans JP 没有产出字形**（剩余字符已被 SC 主表覆盖），所以本轮没有 JP 页——它不是被删，是没轮到它补字。
+  对照表与逐页来源（本地 TTF 的 SHA-256、上游 URL、版权行、产物溯源）见 `Neutraled/fonts/OFL-NOTICE.txt` 第二节。
 
 - 包格式：`EmSize=12`、`LineHeight=18`、`Page=""`（**多 sheet 模式**，导入端按每个字形的 `Sheet` 重新拼页，见 `builder/FontImport.cs:42-48`、`:94-131`）。
 - **许可**：每张页的源字体版本 / 上游文件 / SHA-256 / 版权行，以及随包分发的 **5 份 OFL 全文**（`fonts/ofl/`），
