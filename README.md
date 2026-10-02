@@ -95,6 +95,7 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 | [docs/GB.md](docs/GB.md) | GameBanana 浏览、下载队列、黑名单 |
 | [docs/PLUGINS.md](docs/PLUGINS.md) | 插件开发（SDK、清单、权限、钩子） |
 | [docs/WEBUI.md](docs/WEBUI.md) | Web 界面（接口、端口、自动停止） |
+| [docs/UPDATE.md](docs/UPDATE.md) | 游戏更新：检测 / 提示 / 采纳新基线（Steam 更新后不静默降级） |
 
 ## 从源码构建
 

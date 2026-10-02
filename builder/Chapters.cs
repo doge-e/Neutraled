@@ -180,18 +180,30 @@ public static class Chapters
 	{
 		LastOfficialPatches = new List<OfficialPatch>();
 		List<ChapterEntry> list = new List<ChapterEntry>();
-		for (int i = 1; i <= 7; i++)
+		// 槽位上限不再硬编码 7：游戏更新/DLC 可能带来 chapter6/7/8…（磁盘上真实存在即登记），
+		// 新章节默认 Enabled=false（"只登记不注入"），用户在 deploy-state.json 里确认后才打开。
+		int disc = 0;
+		try { disc = GameUpdate.DiscoveredSlotCount(gameRootForScan); } catch { }
+		int slots = Math.Max(OfficialSlots, disc);
+		int known = Math.Max(OfficialCount, disc);
+		for (int i = 1; i <= slots; i++)
 		{
-			bool flag = i <= 5;
+			bool isNew = i > OfficialCount;
+			bool flag = i <= known;
+			if (isNew && flag)
+			{
+				// 新章节：只有 deploy-state.json 里已确认才注入（确认：--adopt-current --yes）
+				try { flag = GameUpdate.IsConfirmed(gameRootForScan, "chapter" + i); } catch { flag = false; }
+			}
 			list.Add(new ChapterEntry
 			{
 				Id = "official:" + i,
 				Order = i,
-				Name = ((i < OfficialNames.Length) ? OfficialNames[i] : ""),
+				Name = (i <= OfficialCount ? ((i < OfficialNames.Length) ? OfficialNames[i] : "") : ("Chapter " + i)),
 				Kind = "official",
 				Dir = "chapter" + i + "_" + Paths.ChapterSuffix(gameRootForScan),
 				Enabled = flag,
-				Note = (flag ? "" : "not available in this game version")
+				Note = (flag ? "" : (isNew ? "detected but not confirmed (run --adopt-current --yes)" : "not available in this game version"))
 			});
 		}
 		List<(ChapterEntry, ChapterDecl)> list2 = new List<(ChapterEntry, ChapterDecl)>();

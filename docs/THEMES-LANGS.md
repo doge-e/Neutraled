@@ -563,7 +563,7 @@ set NTL_LANG=en
 | `api/ntl_lang_set.gml` | `lang` 命令（zh/en/auto + `lang set/get` 覆盖） |
 | `api/ntl_get_lang_string.gml` / `ntl_set_lang_string.gml` / `ntl_apply_lang_overrides.gml` | 单条文案覆盖 |
 | `api/ntl_console_line_pass.gml` / `ntl_console_draw.gml` | 中英双前缀的过滤与着色 |
-| `builder/Lang.cs` + `builder/LangTable_{Program,Deploy,Mods,Tools,Extra}.cs` | builder CLI 双语（去重 **1342 条**；`L("中文原文", args…)` 以中文为 key 查英文表，未命中原样返回中文） |
+| `builder/Lang.cs` + `builder/LangTable_{Program,Deploy,Mods,Tools,Extra,Features}.cs` | builder CLI 双语（**去重 1972 条**：Program 274 / Deploy 250 / Mods 290 / Tools 214 / Extra 448 / Features 504；`L("中文原文", args…)` 以中文为 key 查英文表，未命中原样返回中文） |
 | `builder/LintRules3.cs` | `--lint` 的文案防回归规则（见下节） |
 | `gui/Localizer.cs`（204 条）、`studio/Localizer.cs`（43 条） | GUI / Studio 界面（`T("中文原文")`） |
 | `kristal/ntlconsole/lib.lua` | Kristal 控制台（38 条 + `@@NTL_LANG@@` 占位符） |
@@ -582,6 +582,20 @@ set NTL_LANG=en
 
 - 故意中英并排的语句（如 `"Language: " + _l + "  |  语言: " + _l`）在行尾加标记 `// ntl:i18n-exempt`。
 - `ntl_log(...)` 开发日志、注入产物、生成文档**不在**规则 13 的范围内（有意保留中文）。
+
+**builder 英文表是生成物（改表只能改源 JSON）**：`builder/LangTable_*.cs` 由
+`E:\aiwork\out\Neutraled2\_i18n-builder\gen-tables.mjs` 整文件重写（源 = 同目录 `keys-*.json`：Program/Deploy/Mods/Tools 各一份、
+Extra = `keys-extra-g1..g6.json`（g5 = 2026-10 游戏更新检测 105 条，g6 = 回填历史手补键）、Features = `keys-feat-*.json` 七份）。
+
+- 用法：在该目录 `node gen-tables.mjs --check`（只校验）→ `node gen-tables.mjs`（写盘）；脚本自检空译文、`{0}` 占位符一致性、
+  以及**跨组同 key 译文不同**（`[DUP-DIFF]` ⇒ 拒绝写盘）。所以要给同一句中文写两种英文，必须**先拆成两个不同的中文 key**
+  （例：DeploySelfCheck 的 `已扫描 ` 与 KristalConvert 的 `扫描 `）。
+- **重跑前先确认源 JSON 是全量**：历史上有人用 `_patch-tables.mjs` 直接往 .cs 补键而没回填 JSON，重跑会把这些键**静默删掉**
+  （2026-10 实测 7 条：`builder/Program.cs` 的「[重做] …输入未变…」+ `builder/DeploySelfCheck.cs` 的 6 条扫描文案；已分别回填
+  `keys-program.json` 与 `keys-extra-g6.json`）。**零丢键校验**：重跑后把 `git show HEAD:builder/LangTable_*.cs` 的
+  `d["key"]` 集合与新文件比对，必须「丢失 0 / 同 key 译文改变 0」。
+- 语言来源（`builder/Lang.cs:83 Init`）：`--lang` > `NTL_LANG` > `<游戏根>/Neutraled/config.json` 的 `lang` > **按 `CultureInfo.CurrentUICulture` 猜**
+  （zh ⇒ zh，否则 en）。**非中文系统 + 无 config.json 会直接出英文** ⇒ 断言中文文案的测试脚本要显式加 `--lang zh`。
 - 辅助校验脚本（开发工作区，非产品）：`E:\aiwork\out\Neutraled2\_i18n-gml-check.mjs`（GML 表键集/占位符/引用完整性）、
   `E:\aiwork\out\Neutraled2\_i18n-builder\_check-wrap.mjs`（builder 的 `L()` 包裹完整性）、
   `_check-gui-keys.mjs`（GUI/Studio 词条）、`_scan-gml-left2.mjs`（GML 残留中文清单）。

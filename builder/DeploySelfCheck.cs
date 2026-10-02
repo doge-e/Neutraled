@@ -128,7 +128,7 @@ public static class DeploySelfCheck
                 }
                 Check("(h)", L("产物 JSON 无 \\uXXXX 转义（GML json_parse 吃不下转义）"), hits.Count == 0,
                     hits.Count == 0
-                        ? L("扫描 ") + scanned + L(" 个 JSON，0 处转义")
+                        ? L("已扫描 ") + scanned + L(" 个 JSON，0 处转义")
                         : string.Join(L("；"), hits) + L(" —— GML 侧 json_parse 会失败（中文名被转义写出了）"));
             }
 

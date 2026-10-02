@@ -320,7 +320,18 @@ public static class Program
                 case "--with" when i + 1 < args.Length: withDirs.Add(args[++i]); break;
                 case "--out" when i + 1 < args.Length: packsOut = args[++i]; break;
                 case "--base" when i + 1 < args.Length: baseArg = args[++i]; break;
-                case "--base-mod" when i + 1 < args.Length: BaseModId = args[++i]; break;
+                case "--base-mod" when i + 1 < args.Length:
+                    BaseModId = args[++i];
+                    // --base-mod none：显式要求「不要整包 mod 的 data.win，用原版备份」。
+                    // 它同时是「整包基底漂移」（游戏更新了但该 mod 没更新）时的强制通道，
+                    // 所以要单独记标志：Deploy 里的 inheritAll 兜底会把 none 顶掉。
+                    BaseModNone = string.Equals(BaseModId.Trim(), "none", StringComparison.OrdinalIgnoreCase);
+                    break;
+                case "--update-check": cmd = "update-check"; break;
+                case "--adopt-current": cmd = "adopt-current"; break;
+                case "--yes" or "-y": Yes = true; break;
+                case "--no-update-check": NoUpdateCheck = true; break;
+                case "--accept-base-drift": AcceptBaseDrift = true; break;
                 case "--fetch-mod" when i + 1 < args.Length: cmd = "fetch-mod"; fetchId = args[++i]; break;
                 case "--model" when i + 1 < args.Length: gbModel = args[++i]; break;
                 case "--mod-list": cmd = "mod-list"; break;
@@ -442,6 +453,8 @@ public static class Program
                 "cache-applied" => CacheApplied(gameRoot, chapter),
                 "launch" => LaunchWithCache(gameRoot, chapter, cacheMaxMb),
                 "verify" => Verify(gameRoot, chapter),
+                "update-check" => GameUpdate.CheckCli(gameRoot),
+                "adopt-current" => GameUpdate.AdoptCurrent(gameRoot, Yes, ForceDeploy),
                     "content-check" => ContentCheck.Run(gameRoot, chapterExplicit ? chapter : "all", string.IsNullOrEmpty(packsOut) ? null : packsOut),
                 "dump" => Dump(gameRoot, chapter, dumpTarget!),
                 "list" => ListCodes(gameRoot, chapter, listFilter!),
@@ -477,6 +490,14 @@ public static class Program
         Console.WriteLine(L("  --deploy --chapter chapter4     部署核心+mods 到章节"));
         Console.WriteLine(L("  --info   --chapter chapter4     显示 data.win 概要"));
         Console.WriteLine(L("  --verify --chapter chapter4     校验注入结果"));
+        Console.WriteLine();
+        Console.WriteLine(L("  游戏更新后（检测**只提示**，绝不自动改本体；详见 docs/UPDATE.md）:"));
+        Console.WriteLine(L("  --update-check                  只读检测：游戏是否更新 / 有没有新章节（0=没变 2=要处理 3=检测失败）"));
+        Console.WriteLine(L("  --adopt-current [--yes]         把当前原版采纳为新基线（旧备份移进 Neutraled/backup/history/，不删）"));
+        Console.WriteLine(L("  --deploy-all --yes              检测到更新时先采纳再部署（不加 --yes 会停下并打印处置步骤）"));
+        Console.WriteLine(L("  --base-mod none                 不用整包 mod 的 data.win（游戏更新了而该 mod 还没更新时用）"));
+        Console.WriteLine(L("  --accept-base-drift             明知整包基底与游戏版本不匹配仍继续（确认过差异才用）"));
+        Console.WriteLine(L("  --no-update-check               跳过更新检测（并行 worker 内部用）"));
         Console.WriteLine();
         Console.WriteLine(L("  从零做自己的章节（GML 模板 + 脚手架，详见 docs/CHAPTER_DEV.md）:"));
         Console.WriteLine(L("  --new-chapter <名字>            生成一个**能进、能走、能看**的自定义章节（默认独立章节）"));
@@ -1347,11 +1368,21 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     /// 避免共享 Injector/ScanMods 等静态状态。</summary>
     private static int RunParallelDeploy(string gameRoot)
     {
+        // 0) 更新检测（并行开始之前只做一次）：检测到游戏更新/整包基底漂移时只提示并停止，
+        //    除非用户显式 --yes（--yes 会先 --adopt-current 采纳当前原版，再继续）。
+        if (!NoUpdateCheck && !GameUpdate.Gate(gameRoot, Yes, "deploy-all")) return 2;
+
+        // 槽位不再硬编码 1..7：游戏更新可能带来 chapter6/7/8…（含 DLC），
+        // 一律以「磁盘上真实存在 chapterN_<suffix>/data.win」为准动态发现。
+        var discovered = GameUpdate.DiscoverChapters(gameRoot);
         var chapters = new List<string> { "root" };
-        for (int i = 1; i <= 7; i++)
+        foreach (var ch in discovered) if (!chapters.Contains(ch)) chapters.Add(ch);
+        // 未确认的新章节（游戏更新后才出现的）默认**只登记不注入**：确认方式 --adopt-current --yes
+        var unconfirmed = chapters.Where(c => c != "root" && !GameUpdate.IsConfirmed(gameRoot, c)).ToList();
+        if (unconfirmed.Count > 0)
         {
-            var ch = "chapter" + i;
-            if (File.Exists(Paths.ChapterDataWin(gameRoot, ch))) chapters.Add(ch);
+            chapters = chapters.Where(c => !unconfirmed.Contains(c)).ToList();
+            Console.WriteLine(L("  [更新检测] 跳过未确认的新章节: {0}（确认后才注入：--adopt-current --yes）", string.Join(", ", unconfirmed)));
         }
         // 按产物体积**降序**启动：并行时关键路径 = 最大那一章，先开它才不会拖尾
         chapters = chapters.OrderByDescending(c =>
@@ -1364,9 +1395,16 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         // ⚠ --base-mod 必须转发给 worker：否则 `--deploy-all --base-mod X` 看起来生效了、其实每个 worker
             //   都按默认顺序挑基底（本机 6 个整包 mod，汉化包就永远选不上 → 章节里中文全是空白，实测踩过）
             var baseArg = string.IsNullOrEmpty(BaseModId) ? "" : " --base-mod " + BaseModId;
+            // 子进程不再各自检测/采纳（父进程已判定过），否则并行写 backup 会互相打架
+            const string updArg = " --no-update-check";
+            // ⚠⚠ --game 也必须转发给 worker：worker 不带 --game 会**自己自动探测游戏目录**，
+            //   于是 `--deploy-all --game <别的目录>` 的每个 worker 都去改**真机游戏**（实测踩过：
+            //   沙箱里跑 --deploy-all，真机 root/chapter1/chapter2 的 data.win 被重写、mtime 与沙箱
+            //   每项用时一一对应）。凡是要用 --game 做隔离/多开，就绝不能漏这一项。
+            var gameArg = " --game \"" + gameRoot + "\"";
             // ⚠ worker 一律 --no-timelines：时间线只有 3 个产物目录，6 个 worker 各跑一遍 = 6 路并发抢同一个
             //   data.win、互相覆盖各自的 .ntl-deploy-*.sig（实测是 --deploy-all 慢与时间线反复重建的主因之一）
-            var rc = RunParallel(chapters.Select(c => "--deploy --chapter " + c + forceArg + baseArg + " --no-timelines").ToList(),
+            var rc = RunParallel(chapters.Select(c => "--deploy --chapter " + c + forceArg + baseArg + updArg + gameArg + " --no-timelines").ToList(),
                            chapters, L("部署"), JobsOrDefault());
 
             // 平行时间线统一由父进程部署一次（串行；worker 已用 --no-timelines 跳过）
@@ -1411,7 +1449,8 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         }
         if (skipped > 0) Console.WriteLine(L("跳过 {0} 个未变化的包（内容+时间都没变，上次已成功导入）", skipped));
         if (files.Count == 0) { Console.WriteLine(L("全部包都未变化，无需转换 ✓")); return 0; }
-        var rc = RunParallel(files.Select(f => "--import-mod \"" + f + "\"").ToList(), files, L("转换"), JobsOrDefault());
+        // 同理：worker 不带 --game 会去改自动探测到的游戏目录（导入会写 <root>/Neutraled/mods）
+        var rc = RunParallel(files.Select(f => "--import-mod \"" + f + "\" --game \"" + gameRoot + "\"").ToList(), files, L("转换"), JobsOrDefault());
         // 成功的包记进清单（失败的不记，下次还会重试）
         foreach (var f in files)
         {
@@ -2017,6 +2056,14 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         if (!File.Exists(srcWin)) { Console.WriteLine(L("找不到 {0}", srcWin)); return 1; }
 
         PhaseTimer.Reset();
+        // 0) 更新检测（写盘之前）：检测到游戏更新 / 整包基底漂移时**只提示**，除非用户显式 --yes。
+        //    只有最外层部署做这件事：worker 由父进程转发 --no-update-check，否则并行进程会抢 backup。
+        if (!NoUpdateCheck && outDirOverride == null && !UpdateGateDone)
+        {
+            UpdateGateDone = true;
+            if (!GameUpdate.Gate(gameRoot, Yes, "deploy")) return 2;
+        }
+
         // 1) 备份原版（幂等：已存在则不动）
         if (!File.Exists(backup))
         {
@@ -2235,6 +2282,10 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         PhaseTimer.Mark("1/5 备份 + 扫描/排序 mods");
         // 2.5) 基底选择：外部指定 > mod 的 inherit 声明 > 原版备份
         var basePath = backup;
+        // 本次真正用到的整包基底（null = 用原版备份）：部署成功后写进 deploy-state.json，
+        // 供下一轮判断「整包 mod 与游戏版本是否配得对」（漂移检测）。
+        string? baseModUsedId = null;
+        string? baseModUsedFile = null;
         if (!string.IsNullOrEmpty(baseWinOverride) && File.Exists(baseWinOverride))
         {
             basePath = baseWinOverride!;
@@ -2262,8 +2313,19 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 if (!string.IsNullOrEmpty(bm)) { effectiveBase = bm; Console.WriteLine(L("[2/5] 基底取自 config.json base_mod: {0}", bm)); }
             }
 
+            // --base-mod none（或 config base_mod=none）：显式不用整包基底。
+            // ★ 必须在这里短路：下面那句 inheritMod ??= inheritAll.FirstOrDefault() 会把 none 顶掉。
+            bool wantNone = BaseModNone ||
+                (!string.IsNullOrEmpty(effectiveBase) && string.Equals(effectiveBase!.Trim(), "none", StringComparison.OrdinalIgnoreCase));
+
             ModEntry? inheritMod = null;
-            if (!string.IsNullOrEmpty(effectiveBase))
+            if (wantNone)
+            {
+                Console.WriteLine(L("[2/5] 基底: 原版备份（--base-mod none ⇒ 忽略所有整包 mod 的 data.win）"));
+                if (inheritAll.Count > 0)
+                    Console.WriteLine(L("        注意: {0} 个整包 mod 的内容（如汉化字体/文本）不会进入本次产物", inheritAll.Count));
+            }
+            else if (!string.IsNullOrEmpty(effectiveBase))
             {
                 inheritMod = inheritAll.FirstOrDefault(m =>
                     string.Equals(m.Id, effectiveBase, StringComparison.OrdinalIgnoreCase) ||
@@ -2274,7 +2336,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 else
                     Console.WriteLine(L("[2/5] 基底由 --base-mod/config 指定: {0}", inheritMod.Id));
             }
-            inheritMod ??= inheritAll.FirstOrDefault();
+            if (!wantNone) inheritMod ??= inheritAll.FirstOrDefault();
 
             if (inheritAll.Count > 1)
             {
@@ -2291,6 +2353,8 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             if (inheritMod != null)
             {
                 basePath = Path.Combine(inheritMod.Dir, inheritMod.RefSource!);
+                baseModUsedId = inheritMod.Id;
+                baseModUsedFile = basePath;
                 Console.WriteLine(L("[2/5] 基底: {0} 的 {1}（资源型基底）", inheritMod.Id, inheritMod.RefSource));
             }
             else
@@ -2456,6 +2520,11 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             if (SigDebug) Console.WriteLine(L("[签名原文·写回] {0}: {1}", chapter, DeploySignature(true)));
         }
         catch { }
+
+        // 更新检测：把本次部署的事实（产物指纹 / 原版指纹 / 整包基底配对）记进 deploy-state.json。
+        // 只记真实产物（时间线/测试产物走 outDirOverride，不算槽位）。
+        if (outDirOverride == null)
+            GameUpdate.RecordSlotAfterDeploy(gameRoot, chapter, baseModUsedId, baseModUsedFile);
 
         // 5.5) API 注册表（IDE 自动补全 / 依赖解析 / 运行时命名空间调用）
         // 顶层 data.win 资源很少（443 函数），完整版要用章节产物生成才是完整集合；
@@ -2894,7 +2963,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     }
 
     /// <summary>--cache-clear 清空缓存。</summary>
-    static int CacheClear(string gameRoot)
+    internal static int CacheClear(string gameRoot, bool quiet = false)
     {
         var idx = Cache.LoadIndex(gameRoot);
         int n = 0;
@@ -2904,7 +2973,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             try { if (Directory.Exists(dir)) { Directory.Delete(dir, true); n++; } } catch { }
         }
         Cache.SaveIndex(gameRoot, new Dictionary<string, Cache.Entry>());
-        Console.WriteLine(L("缓存已清空: 删除 {0} 份", n));
+        if (!quiet) Console.WriteLine(L("缓存已清空: 删除 {0} 份", n));
         return 0;
     }
 
@@ -2930,10 +2999,21 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     static bool FullDeployForced = false;
 
     /// <summary>部署写盘后跑一次结构化自检（--self-check 强制；小产物自动跑）。</summary>
+    /// <summary>--no-update-check：跳过部署/启动前的游戏更新检测（并行 worker 用）。</summary>
+    static bool NoUpdateCheck = false;
+    /// <summary>--yes：检测到游戏更新时允许「先采纳当前原版为新基线，再继续」（不加则只提示并停止）。</summary>
+    public static bool Yes = false;
+    /// <summary>--base-mod none（或 config base_mod=none）：强制不用整包 mod 当基底。</summary>
+    public static bool BaseModNone = false;
+    /// <summary>--accept-base-drift：明知整包基底与当前游戏版本不匹配仍继续（确认过差异才用）。</summary>
+    public static bool AcceptBaseDrift = false;
+    /// <summary>最外层部署只做一次更新检测（worker 由父进程转发 --no-update-check）。</summary>
+    static bool UpdateGateDone = false;
+
     static bool SelfCheckOn = false;
 
-    /// <summary>--force：即使签名一致也重新部署。</summary>
-    static bool ForceDeploy = false;
+    /// <summary>--force：即使签名一致也重新部署。（Installer 的陈旧备份守卫也要读它 ⇒ public）</summary>
+    public static bool ForceDeploy = false;
 
     /// <summary>--force-timelines：连平行时间线子产物也强制重建。
     /// 默认时间线跟随内容签名（自己的 mod 子集 + 基底 data 指纹），内容没变就跳过。
@@ -2986,6 +3066,10 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             ConfigFile.Set(gameRoot, "cache_max_mb", JsonValue.Create(mb));
             Console.WriteLine(L("缓存上限已设为 {0} MB", mb));
         }
+
+        // 0) 更新检测：缓存命中也可能是「游戏更新了、本体被换回原版」的情况，
+        //    直接硬链接会把游戏静默回退到旧版本 ⇒ 先检测，需要确认就停下并提示。
+        if (!NoUpdateCheck && !GameUpdate.Gate(gameRoot, Yes, "launch")) return 2;
 
         var mods = Mods.ScanMods(Path.Combine(Paths.NeutraledRoot(gameRoot), "mods"), chapter, false, true);
         var gameVer = Cache.GameVersion(gameRoot);

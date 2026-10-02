@@ -511,8 +511,85 @@ public sealed class MainForm : Form
         return await Program.RunBuilderAsync(args, Log);
     }
 
+    /// <summary>
+    /// 部署/启动前的更新检测（只读跑 --update-check）。
+    /// 退出码 2 = 检测到游戏更新 / 新章节 / 整包基底漂移 ⇒ 只提示，由用户在弹窗里决定；
+    /// **绝不自动改本体**：只有用户点「采纳新基线并继续」时才显式跑 --adopt-current --yes。
+    /// 详见 docs/UPDATE.md。
+    /// </summary>
+    private async Task<bool> ConfirmUpdatesAsync(string action)
+    {
+        var report = new System.Text.StringBuilder();
+        var rc = await Program.RunBuilderAsync("--update-check", l => { report.AppendLine(l); Log(l); });
+
+        if (rc == 0) return true;   // 没检测到更新：直接放行
+
+        if (rc != 2)
+        {
+            // rc == 3（检测本身失败）/ rc == -1（找不到 builder）：交给用户决定是否继续
+            return MessageBox.Show(this,
+                Localizer.T("更新检测失败（退出码 {0}），详见日志。\n\n仍要继续{1}吗？", rc, action),
+                "Neutraled", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) == DialogResult.OK;
+        }
+
+        bool adopt;
+        using (var dlg = new Form
+        {
+            Text = Localizer.T("检测到游戏更新"),
+            Width = 760, Height = 500, StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.Sizable, MinimizeBox = false, MaximizeBox = false
+        })
+        {
+            var box = new TextBox
+            {
+                Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both,
+                Dock = DockStyle.Fill, Font = new Font("Consolas", 9), WordWrap = false,
+                Text = report.ToString()
+            };
+            var bar = new Panel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(8) };
+            var btnAdopt = new Button { Text = Localizer.T("采纳新基线并继续"), Left = 8, Top = 9, Width = 160, Height = 28, DialogResult = DialogResult.Yes };
+            var btnGo = new Button { Text = Localizer.T("直接继续"), Left = 176, Top = 9, Width = 100, Height = 28, DialogResult = DialogResult.No };
+            var btnCancel = new Button { Text = Localizer.T("取消"), Left = 284, Top = 9, Width = 90, Height = 28, DialogResult = DialogResult.Cancel };
+            bar.Controls.AddRange(new Control[] { btnAdopt, btnGo, btnCancel });
+
+            var info = new Label
+            {
+                Dock = DockStyle.Top, Height = 118, Padding = new Padding(10),
+                Text = Localizer.T("检测到游戏更新 / 新章节 / 整包基底漂移（详见下方报告）。\n\n"
+                    + "① 采纳新基线并继续：把当前原版采纳为新基线，旧备份移进 backup/history/<buildid>/（不删）；"
+                    + "新章节同时登记为已确认，然后继续本次{0}。\n"
+                    + "② 直接继续：不做采纳，本次{0}可能被检测拦下（拦下时不会改动游戏目录，日志里有处置步骤）。", action)
+            };
+
+            dlg.Controls.Add(box);
+            dlg.Controls.Add(bar);
+            dlg.Controls.Add(info);
+            dlg.AcceptButton = btnAdopt;
+            dlg.CancelButton = btnCancel;
+
+            var dr = dlg.ShowDialog(this);
+            if (dr == DialogResult.Cancel) return false;
+            adopt = dr == DialogResult.Yes;
+        }
+
+        if (adopt)
+        {
+            Log("> ntl-builder.exe --adopt-current --yes");
+            var arc = await Program.RunBuilderAsync("--adopt-current --yes", Log);
+            if (arc != 0)
+            {
+                MessageBox.Show(this,
+                    Localizer.T("采纳新基线失败（退出码 {0}），本次已取消，游戏目录没有改动。详见日志。", arc),
+                    "Neutraled", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+        return true;
+    }
+
     private async Task DeployAllAsync()
     {
+        if (!await ConfirmUpdatesAsync(Localizer.T("部署全部章节"))) return;
         SetBusy(true, Localizer.T("部署全部章节中..."));
         ApplyCheckedState();
         var rc = await RunBuilderCmdAsync(DeployOptions.AppendFastDeploy("--deploy --chapter all"));
@@ -571,6 +648,7 @@ public sealed class MainForm : Form
     private async Task DeployAsync(bool launch)
     {
         var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
+        if (!await ConfirmUpdatesAsync(launch ? Localizer.T("启动") : Localizer.T("部署"))) return;
         SetBusy(true, launch ? Localizer.T("准备启动（查缓存）...") : Localizer.T("部署中..."));
         Log($"===== {chapter} =====");
         ApplyCheckedState();

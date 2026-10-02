@@ -152,7 +152,11 @@ public static class Installer
         Directory.CreateDirectory(backupDir);
         int backed = 0;
         var backupRels = new List<string> { "data.win" };                       // 章节目录后缀随平台（windows/linux/unix/macos）
-        for (int ci = 1; ci <= 5; ci++) backupRels.Add("chapter" + ci + "_" + Paths.ChapterSuffix(gameRoot) + "/data.win");
+        // 章节数不硬编码 5：游戏更新/DLC 可能带来新章节（chapter6_windows…）。备份是「只增不改」的
+        // 安全网，少备份一个 = 那个章节以后永远还原不回原版（宁可在列表里多写几个不存在的路径）。
+        int slotMax = 5;
+        try { slotMax = Math.Max(slotMax, GameUpdate.DiscoveredSlotCount(gameRoot)); } catch { }
+        for (int ci = 1; ci <= slotMax; ci++) backupRels.Add("chapter" + ci + "_" + Paths.ChapterSuffix(gameRoot) + "/data.win");
         foreach (var rel in backupRels)
         {
             var src = Path.Combine(gameRoot, rel.Replace('/', Path.DirectorySeparatorChar));
@@ -348,10 +352,37 @@ public static class Installer
             return 1;
         }
 
+        // ★ 陈旧备份守卫：如果游戏本体已经更新（活跃文件是新原版、指纹 ≠ 我们的备份），直接还原旧备份
+        //   就等于把游戏**降级回旧版本**（Steam 随后还会再下一遍，甚至存档不兼容）。
+        //   这种时候必须用户显式 --force；顺手提示 --adopt-current（旧备份移进 history/，全留不删）。
+        try
+        {
+            var rep = GameUpdate.Check(gameRoot);
+            if (rep.Verdict == "update")
+            {
+                Console.WriteLine(L("  [警告] 游戏本体已更新：Neutraled/backup 里的原版备份是**旧版本**"));
+                Console.WriteLine(L("         直接还原 = 把游戏降级。推荐先跑 --adopt-current --yes 重新建立基线（旧备份移进 backup/history，不删）"));
+                if (!Program.ForceDeploy)
+                {
+                    Console.WriteLine(L("         确认要还原旧版本请加 --force：--uninstall --force"));
+                    return 3;
+                }
+                Console.WriteLine(L("         已指定 --force：按旧备份还原（会把游戏降级）"));
+            }
+        }
+        catch (Exception ex) { Console.WriteLine(L("  [警告] 陈旧备份检查失败（跳过该守卫）: {0}", ex.Message)); }
+
         int restored = 0;
+        var histPrefix = GameUpdate.HistoryDirName + Path.DirectorySeparatorChar;
+        var histPrefixAlt = GameUpdate.HistoryDirName + "/";
         foreach (var f in Directory.GetFiles(backupDir, "data.win", SearchOption.AllDirectories))
         {
             var rel = Path.GetRelativePath(backupDir, f);
+            // ★ history/ 是**旧备份归档**（采纳新原版时移进去的过期备份），不是「可以贴回游戏根的备份」。
+            //   不跳过就会去还原 <gameRoot>\history\<buildid>\{game|neutraled}\data.win ⇒ 一串「还原失败」警告
+            //   （沙箱 S6 实测），而且语义上等于把几十个过期副本当成待还原目标，必须排除。
+            if (rel.StartsWith(histPrefix, StringComparison.OrdinalIgnoreCase) ||
+                rel.StartsWith(histPrefixAlt, StringComparison.OrdinalIgnoreCase)) continue;
             var dst = Path.Combine(gameRoot, rel);
             try
             {

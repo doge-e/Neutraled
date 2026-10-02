@@ -240,7 +240,17 @@ public static class Localizer
         ["日志 (*.txt)|*.txt"] = "Log (*.txt)|*.txt",
 
         // ==================== 任务 B：裸中文接线（Program.cs）====================
-        ["[错误] 找不到 ntl-builder.exe: {0}"] = "[Error] ntl-builder.exe not found: {0}"
+        ["[错误] 找不到 ntl-builder.exe: {0}"] = "[Error] ntl-builder.exe not found: {0}",
+
+        // ==================== 游戏更新检测（2026-10，docs/UPDATE.md）====================
+        ["更新检测失败（退出码 {0}），详见日志。\n\n仍要继续{1}吗？"] = "Update check failed (exit code {0}); see the log.\n\nContinue {1} anyway?",
+        ["检测到游戏更新"] = "Game update detected",
+        ["采纳新基线并继续"] = "Adopt new baseline & continue",
+        ["直接继续"] = "Continue anyway",
+        ["采纳新基线失败（退出码 {0}），本次已取消，游戏目录没有改动。详见日志。"] = "Adopting the new baseline failed (exit code {0}); this run was cancelled and the game folder was not modified. See the log.",
+        ["部署全部章节"] = "Deploy all chapters",
+        ["启动"] = "Launch",
+        ["检测到游戏更新 / 新章节 / 整包基底漂移（详见下方报告）。\n\n① 采纳新基线并继续：把当前原版采纳为新基线，旧备份移进 backup/history/<buildid>/（不删）；新章节同时登记为已确认，然后继续本次{0}。\n② 直接继续：不做采纳，本次{0}可能被检测拦下（拦下时不会改动游戏目录，日志里有处置步骤）。"] = "A game update / new chapter / whole-pack base drift was detected (see the report below).\n\n① Adopt new baseline & continue: adopt the current vanilla as the new baseline and move the old backups into backup/history/<buildid>/ (never deleted); new chapters are also marked confirmed, then this {0} continues.\n② Continue anyway: no adoption; this {0} may be blocked by the check (when blocked the game folder is not modified and the log lists the next steps)."
     };
 
     /// <summary>载入界面语言。优先 Neutraled/gui_lang.txt；该文件不存在时回退读

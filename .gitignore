@@ -65,3 +65,5 @@ launch-request.json
 scope.json
 conflicts.json
 blacklist.json
+# 部署基线（Steam buildid / 各槽位指纹，纯本机状态；进仓库会让别人误判"已是最新"）
+deploy-state.json

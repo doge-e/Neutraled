@@ -100,6 +100,17 @@ public static class Cache
     ///    用它会导致每次部署后签名都变，缓存永远不命中。</summary>
     public static string GameVersion(string gameRoot)
     {
+        // ★ Steam 信号（buildid + depot manifest）也进版本口径：游戏更新后 buildid 变 ⇒ 签名变 ⇒
+        //   缓存自动不命中。历史坑：签名只看 backup 的 data.win，而 Steam 更新只换活跃文件、
+        //   不动我们的 backup ⇒ 旧签名照旧命中 ⇒ 直接硬链接应用旧产物 = 静默回退游戏版本。
+        var steam = "";
+        try
+        {
+            var si = GameUpdate.ReadSteam(gameRoot);
+            if (si.Found) steam = "steam-" + si.BuildId + "-" + si.DepotManifest + "_";
+        }
+        catch { }
+
         var candidates = new[]
         {
             Path.Combine(gameRoot, "backup", "data.win"),
@@ -111,7 +122,7 @@ public static class Cache
             {
                 if (!File.Exists(p)) continue;
                 var fi = new FileInfo(p);
-                return $"{fi.Length}-{fi.LastWriteTimeUtc.Ticks}";
+                return steam + $"{fi.Length}-{fi.LastWriteTimeUtc.Ticks}";
             }
             catch { }
         }
@@ -122,11 +133,11 @@ public static class Cache
             if (File.Exists(exe))
             {
                 var fi = new FileInfo(exe);
-                return $"exe-{fi.Length}-{fi.LastWriteTimeUtc.Ticks}";
+                return steam + $"exe-{fi.Length}-{fi.LastWriteTimeUtc.Ticks}";
             }
         }
         catch { }
-        return "unknown";
+        return steam.Length > 0 ? steam + "unknown" : "unknown";
     }
 
     private static string CacheRoot(string gameRoot) => Path.Combine(Paths.NeutraledRoot(gameRoot), "cache");
@@ -380,9 +391,18 @@ public static class Cache
         // 目录必须真实存在
         var dir = Path.Combine(CacheRoot(gameRoot), SigShort(sig));
         if (!Directory.Exists(dir)) return null;
-        // 每个目标都要有 data.win
+        // 每个目标都要有 data.win，且**活跃**的 data.win 必须真是我们的产物、长度与缓存副本一致。
+        // 只判「存在」的旧实现会在游戏更新/还原原版后照样硬链接应用旧产物（静默回退 + 字面意义的
+        // 「没部署就开游戏」），实测踩过；这里把存在性升级成内容校验（见 Cache.GameVersion 注释）。
         foreach (var t in e.Targets)
-            if (!File.Exists(Path.Combine(dir, "data", t, "data.win"))) return null;
+        {
+            var cached = Path.Combine(dir, "data", t, "data.win");
+            if (!File.Exists(cached)) return null;
+            var live = Paths.ChapterDataWin(gameRoot, t);
+            if (!File.Exists(live)) return null;
+            if (!GameUpdate.HasProductMarkers(live)) return null;
+            try { if (new FileInfo(live).Length != new FileInfo(cached).Length) return null; } catch { return null; }
+        }
         return e;
     }
 
