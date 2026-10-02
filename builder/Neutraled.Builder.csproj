@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ntl-builder</AssemblyName>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <FileVersion>1.0.1.0</FileVersion>
     <RootNamespace>Neutraled.Builder</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
 

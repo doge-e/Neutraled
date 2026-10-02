@@ -90,7 +90,7 @@ public static class Paths
     public static string RootDataWin(string gameRoot) => Path.Combine(gameRoot, "data.win");
 
     /// <summary>Neutraled API 版本（用于缓存签名）。</summary>
-    public static string ApiVersion() => "1.0.0";
+    public static string ApiVersion() => "1.0.1";
 
     public static string ChapterDir(string gameRoot, string chapter) =>
         chapter.Equals("root", StringComparison.OrdinalIgnoreCase)

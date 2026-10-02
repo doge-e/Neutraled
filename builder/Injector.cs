@@ -3,6 +3,7 @@ using UndertaleModLib.Compiler;
 using UndertaleModLib.Decompiler;
 using Underanalyzer.Decompiler;
 using UndertaleModLib.Models;
+using System.Text.RegularExpressions;
 using static Neutraled.Builder.Lang;
 
 namespace Neutraled.Builder;
@@ -670,7 +671,7 @@ public static class Injector
         ApplyGamePatches(group, data, mods, gameRoot, chapter);
 
         // ---------- 5.5) 音频防泄漏重写 ----------
-        QueueAudioGuards(group, data);
+        QueueAudioGuards(group, data, ctx);
 
         // ---------- 6) 引导注入（prepend 到章节初始化对象） ----------
         var boot = data.Code.ByName(bootCodeName);
@@ -1341,41 +1342,119 @@ public static class Injector
         if (patched == 0) Paths.Log(L("  [提示] 未找到 scr_input_manager，控制台输入屏蔽跳过"));
     }
 
-    private static void QueueAudioGuards(CodeImportGroup group, UndertaleData data)
+    /// <summary>音频防泄漏重写。
+    /// ★ 1.0.1：改为「反编译 → 正则/文本改写 → 整条目替换」，并且**只在真的改动了源码时才报成功**。
+    ///   旧实现用 QueueFindReplace + 写死的 search 串：形状对不上时 UndertaleModLib 静默跳过，
+    ///   日志却照样打印「音频防泄漏: xxx」⇒ ch2–ch5 的 snd_init / snd_free_all 从来没打过补丁
+    ///   （各章节实际形状 2026-10-02 用 sdump 实测，汉化整包基底与原版备份逐字节一致）：
+    ///     snd_init    : 持有者对象 id 逐章不同（ch1=134/ch2=186/ch3=1293/ch4=1160/ch5=1302），
+    ///                   ch2+ 还多一行 `_astream.songname = arg0;`
+    ///     snd_free_all: `with (134|186|1293|1160|1302)`，ch5 多一个 `with (40)`，root 用 `with (obj_astream)`
+    ///     snd_play    : ch1/ch2 只有 `return audio_play_sound(arg0, 50, 0);`；
+    ///                   ch3/ch4/ch5 是 3 个包装函数各自 `var _snd = audio_play_sound(arg0, 50, 0);`
+    ///     mus_loop/mus_play: 全章节同一形状（文本替换即可）
+    /// </summary>
+    private static void QueueAudioGuards(CodeImportGroup group, UndertaleData data, GlobalDecompileContext gctx)
     {
-        void FR(string codeName, string search, string replace)
+        // 统一入口：改不动就响亮告警（绝不打印假的「已打补丁」）
+        void Patch(string codeName, Func<string, (string? src, int n)> rewrite, string what)
         {
-            if (data.Code.ByName(codeName) == null) { Paths.Log(L("    [跳过] {0} 不存在", codeName)); return; }
-            group.QueueFindReplace(codeName, search, replace);
-            Paths.Log(L("    音频防泄漏: {0}", codeName));
+            var code = data.Code.ByName(codeName);
+            if (code == null) { Paths.Log(L("    [跳过] {0} 不存在（{1}）", codeName, what)); return; }
+
+            string src;
+            try { src = DecompileWith(gctx, data, codeName); }
+            catch (Exception ex) { Paths.Log(L("    [警告] {0} 反编译失败，{1} 未生效: {2}", codeName, what, ex.Message)); return; }
+
+            string? outp; int n;
+            try { (outp, n) = rewrite(src); }
+            catch (Exception ex) { Paths.Log(L("    [警告] {0} 改写异常，{1} 未生效: {2}", codeName, what, ex.Message)); return; }
+
+            if (outp == null || n == 0 || string.Equals(outp, src, StringComparison.Ordinal))
+            {
+                Paths.Log(L("    [警告] {0} 形状不匹配 ⇒ {1} **未生效**（该章节形状变了，需补候选串/改锚点）", codeName, what));
+                return;
+            }
+            group.QueueReplace(code, outp);
+            Paths.Log(L("    {0}: {1}（改写 {2} 处）", what, codeName, n));
         }
 
-        // 短音效：同一声音永远只保留 1 个实例（snd_play/soundplay/sound_play 三处相同文本）
-        FR("gml_GlobalScript_snd_play",
-           "var _snd = audio_play_sound(arg0, 50, 0);",
-           "audio_stop_sound(arg0);\n    var _snd = audio_play_sound(arg0, 50, 0);");
+        static int CountOf(string hay, string needle)
+        {
+            int n = 0;
+            for (int i = 0; (i = hay.IndexOf(needle, i, StringComparison.Ordinal)) >= 0; i += needle.Length) n++;
+            return n;
+        }
 
-        // 循环音 / BGM
-        FR("gml_GlobalScript_mus_loop",
-           "_xsndinstance = audio_play_sound(arg0, 90, 1);",
-           "audio_stop_sound(arg0);\n    _xsndinstance = audio_play_sound(arg0, 90, 1);");
-        FR("gml_GlobalScript_mus_play",
-           "_xsndinstance = audio_play_sound(arg0, 90, 0);",
-           "audio_stop_sound(arg0);\n    _xsndinstance = audio_play_sound(arg0, 90, 0);");
+        // ---- 短音效：同一声音永远只保留 1 个实例 ----
+        // 形状 A（ch1/ch2）：return audio_play_sound(arg0, 50, 0);
+        // 形状 B（ch3/ch4/ch5）：snd_play / soundplay / sound_play 三个包装函数各一行
+        Patch("gml_GlobalScript_snd_play", s =>
+        {
+            var rx = new Regex(@"(?m)^([ \t]*)(var _snd = |return )audio_play_sound\(arg0, 50, 0\);");
+            int n = rx.Matches(s).Count;
+            if (n == 0) return (null, 0);
+            var outp = rx.Replace(s, m => m.Groups[1].Value + "audio_stop_sound(arg0);\n"
+                                       + m.Groups[1].Value + m.Groups[2].Value + "audio_play_sound(arg0, 50, 0);");
+            return (outp, n);
+        }, L("音频防泄漏(snd_play)"));
 
-        // stream 复用：同名 stream 不再重复创建（防句柄泄漏）
-        // ★ 2026-10-02 修正：旧版缓存的是**原始 stream 句柄**，而 snd_free / snd_free_all 会销毁持有它的
-        //   obj_astream（obj_astream_Destroy_0 = audio_destroy_stream(mystream)），缓存却不清 ⇒ 同一进程里
-        //   再次 snd_init 同名音乐会拿到**死流**（表现为「音乐不播放 / 音乐跟不上」）。改为缓存**持有实例**：
-        //   instance_exists 判活后复用，持有者已销毁就重建流。
-        FR("gml_GlobalScript_snd_init",
-           "_mystream = audio_create_stream(initsongvar);\n    _astream = instance_create(0, 0, 134);\n    _astream.mystream = _mystream;\n    return _mystream;",
-           "if (!variable_global_exists(\"ntl_stream_cache\")) global.ntl_stream_cache = ds_map_create();\n    _astream = noone;\n    if (ds_map_exists(global.ntl_stream_cache, initsongvar))\n    {\n        _astream = ds_map_find_value(global.ntl_stream_cache, initsongvar);\n        if (!instance_exists(_astream)) { ds_map_delete(global.ntl_stream_cache, initsongvar); _astream = noone; }\n    }\n    if (_astream == noone)\n    {\n        _mystream = audio_create_stream(initsongvar);\n        _astream = instance_create(0, 0, 134);\n        _astream.mystream = _mystream;\n        ds_map_add(global.ntl_stream_cache, initsongvar, _astream);\n    }\n    else\n    {\n        _mystream = _astream.mystream;\n    }\n    return _mystream;");
+        // ---- 循环音 / BGM（全章节同一形状） ----
+        foreach (var (codeName, fn, needle) in new[] {
+            ("gml_GlobalScript_mus_loop", "mus_loop", "_xsndinstance = audio_play_sound(arg0, 90, 1);"),
+            ("gml_GlobalScript_mus_play", "mus_play", "_xsndinstance = audio_play_sound(arg0, 90, 0);") })
+        {
+            Patch(codeName, s =>
+            {
+                int n = CountOf(s, needle);
+                if (n == 0) return (null, 0);
+                return (s.Replace(needle, "audio_stop_sound(arg0);\n    " + needle), n);
+            }, L("音频防泄漏({0})", fn));
+        }
 
-        // snd_free_all 销毁全部持有者：缓存一并清空，避免留下死句柄
-        FR("gml_GlobalScript_snd_free_all",
-           "with (134)\n    {\n        instance_destroy();\n    }",
-           "with (134)\n    {\n        instance_destroy();\n    }\n    if (variable_global_exists(\"ntl_stream_cache\")) ds_map_clear(global.ntl_stream_cache);");
+        // ---- stream 复用：同名 stream 不再重复创建（防句柄泄漏） ----
+        // ★ 缓存的是**持有实例**而不是 stream 句柄：snd_free / snd_free_all 会销毁持有它的
+        //   obj_astream（obj_astream_Destroy_0 = audio_destroy_stream(mystream)），缓存 stream 句柄
+        //   会拿到死流（表现为「音乐不播放 / 音乐跟不上」）。改为 instance_exists 判活后复用，
+        //   持有者已销毁就重建流。
+        Patch("gml_GlobalScript_snd_init", s =>
+        {
+            var rx = new Regex(@"_mystream = audio_create_stream\(initsongvar\);\r?\n([ \t]*)_astream = instance_create\(0, 0, (\d+)\);\r?\n[ \t]*_astream\.mystream = _mystream;");
+            int n = rx.Matches(s).Count;
+            if (n == 0) return (null, 0);
+            var outp = rx.Replace(s, m =>
+                "if (!variable_global_exists(\"ntl_stream_cache\")) global.ntl_stream_cache = ds_map_create();\n" +
+                "    _astream = noone;\n" +
+                "    if (ds_map_exists(global.ntl_stream_cache, initsongvar))\n" +
+                "    {\n" +
+                "        _astream = ds_map_find_value(global.ntl_stream_cache, initsongvar);\n" +
+                "        if (!instance_exists(_astream)) { ds_map_delete(global.ntl_stream_cache, initsongvar); _astream = noone; }\n" +
+                "    }\n" +
+                "    if (_astream == noone)\n" +
+                "    {\n" +
+                "        _mystream = audio_create_stream(initsongvar);\n" +
+                "        _astream = instance_create(0, 0, " + m.Groups[2].Value + ");\n" +
+                "        _astream.mystream = _mystream;\n" +
+                "        ds_map_add(global.ntl_stream_cache, initsongvar, _astream);\n" +
+                "    }\n" +
+                "    else\n" +
+                "    {\n" +
+                "        _mystream = _astream.mystream;\n" +
+                "    }");
+            return (outp, n);
+        }, L("音频防泄漏(snd_init)"));
+
+        // ---- 释放：缓存一并清空，避免留下已销毁的持有实例 ----
+        // 兼容 6 种实际形状（ch1–ch5 的 `with (<id>)` 与 root 的 `with (obj_astream)`）：
+        // 只认函数头、不认 destroy 体；插到函数体第一行（自愈逻辑也能兜住顺序问题）。
+        Patch("gml_GlobalScript_snd_free_all", s =>
+        {
+            var rx = new Regex(@"function snd_free_all\(\)\r?\n\{\r?\n");
+            if (!rx.IsMatch(s)) return (null, 0);
+            var outp = rx.Replace(s,
+                "function snd_free_all()\n{\n    if (variable_global_exists(\"ntl_stream_cache\")) ds_map_clear(global.ntl_stream_cache);\n", 1);
+            return (outp, 1);
+        }, L("音频防泄漏(snd_free_all)"));
     }
 
     private static string BuildManifest(List<ModEntry> mods, Dictionary<string, string> modMain)

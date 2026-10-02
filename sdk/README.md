@@ -201,6 +201,6 @@ ntl-builder.exe --plugin-hooks                         # 加载全部插件并�
 
 ## 9. 版本
 
-- 宿主 API 版本：`Paths.ApiVersion()` = `1.0.0`（`min_builder` 与之比较）。
-- SDK 程序集版本：`1.0.0.0`。
+- 宿主 API 版本：`Paths.ApiVersion()` = `1.0.1`（`min_builder` 与之比较）。
+- SDK 程序集版本：`1.0.1.0`。
 - 契约变更流程：改 `sdk/Neutraled.PluginSdk/Contract.cs` 这一处 → 重新构建 SDK 与 `ntl-builder.exe`（宿主链接编译同一文件）。

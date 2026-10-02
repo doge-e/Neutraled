@@ -39,7 +39,7 @@ public sealed class MainForm : Form
         public string Name = "";
         public string Author = "";
         public string Chapter = "";
-        public string Version = "1.0.0";
+        public string Version = "1.0.1";
         public bool Enabled = true;
     }
 

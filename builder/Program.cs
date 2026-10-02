@@ -2553,7 +2553,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             long prodSize = File.Exists(win) ? new FileInfo(win).Length : 0;
             if (SelfCheckOn || (prodSize > 0 && prodSize < 50L * 1024 * 1024))
             {
-                if (DeploySelfCheck.Run(gameRoot, chapter, BootCodeName(chapter)) != 0)
+                if (DeploySelfCheck.Run(gameRoot, chapter, BootCodeName(chapter), outDirOverride != null ? win : null) != 0)
                 {
                     Console.WriteLine(L("  [错误] 部署后自检未通过 —— 产物可能不可用，已中止（不会静默放过）"));
                     return 1;

@@ -60,6 +60,7 @@ public static class TimelineRuntime
         if (WinKeys.TryGetValue(full, out var cached)) return cached;
 
         var set = new HashSet<string>(StringComparer.Ordinal);
+        var scanOk = true;   // ★ t34 F-1：失败时不能把空集写进缓存
         try
         {
             const int Chunk = 8 << 20;
@@ -80,9 +81,12 @@ public static class TimelineRuntime
         }
         catch (Exception ex)
         {
+            // ★ t34 F-1：扫描失败若把空集写进缓存，后续同进程调用会当成「这份 data.win 一个语言键都没有」，
+            //   语言档守卫随之误判（拦下或静默放行）。只在完整扫描成功时缓存。
+            scanOk = false;
             Console.WriteLine(L("  [警告] 扫描 data.win 语言键失败: {0}（{1}）", full, ex.Message));
         }
-        WinKeys[full] = set;
+        if (scanOk) WinKeys[full] = set;
         return set;
     }
 
@@ -98,6 +102,7 @@ public static class TimelineRuntime
         try { full = Path.GetFullPath(langDir); } catch { return set; }
         if (LangKeys.TryGetValue(full, out var cached)) return cached;
 
+        var parseOk = true;   // ★ t34 F-1：任一语言档解析失败就不缓存（空/半集合会误导守卫）
         foreach (var f in Directory.GetFiles(full, "lang_en*.json"))
         {
             try
@@ -108,10 +113,11 @@ public static class TimelineRuntime
             }
             catch (Exception ex)
             {
+                parseOk = false;
                 Console.WriteLine(L("  [警告] 解析语言档失败: {0}（{1}）", f, ex.Message));
             }
         }
-        LangKeys[full] = set;
+        if (parseOk) LangKeys[full] = set;
         return set;
     }
 

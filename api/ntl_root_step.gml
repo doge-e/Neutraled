@@ -276,7 +276,12 @@ if (global.ntl_ch_search_mode == 1)
     //   会读到已被同帧重置的 prev（按下沿恒为假）⇒ 永远没有字符；
     //   缓存由 Step_1 每帧重写（控制台打开 / 外部章节常驻时置空），这里消费后立即清空，
     //   保证同一批字符不会被多帧重复计入。
-    var _ks = variable_global_exists("ntl_kb_frame_chars") ? string(global.ntl_kb_frame_chars) : "";
+    // ★ t39 F-3（1.0.1）：先用 is_string 防御再取；缓存被外部写成非字符串时不再 stringify 出奇怪文本。
+    //   ★ t39 F-2（1.0.1 决策）：**不改成累加**。单次消费/清空是 t38 acceptance ③④ 的硬约束
+    //   （api/events/Step_1.gml 每帧重写缓存、这里消费后立即清空），改成累加会重新打开「同批字符多帧重复计入」的口子；
+    //   代价是搜索模式关闭那一帧的按键会被丢掉（需极快连打才偶发，低危）。
+    var _ks = "";
+    if (variable_global_exists("ntl_kb_frame_chars") && is_string(global.ntl_kb_frame_chars)) _ks = global.ntl_kb_frame_chars;
     global.ntl_kb_frame_chars = "";   // 一帧只消费一次
     if (string_length(_ks) > 0)
     {
@@ -411,6 +416,10 @@ if (ntl_key_fire(76, 0, 0) == 1)        // L
 //   `room_speed=60 fps=60`）⇒ 窗口只剩 ≈1.5 秒：t30 日志行 1604/1605/1606/1607 正是
 //   「确认→超时→确认→超时」四连，两次 Esc 相隔约 2 秒全落在窗外，游戏不退出。
 //   现在按**真实帧率**换算：窗口帧数 = max(1, round(_qsecs × fps))，任何帧率下都 ≈3 秒。
+// ★ 1.0.1 复核（t36 F-1）：复核意见担心「arm 与倒数同帧」⇒ 窗口只有 N-1 帧；实际不会：
+//   arm 分支在「keyboard_clear(vk_escape); return 1;」处就返回，倒数块在 arm 帧根本不执行
+//   ⇒ 可用窗口 = N 帧（N = max(1, round(3 × fps))）再加上 arm 帧本身，恒 ≥ 标称 3 秒（30fps ≈ 3.03s）。
+//   结论：不改倒数逻辑，标称「3 秒」是保守口径（30fps 2.97s / 60fps 2.98s 的说法不成立）。
 if (!variable_global_exists("ntl_quit_armed")) global.ntl_quit_armed = 0;
 if (!variable_global_exists("ntl_quit_frames")) global.ntl_quit_frames = 0;
 if (!variable_global_exists("ntl_quit_pending")) global.ntl_quit_pending = 0;

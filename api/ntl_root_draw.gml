@@ -147,12 +147,15 @@ else if (variable_global_exists("ntl_quit_armed") && global.ntl_quit_armed == 1)
 }
 if (string_length(_qtext) > 0)
 {
-    var _qx1 = min(18 + string_width(_qtext) + 12, _W - 8);   // 右侧留 8px，不越过 GUI 边界
-    if (_qx1 < 24) _qx1 = 24;
+    // ★ t36 F-2/F-3（1.0.1）：①下限钳制合成 max(24, …) —— 原来 min 之后才钳下限，_W 极小时右端会落在文字里/外；
+    //   ②条高改由 string_height 推导 —— 原来写死 22px（= LineHeight 18 + 上下各 2），字体包一换就包不住。
+    var _qx1 = max(24, min(18 + string_width(_qtext) + 12, _W - 8));   // 右侧留 8px，不越过 GUI 边界
+    var _qy = _H - 96;
+    var _qh = string_height(_qtext);
     draw_set_color(c_red);
-    draw_rectangle(18, (_H - 96) - 2, _qx1, (_H - 96) + 20, false);
+    draw_rectangle(18, _qy - 2, _qx1, _qy + _qh + 2, false);
     draw_set_color(c_black);
-    draw_text(24, _H - 96, _qtext);
+    draw_text(24, _qy, _qtext);
     draw_set_color(c_white);
 }
 var _cnt = array_length(global.ntl_ch_filtered);
@@ -165,8 +168,7 @@ if (string_length(global.ntl_ch_search) > 0)
     //   公式 _mx = min(560, _W - string_width(文本) - 8)：中文两例仍是 560（不回归），
     //   英文两位数 640-88-8 = 544 ⇒ 右端 632（留 8px 余量）。
     var _mtxt = ntl_ts("root.match", [string(_cnt)]);
-    var _mx = min(560, _W - string_width(_mtxt) - 8);
-    if (_mx < 24) _mx = 24;
+    var _mx = max(24, min(560, _W - string_width(_mtxt) - 8));   // ★ t36 F-2：同 _qx1，钳制合成一个表达式
     draw_set_color(c_gray);
     draw_text(_mx, _H - 22, _mtxt);
 }

@@ -51,8 +51,10 @@ public static class DeploySelfCheck
 
     /// <summary>部署后自检。gameRoot 为游戏根；chapter 为章节名（root/chapter5…），
     /// 也可直接给「平行时间线产物目录」或 data.win 路径；bootCodeName 为空时按章节取默认引导条目。
+    /// winOverride 非空时直接校验该文件（★ t34 F-2：outDirOverride 产物部署时 gameRoot/chapter
+    /// 推出的是游戏目录里的 data.win，会校验错文件）。
     /// 返回 0 = 全部通过；1 = 发现严重问题。</summary>
-    public static int Run(string gameRoot, string chapter, string bootCodeName)
+    public static int Run(string gameRoot, string chapter, string bootCodeName, string? winOverride = null)
     {
         var total = Stopwatch.StartNew();
         long loadMs = 0;
@@ -71,7 +73,7 @@ public static class DeploySelfCheck
             gameRoot = string.IsNullOrWhiteSpace(gameRoot) ? Paths.DetectGameRoot() : gameRoot.Trim();
             if (string.IsNullOrWhiteSpace(bootCodeName)) bootCodeName = DefaultBootCodeName(chapter);
 
-            var win = ResolveProductDataWin(gameRoot, chapter);
+            var win = string.IsNullOrWhiteSpace(winOverride) ? ResolveProductDataWin(gameRoot, chapter) : Path.GetFullPath(winOverride!);
             Console.WriteLine(L("===== 部署后自检 [") + chapter + "] =====");
             Console.WriteLine(L("  产物: ") + win);
             Console.WriteLine(L("  引导目标: ") + bootCodeName);

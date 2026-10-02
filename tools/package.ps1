@@ -1,14 +1,14 @@
 ﻿# Neutraled 发布打包器 -> <Out>\Neutraled-<Version>\{install,src}
 #   install/ = 单文件自包含安装器（ntl-builder.exe + Magick 原生库）
 #   src/     = 源码 + 运行期载荷（也是 --install 的复制源）
-# 用法: powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-Out <输出目录>] [-Version 1.0.0] [-Flavor full|trim] [-NoPublish]
+# 用法: powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-Out <输出目录>] [-Version 1.0.1] [-Flavor full|trim] [-NoPublish]
 #   默认 full（约 60 MB：exe 38.39 + Magick 原生库 21.41）。
 #   ⚠ 不要用 trim 出正式包：实测 -p:PublishTrimmed=true 会把 System.Text.Json 的反射序列化剪掉，
 #     导致 mod.json 读取报 'Reflection-based serialization has been disabled' 而静默丢 mod、冲突分析失真
 #     （c2 电池：--conflicts 从 exit 2 变 exit 0）。裁剪路线要等 JSON 改成 source-generated 后再评估。
 param(
     [string]$Out = '',
-    [string]$Version = '1.0.0',
+    [string]$Version = '1.0.1',
     [ValidateSet('trim', 'full')][string]$Flavor = 'full',
     [switch]$NoPublish
 )
