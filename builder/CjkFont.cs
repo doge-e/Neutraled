@@ -248,6 +248,15 @@ public static class CjkFont
         int lineH = items.Max(x => x.h) + 2;
         int descentPad = Math.Max(1, (int)Math.Round(size * 0.2));
 
+        // ★ 垂直对齐（2026-10-02 真机取证，别再把这段踩回去）：GameMaker 把文字画在「行顶 + 裁剪块内墨迹行」
+        //   上（模型 M1：块的顶线是全字体共享的，SourceHeight 与 Offset 都不产生垂直位移），所以**墨迹在块内的
+        //   行号**就是屏幕上的位置。游戏自带 fnt_main（8bitoperator JVE）的拉丁字形墨迹底在第 12 行；而
+        //   ImageMagick 的 label: 渲染把 Ark 等 TTF 的基线放得更靠上（实测墨迹底第 9 行）⇒ 屏幕上整体高 3 px，
+        //   用户看到的就是「修复的字向上偏移」（用户 m23281：带声调字母 ä ü ß é ñ ç 比同行 ASCII 高 3 px）。
+        //   ⇒ 生成/换字体包后必须复核：非降部字形（A a H Ä ä ß é ñ 中）墨迹底 = 12，降部字形（g y p ç j）= 14。
+        //   复核与修复脚本：tools/font-align-fix.py（--apply 把整包墨迹整体下移到目标行，SH 只增不减）。
+        //   产物级复核命令：ntl-builder.exe --font-probe <章节 data.win> <输出目录>
+
         // 货架式排版
         var plan = new List<List<(int ch, MagickImage img, int x, int y, int shift, int w, int h)>>();
         var cur = new List<(int ch, MagickImage img, int x, int y, int shift, int w, int h)>();

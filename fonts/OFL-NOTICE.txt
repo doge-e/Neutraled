@@ -2,13 +2,14 @@
 Neutraled 字体包 —— 来源与许可声明（OFL NOTICE）
 ================================================================
 
-生成日期 : 2026-09-29（首版）／ **2026-09-30 全量重渲**／ **2026-09-30 t26 增补第七节「部署期本机字形覆盖」**（全角标点错位修复后重渲：6 页 → 4 页，见第二节末「版本沿革」）
+生成日期 : 2026-09-29（首版）／ **2026-09-30 全量重渲**／ **2026-09-30 t26 增补第七节「部署期本机字形覆盖」**（全角标点错位修复后重渲：6 页 → 4 页，见第二节末「版本沿革」）／ **2026-10-02 增补第八节「非中文字形改用 Ark Pixel 12px」**（新增 1 张位图页，见第八节）
 适用目录 : <游戏根>\Neutraled\fonts\
 随包文件 : ntl_font_cjk.json（字形表）
            ntl_font_cjk_o1..o4.png（字形位图页，2026-09-30 重渲后为 4 张）
+           ntl_font_cjk_ark12.png（2026-10-02 新增：953 个非中文字形的 Ark Pixel 像素位图，见第八节）
            ntl_native_sources.json（部署期字形来源声明：只有码位区间与来源种类，**不含任何位图**，见第七节）
            本目录的 README.txt（逐文件来源/许可速查表）
-           ofl\OFL-notosans{sc,jp,kr}.txt / ofl\OFL-notosanssymbols2.txt / ofl\OFL-notoemoji.txt（许可全文）
+           ofl\OFL-notosans{sc,jp,kr}.txt / ofl\OFL-notosanssymbols2.txt / ofl\OFL-notoemoji.txt / ofl\OFL-arkpixel.txt（许可全文）
 写入依据 : 实读 Neutraled/fonts/ 下的 JSON 与 PNG、E:/aiwork/out/Neutraled2/_feat/ 下的渲染产物与 TTF 元数据
            （尺寸/字节/SHA-256/版权行都是实测值；上游路径来自 Google Fonts 仓库 ofl/ 目录清单，2026-09-29 通过代理实测可访问；2026-09-30 重渲的「页 → 来源 pass → 字节」见 E:/aiwork/out/Neutraled2/_feat/rerender-ofl-report.json）
 
@@ -179,5 +180,31 @@ OFL Noto 位图后，UI 文字观感与游戏明显不同（用户真机反馈�
 * **复核方式（逐像素断言）**：node E:/aiwork/out/Neutraled2/_feat/_t26/verify-csharp.mjs
   —— 新包 ASCII 0x20-0x7E / CJK 与游戏 fnt_main 逐像素一致；同时反证仓库 fonts\ 里没有任何本机页、
   没有字体二进制、OFL 字形与游戏不同源。完整报告：release-docs/FONT-PIXEL-REPORT.md。
+
+八、2026-10-02 增补：非中文字形改用 Ark Pixel 12px 像素字体（OFL-1.1）
+----------------------------------------------------------------
+背景 : 用户报「那种看起来像带声调的字母（ä ü ß é ñ）还是微软雅黑」—— 这些码位不在游戏本机字体
+       （8bitoperator JVE / 汉化像素汉字）里，部署期回退到本包的 Noto 位图，而 Noto 是平滑矢量字，
+       混在像素风界面里像系统默认字体。
+做法 : 把本包**非中文码位**（U+0000–U+2E7F：ASCII、拉丁-1、拉丁扩展 A/B、希腊、西里尔、标点、
+       箭头、数学与杂项符号）里 Ark Pixel 能提供的 **953** 个字形，替换为 Ark Pixel 12px 的像素位图；
+       汉字段（U+2E80 以上，含汉字/假名/全角）**一个都没动**，仍是原来的 Noto 位图。
+       只替换、不新增码位 ⇒ 字形总数仍为 4974。
+新增页: ntl_font_cjk_ark12.png ｜ 4096x2048 ｜ 691283 B
+       sha256 = 6510497af61177eaa6a134215f1985499b741397f8eae4aa9218e4f196f24c84
+       承载 953 个字形（ASCII 95 / 拉丁-1 95 / 拉丁扩展 186 / 希腊 66 / 西里尔 85 / 标点与符号 426）
+源字体: Ark Pixel Font（12px monospaced，简体中文子集）
+       本地 TTF : ark12-zh_hans.ttf（5018300 B，sha256 = ed53fdd6443d10941b432ea373a82b0e3bdbd5c9a881d934190ecadd1589ee37）
+       上游     : https://github.com/TakWolf/ark-pixel-font（发布包 ark-pixel-12px-monospaced-ttf.zip）
+       版权行   : Copyright (c) 2021, TakWolf (https://takwolf.com).
+       许可     : SIL Open Font License 1.1 —— 全文随包放 ofl\OFL-arkpixel.txt
+渲染命令: ntl-builder.exe --game <游戏根> --make-cjk-font <输出目录> --ttf ark12-zh_hans.ttf --font-name ntl_ark12 --size 12
+          （默认大 UI 字集共渲出 21453 个字形，本次只取上述非中文码位里的 953 个）
+合并脚本: E:/aiwork/out/Neutraled2/_feat/_t40/（一次性手工合并；新旧包与对比图留在该目录可复现）
+合规说明: Ark Pixel 为 OFL-1.1 授权，允许再分发与嵌入；我们同样**只分发位图页**，不分发 .ttf；
+          未改字体名、随包附许可全文、不单独售卖 —— 与第三、四节口径一致。
+备注     : 部署期的本机字形覆盖逻辑不变（第七节）：游戏 / 汉化包能提供的字形仍会顶掉本包位图；
+           本节新增的 Ark 页只影响「本机字体也缺」的拉丁字母与符号。
+---
 
 —— 完 ——
