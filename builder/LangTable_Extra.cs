@@ -455,5 +455,8 @@ public static class LangTable_Extra
         d[" 处，首例 "] = " occurrences, first ";
         d[" 读取失败 —— "] = " read failed -- ";
         d[" —— GML 侧 json_parse 会失败（中文名被转义写出了）"] = " -- GML-side json_parse will fail (a non-ASCII name was written escaped)";
+        d["  [警告] 移除快捷方式失败: {0}（{1}）"] = "  [Warning] Failed to remove shortcut: {0} ({1})";
+        d["  [警告] 快捷方式仍然存在（被占用或正在同步）: {0}"] = "  [Warning] shortcut still present (in use or syncing): {0}";
+        d["  [警告] 快捷方式未创建: {0}"] = "  [Warning] shortcut was not created: {0}";
     }
 }

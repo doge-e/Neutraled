@@ -563,7 +563,7 @@ set NTL_LANG=en
 | `api/ntl_lang_set.gml` | `lang` 命令（zh/en/auto + `lang set/get` 覆盖） |
 | `api/ntl_get_lang_string.gml` / `ntl_set_lang_string.gml` / `ntl_apply_lang_overrides.gml` | 单条文案覆盖 |
 | `api/ntl_console_line_pass.gml` / `ntl_console_draw.gml` | 中英双前缀的过滤与着色 |
-| `builder/Lang.cs` + `builder/LangTable_{Program,Deploy,Mods,Tools,Extra,Features}.cs` | builder CLI 双语（**去重 1972 条**：Program 274 / Deploy 250 / Mods 290 / Tools 214 / Extra 448 / Features 504；`L("中文原文", args…)` 以中文为 key 查英文表，未命中原样返回中文） |
+| `builder/Lang.cs` + `builder/LangTable_{Program,Deploy,Mods,Tools,Extra,Features}.cs` | builder CLI 双语（**去重 1975 条**：Program 274 / Deploy 250 / Mods 290 / Tools 214 / Extra 452 / Features 504；`L("中文原文", args…)` 以中文为 key 查英文表，未命中原样返回中文） |
 | `builder/LintRules3.cs` | `--lint` 的文案防回归规则（见下节） |
 | `gui/Localizer.cs`（204 条）、`studio/Localizer.cs`（43 条） | GUI / Studio 界面（`T("中文原文")`） |
 | `kristal/ntlconsole/lib.lua` | Kristal 控制台（38 条 + `@@NTL_LANG@@` 占位符） |

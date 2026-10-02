@@ -311,6 +311,7 @@ public static class Installer
             { UseShellExecute = false, CreateNoWindow = true };
             Process.Start(psi)?.WaitForExit(15000);
             if (File.Exists(lnkPath)) Console.WriteLine(L("  快捷方式: {0}", lnkPath));
+            else Console.WriteLine(L("  [警告] 快捷方式未创建: {0}", lnkPath));
         }
         catch (Exception ex) { Console.WriteLine(L("  [警告] 创建快捷方式失败: {0}", ex.Message)); }
     }
@@ -320,12 +321,19 @@ public static class Installer
         foreach (var dir in new[] { Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
                                     Environment.GetFolderPath(Environment.SpecialFolder.Programs) })
         {
+            var lnk = Path.Combine(dir, "Neutraled Mod Manager.lnk");
+            if (!File.Exists(lnk)) continue;
             try
             {
-                var lnk = Path.Combine(dir, "Neutraled Mod Manager.lnk");
-                if (File.Exists(lnk)) { File.Delete(lnk); Console.WriteLine(L("  已移除快捷方式: {0}", lnk)); }
+                File.Delete(lnk);
+                Console.WriteLine(L("  已移除快捷方式: {0}", lnk));
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 以前这里是 catch { }：删失败看不出任何原因（OneDrive 桌面/杀软占用时会静默留下快捷方式）
+                Console.WriteLine(L("  [警告] 移除快捷方式失败: {0}（{1}）", lnk, ex.Message));
+            }
+            if (File.Exists(lnk)) Console.WriteLine(L("  [警告] 快捷方式仍然存在（被占用或正在同步）: {0}", lnk));
         }
     }
 
