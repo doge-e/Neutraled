@@ -25,6 +25,11 @@ namespace Neutraled.Builder;
 ///       ntl_modmenu_page_draw / ntl_settings_row_press / ntl_modmenu_page_step。
 ///       **为什么必须反编译**：`增强: {label}` 是 FR 入队后无条件打印的，只看部署日志会被
 ///       「search 一条都没命中」骗过去（实测 chapter1 的 Draw_0 与 chapter4 不是同一份代码）。
+///   (h) 产物侧 JSON 无 \uXXXX 转义：GML 的 json_parse 吃不下 \uXXXX（CLAUDE.md 硬坑 15，
+///       2026-09-25 在 chapters.json 上实测：一个中文就让整个注册表解析失败）。
+///       **为什么必须扫产物目录**：builder 之前用「默认 JsonSerializerOptions」写 mods.json，
+///       中文 mod 名被写成 \uXXXX ⇒ GML 解析异常 ⇒ Mod 设置面板恒显示「已加载 0」，
+///       而部署本身完全成功、日志一片绿。CLI 侧产物目录 = 产物 data.win 同级的 Neutraled\。
 ///
 /// 返回 0 = 全部通过；1 = 发现严重问题（含自检本身抛异常、Load 失败）。
 /// **不吞异常**：任何一步抛异常都转成该项「失败」并打印异常类型与消息。
@@ -95,10 +100,43 @@ public static class DeploySelfCheck
                 Check("(e)", L("注册表 JSON 可解析（严格模式）"), jsonOk, string.Join(L("；"), jsonReport));
             }
 
+            // ---------- (h) 产物侧 JSON 无 \uXXXX 转义（与产物无关，任何分支都要跑） ----------
+            // 抓「部署全绿、GML 侧 json_parse 静默失败」：GML 的 json_parse 吃不下 \uXXXX，
+            // 一个中文 mod 名就让整个 mods.json 解析失败，面板恒显示「已加载 0」。
+            void CheckProductJsonEscapes()
+            {
+                var dir = Path.Combine(Path.GetDirectoryName(win)!, "Neutraled");
+                var hits = new List<string>();
+                int scanned = 0;
+                if (Directory.Exists(dir))
+                {
+                    foreach (var p in Directory.EnumerateFiles(dir, "*.json"))
+                    {
+                        scanned++;
+                        try
+                        {
+                            var txt = File.ReadAllText(p);
+                            var ms = Regex.Matches(txt, @"\\u[0-9a-fA-F]{4}");
+                            if (ms.Count > 0)
+                                hits.Add(Path.GetFileName(p) + L("（") + ms.Count + L(" 处，首例 ") + ms[0].Value + L("）"));
+                        }
+                        catch (Exception ex)
+                        {
+                            hits.Add(Path.GetFileName(p) + L(" 读取失败 —— ") + Describe(ex));
+                        }
+                    }
+                }
+                Check("(h)", L("产物 JSON 无 \\uXXXX 转义（GML json_parse 吃不下转义）"), hits.Count == 0,
+                    hits.Count == 0
+                        ? L("扫描 ") + scanned + L(" 个 JSON，0 处转义")
+                        : string.Join(L("；"), hits) + L(" —— GML 侧 json_parse 会失败（中文名被转义写出了）"));
+            }
+
             if (!File.Exists(win))
             {
                 Console.WriteLine(L("  [失败] (a) 重新打开产物 data.win —— 产物不存在（") + win + L("），自检无法继续"));
                 CheckRegistryJson();
+                CheckProductJsonEscapes();
                 Console.WriteLine(L("结果: 发现严重问题（失败 1 项 + 未能执行 b/c/d，用时 ") + total.ElapsedMilliseconds + L(" ms）"));
                 return 1;
             }
@@ -272,6 +310,7 @@ public static class DeploySelfCheck
             }
 
             CheckRegistryJson();
+            CheckProductJsonEscapes();
         }
         catch (Exception ex)
         {

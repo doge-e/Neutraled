@@ -1364,9 +1364,18 @@ public static class Injector
            "audio_stop_sound(arg0);\n    _xsndinstance = audio_play_sound(arg0, 90, 0);");
 
         // stream 复用：同名 stream 不再重复创建（防句柄泄漏）
+        // ★ 2026-10-02 修正：旧版缓存的是**原始 stream 句柄**，而 snd_free / snd_free_all 会销毁持有它的
+        //   obj_astream（obj_astream_Destroy_0 = audio_destroy_stream(mystream)），缓存却不清 ⇒ 同一进程里
+        //   再次 snd_init 同名音乐会拿到**死流**（表现为「音乐不播放 / 音乐跟不上」）。改为缓存**持有实例**：
+        //   instance_exists 判活后复用，持有者已销毁就重建流。
         FR("gml_GlobalScript_snd_init",
-           "_mystream = audio_create_stream(initsongvar);",
-           "if (!variable_global_exists(\"ntl_stream_cache\")) global.ntl_stream_cache = ds_map_create();\n    if (ds_map_exists(global.ntl_stream_cache, initsongvar))\n    {\n        _mystream = ds_map_find_value(global.ntl_stream_cache, initsongvar);\n    }\n    else\n    {\n        _mystream = audio_create_stream(initsongvar);\n        ds_map_add(global.ntl_stream_cache, initsongvar, _mystream);\n    }");
+           "_mystream = audio_create_stream(initsongvar);\n    _astream = instance_create(0, 0, 134);\n    _astream.mystream = _mystream;\n    return _mystream;",
+           "if (!variable_global_exists(\"ntl_stream_cache\")) global.ntl_stream_cache = ds_map_create();\n    _astream = noone;\n    if (ds_map_exists(global.ntl_stream_cache, initsongvar))\n    {\n        _astream = ds_map_find_value(global.ntl_stream_cache, initsongvar);\n        if (!instance_exists(_astream)) { ds_map_delete(global.ntl_stream_cache, initsongvar); _astream = noone; }\n    }\n    if (_astream == noone)\n    {\n        _mystream = audio_create_stream(initsongvar);\n        _astream = instance_create(0, 0, 134);\n        _astream.mystream = _mystream;\n        ds_map_add(global.ntl_stream_cache, initsongvar, _astream);\n    }\n    else\n    {\n        _mystream = _astream.mystream;\n    }\n    return _mystream;");
+
+        // snd_free_all 销毁全部持有者：缓存一并清空，避免留下死句柄
+        FR("gml_GlobalScript_snd_free_all",
+           "with (134)\n    {\n        instance_destroy();\n    }",
+           "with (134)\n    {\n        instance_destroy();\n    }\n    if (variable_global_exists(\"ntl_stream_cache\")) ds_map_clear(global.ntl_stream_cache);");
     }
 
     private static string BuildManifest(List<ModEntry> mods, Dictionary<string, string> modMain)

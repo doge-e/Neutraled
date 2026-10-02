@@ -727,7 +727,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                         if ((io["size"]?.GetValue<int>() ?? 0) != want) io["size"] = want;
                     }
                 if (!has) arr.Add(new JsonObject { ["font"] = "ntl_cjk", ["size"] = want });
-                File.WriteAllText(fp, o.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), new System.Text.UTF8Encoding(false));
+                File.WriteAllText(fp, o.ToJsonString(new System.Text.Json.JsonSerializerOptions(Paths.Json) { WriteIndented = true }), new System.Text.UTF8Encoding(false));
                 patched++;
             }
             if (patched > 0) Console.WriteLine(L("  [kristal] 中文回退已就绪（{0} 个字体配置）", patched));
@@ -2425,18 +2425,27 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         // 运行时清单（供 GUI 显示）
         var listPath = Path.Combine(chapterDir, "Neutraled", "mods.json");
         Directory.CreateDirectory(Path.GetDirectoryName(listPath)!);
-        var json = System.Text.Json.JsonSerializer.Serialize(mods.Select(m => new { m.Id, m.Name, m.Version }),
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(listPath, json);
+        // ★ 2026-10-02（用户 m23281「显示 0 mod 加载」）真根因：这里以前用的是**默认编码器**——
+        //   「冰封帷幕」「汉化组」等 mod 名含中文，C# 默认编码器会写成 \u51B0\u5C01… 转义，
+        //   而 GameMaker 的 json_parse **吃不下 \uXXXX**（老坑 15，chapters.json 已实测过）⇒
+        //   整个清单解析失败，api/ntl_modmenu_loaded.gml 拿到空数组 ⇒ 面板恒显示「已加载 0」。
+        //   修法：与 chapters.json / api-registry.json 一致，用 Paths.Json（UnsafeRelaxedJsonEscaping，
+        //   非 ASCII 原样 UTF-8 落盘）+ Paths.SafeWrite（并发安全）。
+        //   形态同时改成对象 { version, mods: [...] }，与同目录 scope.json 同族；读取端两种形态都认。
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            new { version = 1, mods = mods.Select(m => new { m.Id, m.Name, m.Version }).ToArray() },
+            new System.Text.Json.JsonSerializerOptions(Paths.Json) { WriteIndented = true });
+        Paths.SafeWrite(listPath, json);
 
         // 产物作用域清单：运行期 api/ntl_product_scope.gml 读 <working_directory>Neutraled/scope.json
         //   拿本产物的目标名，用于 mod 脚本作用域（ntl_mod_scripts_load）与 root/章节判定（ntl_is_root）。
         //   ⚠ 这里写的 chapter 就是本产物的目标：root / chapterN / 独立章（时间线传的 srcChapter）。
         //   以前运行期只能靠 working_directory 里猜 + config.auto_chapter 兜底，时间线产物恒猜错。
         var scopePath = Path.Combine(Path.GetDirectoryName(listPath)!, "scope.json");
-        File.WriteAllText(scopePath, System.Text.Json.JsonSerializer.Serialize(
+        //   ⚠ 同样必须用 Paths.Json：target 可能是独立章名/时间线名，将来含非 ASCII 就会踩 \uXXXX 坑。
+        Paths.SafeWrite(scopePath, System.Text.Json.JsonSerializer.Serialize(
             new { version = 1, target = chapter },
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            new System.Text.Json.JsonSerializerOptions(Paths.Json) { WriteIndented = true }));
 
         PhaseTimer.Mark("5/5 写入 data.win + 清单");
         PhaseTimer.Summary(chapter);

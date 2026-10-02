@@ -282,7 +282,7 @@ public static class KristalImport
                     new JsonObject { ["file"] = frameFile, ["targetX"] = 0, ["targetY"] = 0 }
                 }
             };
-            File.WriteAllText(Path.Combine(outDir, baseName + ".json"), def.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(Path.Combine(outDir, baseName + ".json"), def.ToJsonString(new JsonSerializerOptions(Paths.Json) { WriteIndented = true }));
             count++;
         }
         return count;
@@ -314,7 +314,7 @@ public static class KristalImport
                 ["type"] = ext.TrimStart('.'),
                 ["preload"] = true
             };
-            File.WriteAllText(Path.Combine(outDir, baseName + ".json"), def.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(Path.Combine(outDir, baseName + ".json"), def.ToJsonString(new JsonSerializerOptions(Paths.Json) { WriteIndented = true }));
             count++;
         }
         return count;

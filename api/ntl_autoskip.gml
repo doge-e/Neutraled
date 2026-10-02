@@ -54,7 +54,10 @@ if (string_length(_id) > 0 && global.ntl_ch_loaded == 1)
                 // ★ t35 F3（t30 真机 §12：契约要求的 ntl_chg*/working_directory/program_directory/
                 //   parameter_string/ntl_is_root 在正常路径不落盘）——登记现场时一次性写全，真机 review 不必再猜。
                 var _chgps = "";
-                try { _chgps = parameter_string(); } catch (e_chgps) { _chgps = "?"; }
+                // ★ 2026-10-02 真机实证：parameter_string() 在本运行时直接 0xc0000005 崩掉整个进程
+      //   （Windows 事件日志 Application Error id=1000 四次同桶），表现为「按 Z 进章节后进程消失」。
+      //   已彻底移除该调用，不要再加回来。
+      _chgps = "<parameter_string 不可用>";
                 var _chgmsg = "[chg] dir=" + _dir + " pfx=" + "/" + " full=" + "/" + _dir
                         + " kind=timeline order=" + string(_order) + " wd=" + working_directory + " pd=" + program_directory
                         + " parameter_string=" + _chgps + " args=" + ("-game data.win" + _params2) + " ntl_is_root=" + string(ntl_is_root())

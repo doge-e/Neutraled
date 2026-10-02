@@ -215,7 +215,7 @@ public static class Conflicts
                         f.Mods.Select(m => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(m)).ToArray())
                 }).ToArray())
         };
-        try { File.WriteAllText(path, obj.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true })); }
+        try { File.WriteAllText(path, obj.ToJsonString(new System.Text.Json.JsonSerializerOptions(Paths.Json) { WriteIndented = true })); }
         catch { }
     }
 }

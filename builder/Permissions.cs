@@ -190,7 +190,7 @@ public static class Permissions
             };
             arr.Add(o);
         }
-        try { File.WriteAllText(path, arr.ToJsonString(new JsonSerializerOptions { WriteIndented = true })); }
+        try { File.WriteAllText(path, arr.ToJsonString(new JsonSerializerOptions(Paths.Json) { WriteIndented = true })); }
         catch { }
     }
 }

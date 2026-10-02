@@ -168,7 +168,7 @@ public static class DeltaImport
                 references = new { source = "ref/data.win", assets = "inherit" }
             };
             File.WriteAllText(Path.Combine(modDir, "mod.json"),
-                JsonSerializer.Serialize(modJson, new JsonSerializerOptions { WriteIndented = true }));
+                JsonSerializer.Serialize(modJson, new JsonSerializerOptions(Paths.Json) { WriteIndented = true }));
 
             Paths.Log(L("  已生成 mod: {0}", modDir));
             return 0;

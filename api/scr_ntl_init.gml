@@ -64,6 +64,10 @@ if (!variable_global_exists("ntl_fighting_last")) global.ntl_fighting_last = 0;
 
 ntl_log("core", "Neutraled API v" + global.ntl_version + " init (room=" + string(room) + ")");
 
+// 一次性诊断：本产物 Neutraled/mods.json 的读取/解析链路（用户 m23281「显示 0 mod 加载」）
+//   只打一条日志、不影响逻辑；定性后（1.0.1）可删。
+try { ntl_json_diag(); } catch (e) { ntl_log("jdiag", "[jdiag] 诊断脚本异常（已忽略）"); }
+
 // --- 创建常驻控制器 ---
 var _core = asset_get_index("obj_ntl_core");
 if (_core != -1)

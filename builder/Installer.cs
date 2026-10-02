@@ -248,7 +248,7 @@ public static class Installer
             ["gameRoot"] = gameRoot,
             ["version"] = Paths.ApiVersion(),
             ["source"] = srcRoot
-        }.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }.ToJsonString(new JsonSerializerOptions(Paths.Json) { WriteIndented = true }));
 
         // 存档基准快照（首次安装留底，任何时候都能回到"未装 mod"的状态）
         SaveGuard.SnapshotBaseline(gameRoot);

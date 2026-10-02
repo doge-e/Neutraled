@@ -143,6 +143,12 @@ public static class LangTable_Extra
         d["检查抛异常 —— "] = "the check threw -- ";
         d["正常运行，日志 {0} KB"] = "running normally, log {0} KB";
         d["注册表 JSON 可解析（严格模式）"] = "registry JSON parses (strict mode)";
+        d["产物 JSON 无 \\uXXXX 转义（GML json_parse 吃不下转义）"] = "product JSON has no \\uXXXX escapes (GML json_parse cannot handle them)";
+        d["扫描 "] = "scanned ";
+        d[" 个 JSON，0 处转义"] = " JSON files, 0 escapes";
+        d[" 处，首例 "] = " occurrences, first ";
+        d[" 读取失败 —— "] = " read failed -- ";
+        d[" —— GML 侧 json_parse 会失败（中文名被转义写出了）"] = " -- GML-side json_parse will fail (a non-ASCII name was written escaped)";
         d["玩家"] = "Player";
         d["用 arr_get(a, i) / arr_set(a, i, v)"] = "use arr_get(a, i) / arr_set(a, i, v)";
         d["用 if 包裹代替 continue"] = "wrap it in an if instead of continue";

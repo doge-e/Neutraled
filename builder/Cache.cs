@@ -433,7 +433,7 @@ public static class Cache
         entry.Size = total;
         idx[sig] = entry;
         File.WriteAllText(Path.Combine(dir, "manifest.json"),
-            JsonSerializer.Serialize(entry, new JsonSerializerOptions { WriteIndented = true }));
+            JsonSerializer.Serialize(entry, new JsonSerializerOptions(Paths.Json) { WriteIndented = true }));
         SaveIndex(gameRoot, idx);
         EnforceLimit(gameRoot, idx);
         Paths.Log(L("  缓存已保存: {0} ({1} MB, 目标 {2} 个)", SigShort(sig), total / 1024 / 1024, entry.Targets.Count));

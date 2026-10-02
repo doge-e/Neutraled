@@ -163,7 +163,7 @@ public static class ModInstall
                 ["dir"] = targetRoot
             };
             File.WriteAllText(Path.Combine(targetRoot, "install.json"),
-                rec.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                rec.ToJsonString(new JsonSerializerOptions(Paths.Json) { WriteIndented = true }));
 
             Console.WriteLine();
             Console.WriteLine(L("  ✅ 安装完成"));

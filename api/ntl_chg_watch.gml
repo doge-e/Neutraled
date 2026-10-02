@@ -56,7 +56,7 @@ if (variable_global_exists("ntl_chg_kind")) _chgKind = string(global.ntl_chg_kin
 ntl_log("auto", "[chg] 看门狗第 " + string(_chgTry) + " 级重试：目标=" + _chgDir + " 参数=" + _chgArgs
         + " 序数=" + string(_chgOrder) + " 类型=" + _chgKind
         + " working_directory=" + working_directory + " program_directory=" + program_directory
-        + " parameter_string()=" + string(parameter_string()) + " ntl_is_root()=" + string(ntl_is_root())
+        + " parameter_string=已停用" + " ntl_is_root()=" + string(ntl_is_root())
         + " 帧=" + string(global.ntl_frames));
 
 if (_chgTry == 1)
