@@ -40,6 +40,26 @@ if (string_length(_id) > 0 && global.ntl_ch_loaded == 1)
                 var _params2 = "";
                 try { _params2 = get_chapter_switch_parameters(); } catch (e) { _params2 = " launcher"; }
                 ntl_log("auto", "自动进入时间线章节: " + _id);
+                // ★ 看门狗现场（2026-09-30）：见 api/ntl_chg_watch.gml
+                global.ntl_chg_pending = 1;
+                global.ntl_chg_frame = global.ntl_frames;
+                global.ntl_chg_try = 0;
+                global.ntl_chg_dir = _dir;
+                global.ntl_chg_full = "/" + _dir;
+                global.ntl_chg_kind = "timeline";
+                global.ntl_chg_order = _order;
+                global.ntl_chg_args = "-game data.win" + _params2;
+                global.ntl_chg_wd = working_directory;
+                global.ntl_chg_pd = program_directory;
+                // ★ t35 F3（t30 真机 §12：契约要求的 ntl_chg*/working_directory/program_directory/
+                //   parameter_string/ntl_is_root 在正常路径不落盘）——登记现场时一次性写全，真机 review 不必再猜。
+                var _chgps = "";
+                try { _chgps = parameter_string(); } catch (e_chgps) { _chgps = "?"; }
+                var _chgmsg = "[chg] dir=" + _dir + " pfx=" + "/" + " full=" + "/" + _dir
+                        + " kind=timeline order=" + string(_order) + " wd=" + working_directory + " pd=" + program_directory
+                        + " parameter_string=" + _chgps + " args=" + ("-game data.win" + _params2) + " ntl_is_root=" + string(ntl_is_root())
+                        + " frame=" + string(global.ntl_frames);
+                ntl_log("auto", _chgmsg);
                 game_change("/" + _dir, "-game data.win" + _params2);
                 return 1;
             }

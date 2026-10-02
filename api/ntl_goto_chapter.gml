@@ -28,10 +28,33 @@ if (_dir != "")
     //   官方 scr_chapterswitch 在 Windows 上用的正是 "/../chapter" + N + "_windows"。
     var _pfx = (ntl_is_root() == 1) ? "/" : "/../";
     ntl_log("auto", "ntl_goto_chapter -> " + _pfx + _dir + "（搬迁实现：直接 game_change）");
+    // ★ 看门狗现场（2026-09-30）：game_change 失败时**既不报错也不返回**（用户实测：日志里有
+    //   调用、进程却纹丝不动），只能先记下现场，由 ntl_chg_watch()（api/ntl_chg_watch.gml）
+    //   在 ≥90 帧后按阶梯重试：官方入口 → 换前缀 → 可见提示。
+    global.ntl_chg_pending = 1;
+    global.ntl_chg_frame = global.ntl_frames;
+    global.ntl_chg_try = 0;
+    global.ntl_chg_dir = _dir;
+    global.ntl_chg_full = _pfx + _dir;
+    global.ntl_chg_kind = "official";
+    global.ntl_chg_order = _ch;
+    global.ntl_chg_args = "-game data.win" + _params;
+    global.ntl_chg_wd = working_directory;
+    global.ntl_chg_pd = program_directory;
+    // ★ t35 F3（t30 真机 §12：契约要求的 ntl_chg*/working_directory/program_directory/
+    //   parameter_string/ntl_is_root 在正常路径不落盘）——登记现场时一次性写全，真机 review 不必再猜。
+    var _chgps = "";
+    try { _chgps = parameter_string(); } catch (e_chgps) { _chgps = "?"; }
+    var _chgmsg = "[chg] dir=" + _dir + " pfx=" + _pfx + " full=" + _pfx + _dir
+            + " kind=official order=" + string(_ch) + " wd=" + working_directory + " pd=" + program_directory
+            + " parameter_string=" + _chgps + " args=" + ("-game data.win" + _params) + " ntl_is_root=" + string(ntl_is_root())
+            + " frame=" + string(global.ntl_frames);
+    ntl_log("auto", _chgmsg);
     game_change(_pfx + _dir, "-game data.win" + _params);
     return 1;
 }
-// ---- 兜底：仍走官方对象 ----
+// ---- 兜底：仍走官方对象（官方实例现在是被我们**停用**的 —— 扫描前先激活）----
+try { instance_activate_object(asset_get_index("obj_CHAPTER_SELECT")); } catch (e_act) { }
 var _inst = noone;
 var _count = instance_count;
 for (var _i = 0; _i < _count; _i += 1)

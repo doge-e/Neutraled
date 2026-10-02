@@ -70,6 +70,20 @@ if (_fc != -1)
 
 ntl_log("ext", "外部章节「" + _name + "」: 已写出启动请求，退出游戏交给启动器");
 ntl_log("ext", "  " + _exe + " " + _args);
+// ★ park 门控现场（2026-09-30）：记下请求是从第几帧写下的，谁来判断"等太久"见 ntl_root_step.gml
+//   已经是 pending 时**不重置计时** —— 否则玩家多按几次 Enter 就永远等不到"没人消费"的判定。
+if (!variable_global_exists("ntl_ext_launching") || global.ntl_ext_launching != 1)
+{
+    global.ntl_ext_req_frame = global.ntl_frames;
+    global.ntl_ext_confirmed = 0;
+    global.ntl_ext_park_seen = 0;
+    // ★ F-3（t25 复核）：请求文件刚刚回读确认存在（见上面 :55-60 的存在性校验），
+    //   在此登记「本进程确实看到它存在过」。门控那边只在「存在 → 不存在」时才认为
+    //   被守候进程消费（api/ntl_root_step.gml 的确认段），于是「请求从未落盘 / 被
+    //   第三方删掉」不再被误判成已确认（假 park）。已在 pending 时不重置，避免反复
+    //   按 Enter 把「已被消费」的证据冲掉（与上面不重置计时的理由一致）。
+    global.ntl_ext_req_seen = 1;
+}
 global.ntl_ext_launching = 1;
 global.ntl_ext_wait = 20;
 return 1;

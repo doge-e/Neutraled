@@ -253,6 +253,10 @@ public static class Mods
     /// <summary>--no-cache：禁读扫描缓存（计时用）。</summary>
     public static bool NoCache = false;
 
+    /// <summary>只读模式：扫描缓存**不落盘**（TimelineRuntime.RunProbe 等只读工具用）。
+    /// 缓存读取/内存记忆化照常，只是不再写 <mods>/../cache/modscan-*.json。</summary>
+    public static bool NoCacheWrite = false;
+
     private static readonly Dictionary<string, List<ModEntry>> _scanCache = new();
 
     
@@ -452,7 +456,7 @@ public static List<ModEntry> ScanMods(string modsRoot, string chapter, bool incl
             else Paths.Log(L("  [去重] {0} 已存在（{1}），跳过重复项", m.Id, m.Dir));
         }
         lock (_scanCache) { _scanCache[_ck] = new List<ModEntry>(deduped); }
-        ScanCacheSave(_cachePath, _token, deduped);
+        if (!NoCacheWrite) ScanCacheSave(_cachePath, _token, deduped);
         return deduped;
     }
 

@@ -229,6 +229,13 @@ public static class Program
                     cmd = "make-cjk-font";
                     if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) importPath = args[++i];
                     break;
+                case "--font-native":
+                    cmd = "font-native";
+                    // 位置参数（data.win 路径、输出目录）可选：省略时用 --chapter 的 data.win 与 .tmp/font-native
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) importPath = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) mapOut = args[++i];
+                    break;
+                case "--font-source": FontSource = args[++i]; break;
                 case "--ttf": CjkTtf = args[++i]; break;
                 case "--size": CjkSize = int.Parse(args[++i]); break;
                 case "--charset": CjkCharset = args[++i]; break;
@@ -240,6 +247,7 @@ public static class Program
                 case "--smoke": cmd = "smoke"; break;
                 case "--api-doc": cmd = "api-doc"; break;
                 case "--selftest": cmd = "selftest"; break;
+                case "--probe-timeline-runtime": cmd = "probe-timeline-runtime"; break;
                 case "--no-launch": selfTestNoLaunch = true; break;
                 case "--new-mod" when i + 1 < args.Length: cmd = "new-mod"; modName = args[++i]; break;
                 case "--fast-deploy": Injector.FastDeploy = true; break;
@@ -387,9 +395,11 @@ public static class Program
                 // 位置参数省略时默认分析当前章节的 data.win（与 --info/--doctor 一致）
                 "font-probe" => FontProbe.Run(string.IsNullOrEmpty(importPath) ? Paths.ChapterDataWin(gameRoot, chapter) : importPath, string.IsNullOrEmpty(mapOut) ? Path.Combine(Paths.NeutraledRoot(gameRoot), ".tmp", "fontprobe") : mapOut),
                 "make-cjk-font" => MakeCjkFontCli(gameRoot, importPath),
+                "font-native" => FontNative.RunCli(gameRoot, chapter, importPath, mapOut, FontSource),
                 "doctor" => DoctorCli(gameRoot),
                 "smoke" => SmokeCli(gameRoot),
                     "selftest" => SelfTest.Run(gameRoot, chapter, selfTestNoLaunch),
+                    "probe-timeline-runtime" => TimelineRuntime.RunProbe(gameRoot, chapter),
                 "api-doc" => ApiDoc.Generate(gameRoot),
                 "new-mod" => Scaffold.Create(gameRoot, modName, author, chapter),
                 // 参数里的 --chapter 默认值是 chapter4，没显式给就用第一章当基底（第四章 data.win 有 135MB）
@@ -496,6 +506,8 @@ public static class Program
         Console.WriteLine(L("      --diff-override             层与层改同一对象时，声明 later-wins"));
         Console.WriteLine(L("  --layer-from-base <data.win>    **源码级**差异层：反编译真实改动对象 → GML patch（不再受索引移植限制）"));
         Console.WriteLine(L("  --export-packs <data.win>       导出资源包（精灵/声音/字体）→ 可叠加到任意基底"));
+        Console.WriteLine(L("  --font-native [data.win] [目录] 部署期把本机字形（8bitoperator JVE + 汉化汉字）覆盖进 OFL 字体包"));
+        Console.WriteLine(L("      --font-source game|base-mod 只用某一种本机字形来源（默认按 fonts/ntl_native_sources.json）"));
         Console.WriteLine(L("      --out <目录>                指定输出目录（默认写进对应 mod 目录）"));
         Console.WriteLine(L("  --kristal-merge <项目> --with <插件>...   Kristal 宿主合并导入（插件型 mod 缺宿主）"));
         Console.WriteLine(L("  --conflicts                     只查 mod 冲突不部署（0=无冲突 / 2=有冲突，CI 友好）"));
@@ -512,6 +524,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         Console.WriteLine(L("  --lint / --doctor / --smoke     静态检查 / 自检 / API 冒烟"));
         Console.WriteLine(L("  --api-doc                       生成 API 文档"));
         Console.WriteLine(L("  --selftest [--no-launch]        端到端自测"));
+        Console.WriteLine(L("  --probe-timeline-runtime        只读预检：时间线产物的运行时文件章节（按 data.win 血统解析）+ 语言档覆盖守卫，不写盘"));
         Console.WriteLine();
         Console.WriteLine(L("  外部章节（Kristal / 冰封帷幕这类成品）:"));
         Console.WriteLine(L("  --add-external <exe> [名字]     注册成外部章节（章节选择器里可选）"));
@@ -1364,7 +1377,10 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 LastAllMods = Mods.ScanMods(tlModsRoot, tlChapter, includeDisabled: false, allChapters: true);
                 LastRegistry = Chapters.BuildRegistry(LastAllMods, tlChapter, gameRoot);
                 Console.WriteLine(L("===== 平行时间线（由父进程统一部署，worker 已跳过） ====="));
-                DeployTimelines(gameRoot, tlChapter);
+                var tlBlocked = DeployTimelines(gameRoot, tlChapter);
+                // ★ 守卫拦下 ≥1 条时间线 ⇒ 整个 --deploy-all 退出码非零
+                //   （t31 复核 F1：过去返回值被丢弃，拦下了也照样 exit 0）
+                if (tlBlocked > 0) rc = 1;
             }
             catch (Exception ex) { Console.WriteLine(L("[警告] 时间线部署失败: {0}", ex.Message)); }
             return rc;
@@ -1935,9 +1951,13 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
 
     /// <summary>部署一个章节。
     /// outDirOverride：输出目录（平行时间线章节用；默认写回原章节目录）。
-    /// modsOverride：只用指定的 mod 子集（默认按章节扫描）。</summary>
+    /// modsOverride：只用指定的 mod 子集（默认按章节扫描）。
+    /// runtimeChapterOverride：**运行时文件**（lang/、audiogroup1.dat、options.ini…）的来源章节。
+    ///   平行时间线的产物 data.win 血统可能与 mod.json 声明的章节不同（例：第 1 章血统的产物声明成 chapter4），
+    ///   照抄声明章节会把不匹配的 lang/ 复制过去 → 启动第一屏 Code Error（见 TimelineRuntime）。</summary>
     private static int Deploy(string gameRoot, string chapter, string? outDirOverride = null,
-        List<ModEntry>? modsOverride = null, string? baseWinOverride = null, string? saveNameOverride = null)
+        List<ModEntry>? modsOverride = null, string? baseWinOverride = null, string? saveNameOverride = null,
+        string? runtimeChapterOverride = null)
     {
         LastDeploySkipped = false;
         PluginBoot(gameRoot);
@@ -1958,7 +1978,8 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
 
             // 复制源章节目录的运行时文件（音频组 / 外部音频 / options.ini 等）
             // 否则新章节目录缺少这些文件会导致游戏启动即黑屏
-            var srcDir = Paths.ChapterDir(gameRoot, chapter);
+            // ★ 运行时文件按**血统章节**取，而不是 mod.json 声明的章节（见 TimelineRuntime）
+            var srcDir = Paths.ChapterDir(gameRoot, runtimeChapterOverride ?? chapter);
             int copied = 0;
             foreach (var f in Directory.GetFiles(srcDir))
             {
@@ -2116,7 +2137,11 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                     LastDeploySkipped = true;
                     // ★ 主产物跳过时，平行时间线仍要各自过一遍签名：否则「章节 mod 没动、时间线 mod 动了」
                     //   会被这次提前 return 连带跳过，时间线产物永远停在旧内容。
-                    if (outDirOverride == null && !NoTimelines) DeployTimelines(gameRoot, chapter);
+                    if (outDirOverride == null && !NoTimelines)
+                    {
+                        // ★ 守卫拦下 ≥1 条 ⇒ 退出码非零（t31 复核 F1）
+                        if (DeployTimelines(gameRoot, chapter) > 0) return 1;
+                    }
                     return 0;
                 }
                 if (sigSame)
@@ -2464,12 +2489,15 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         catch (Exception ex) { Console.WriteLine(L("  [警告] 部署后自检异常（不影响部署）: {0}", ex.Message)); }
 
         // 6) 平行时间线章节：为每个 ~Chapter:N 声明生成独立产物目录
-        if (outDirOverride == null && !NoTimelines) DeployTimelines(gameRoot, chapter);
+        //   ★ 返回值 = 被语言档守卫拦下的条数（t31 复核 F1）：过去丢弃它 ⇒ 拦下了也 exit 0。
+        //     先记下、等清理与插件回调做完再决定退出码，避免「被拦下就不清理」。
+        var tlGuardBlocked = 0;
+        if (outDirOverride == null && !NoTimelines) tlGuardBlocked = DeployTimelines(gameRoot, chapter);
 
         // 部署后顺手清理 builder 自己产生的临时文件
         Cleanup.Run(gameRoot);
         PluginFire(PluginHooks.AfterDeploy, new { chapter });
-        return 0;
+        return tlGuardBlocked > 0 ? 1 : 0;
     }
 
     /// <summary>部署时应当生成的产物清单；返回第一个缺失项（都齐则 null）。
@@ -2538,7 +2566,8 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             }
             catch (Exception ex) { Console.WriteLine(L("  [警告] 音频目录处理失败: {0}", ex.Message)); }
         }
-        int ok = 0;
+        int ok = 0;                     // 成功部署的产物数（沿用原语义：既有日志行逐字不变）
+        int blocked = 0;                // ★ 被语言档守卫拦下的产物数 —— 它就是返回值（调用方据此判退出码）
         foreach (var e in timelines)
         {
             var modsFor = LastAllMods
@@ -2588,9 +2617,25 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 continue;
             }
 
+            // ★ 运行时文件来源 = data.win 的**血统章节**，不是 mod.json 声明的章节。
+            //   实测（2026-09-30 真机 Code Error）：ntl_timeline_8_…_lab / ntl_timeline_4_…_forest 的产物 data.win 是
+            //   第 1 章血统（obj_initializer2 的 Create 用 scr_84_get_lang_string("obj_initializer2_slash_Create_0_gml_2_0")），
+            //   而 mod.json 声明 chapter4 → 复制过去的 lang_en.json 里没有那个键 → 启动第一屏 Code Error。
+            var runtimeChapter = TimelineRuntime.ResolveRuntimeChapter(gameRoot, baseWinOverride!, srcChapter, out _, out _);
+            var cov = TimelineRuntime.CheckCoverage(gameRoot, baseWinOverride!, runtimeChapter);
+            if (!cov.Ok)
+            {
+                TimelineRuntime.PrintGuardFailure(e.Id, e.Name, baseWinOverride!, runtimeChapter, cov);
+                blocked++;     // ★ 被守卫拦下 ⇒ 记数（t31 复核 F1）
+                continue;      // ★ 中止该产物部署（不计入 ok）
+            }
+
             var outDir = Path.Combine(gameRoot, e.Dir.Replace('/', Path.DirectorySeparatorChar));
             var baseLabel = string.IsNullOrEmpty(e.BaseDir) ? L("自带data") : e.BaseDir;
-            Console.WriteLine(L("--- {0}  「{1}」 <- {2}（运行时文件取自 {3}）+ {4} 个 mod ---", e.Id, e.Name, baseLabel, srcChapter, modsFor.Count));
+            var runtimeLabel = runtimeChapter.Equals(srcChapter, StringComparison.OrdinalIgnoreCase)
+                ? runtimeChapter
+                : L("{0}（血统判定；mod.json 声明的是 {1}）", runtimeChapter, srcChapter);
+            Console.WriteLine(L("--- {0}  「{1}」 <- {2}（运行时文件取自 {3}）+ {4} 个 mod ---", e.Id, e.Name, baseLabel, runtimeLabel, modsFor.Count));
             try
             {
                 // 独立存档名：保持简短（过长的名字可能导致游戏启动异常）
@@ -2598,7 +2643,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 // 会导致每次部署生成新的存档目录，玩家的进度"消失"
                 var saveName = $"DRTL{e.Order}_{StableHash(e.Id)}";
 
-                if (Deploy(gameRoot, srcChapter, outDir, modsFor, baseWinOverride, saveName) == 0)
+                if (Deploy(gameRoot, srcChapter, outDir, modsFor, baseWinOverride, saveName, runtimeChapter) == 0)
                 {
                     ok++;
                     // 把存档实际落到游戏目录（C 盘空间紧张 + 便于随游戏一起备份）
@@ -2608,6 +2653,8 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             catch (Exception ex) { Console.WriteLine(L("  [错误] {0}: {1}", e.Id, ex.Message)); }
         }
         Console.WriteLine(L("===== 时间线部署完成: {0}/{1} =====", ok, timelines.Count));
+        if (blocked > 0)
+            Console.WriteLine(L("  [错误] {0} 条产物被语言档守卫拦下 —— 本次部署不能算成功（退出码非零）", blocked));
 
         // 产物已生成 → 重新生成注册表（Enabled 判定基于产物存在性）
         try
@@ -2616,7 +2663,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             Chapters.WriteRegistry(gameRoot, registry);
         }
         catch { }
-        return ok;
+        return blocked;   // ★ 返回值 = 被守卫拦下的条数（0 = 全部通过），调用方据此判退出码
     }
 
     /// <summary>把章节的存档目录做成目录联接（junction）：
@@ -2915,6 +2962,8 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     static string CjkName = "ntl_font_cjk";
     static string CjkFromWin = "";
     static string CjkSourceFont = "fnt_main";
+    /// <summary>--font-native 的强制来源种类（game / base-mod；不给则按 fonts/ntl_native_sources.json 的优先级）。</summary>
+    static string? FontSource = null;
 
     /// <summary>--launch &lt;chapter&gt;：查缓存→命中则硬链接应用（秒开）→ 否则部署→ 存缓存 → 由 Steam 拉起游戏。</summary>
     static int LaunchWithCache(string gameRoot, string chapter, string cacheMaxMb)

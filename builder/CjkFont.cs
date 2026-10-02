@@ -319,9 +319,14 @@ public static class CjkFont
     ///
     /// 产物同样走「预拼页」格式（一张 PNG + 每字形坐标），导入端 30ms 搞定。</summary>
     public static (int glyphs, int sheets) FromDataWin(string outDir, string winPath, string sourceFont, string packName)
+        => FromFont(outDir, Injector.Load(winPath), sourceFont, packName);
+
+    /// <summary>同上，但源数据**已经在内存里**。
+    /// 部署期（FontNative）直接搬「正在打补丁的那份 data」的字形：省一次全量解析
+    /// （章节 data.win 最大 160MB），而且搬到的正是这台机器上的字形。</summary>
+    public static (int glyphs, int sheets) FromFont(string outDir, UndertaleData data, string sourceFont, string packName)
     {
         Directory.CreateDirectory(outDir);
-        var data = Injector.Load(winPath);
         UndertaleModLib.Models.UndertaleFont? font = null;
         if (!string.IsNullOrEmpty(sourceFont))
             font = data.Fonts.FirstOrDefault(f => f.Name?.Content == sourceFont);

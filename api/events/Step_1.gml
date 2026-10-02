@@ -12,9 +12,17 @@ if (!_ntl_extOn)
 if (_ntl_extOn)
 {
     // 常驻分支要靠 ntl_root_step 检测回程标记；只是"被外部占用"的情况直接屏蔽输入即可
+    // ★ t38（帧缓存所有权）：这一帧**不会**执行下面的字符扫描（本函数在 :20 提前 return），
+    //   而 :19 会调用 ntl_root_step() ⇒ 缓存必须先置空，否则搜索框会消费到
+    //   「外部章节接管之前」那一帧残留的字符（甚至被多帧重复计入）。
+    global.ntl_kb_frame_chars = "";
     if (variable_global_exists("ntl_ext_running") && global.ntl_ext_running == 1) ntl_root_step();
     return 0;
 }
+
+// ★ game_change 看门狗（2026-09-30）：切换章节静默失效时按阶梯重试。
+//   必须每帧跑、而且**任何进程**都要跑（root 与章节进程都会 game_change）—— 详见 api/ntl_chg_watch.gml。
+try { ntl_chg_watch(); } catch (e_chgw) { ntl_log("auto", "[chg] ntl_chg_watch 异常: " + string(e_chgw)); }
 
 // obj_ntl_core :: Step —— 每帧：控制台输入 → 事件广播 → 房间轮询
 // ★ 控制台开关：F2（113）
@@ -74,6 +82,10 @@ catch (e)
 var _foc = (global.ntl_console_open == 1) ? ntl_has_focus() : 0;   // 失焦时控制台不读任何键
 if (global.ntl_console_open)
 {
+    // ★ t38（帧缓存所有权）：控制台打开时**选择器不许收到字符** —— 帧缓存显式置空。
+    //   （本帧字符由下面 :266 的 ntl_kb_scan() 消费给控制台自己；ntl_root_step 也会因
+    //    控制台打开而早退，这里是让"所有不经过 :349 常规取字符点 的路径都置空"这条不变量成立。）
+    global.ntl_kb_frame_chars = "";
     // ===== 滚动浏览（↑/↓ 逐行、PgUp/PgDn 翻页、Home/End 跳顶底）=====
     // ⚠ Ctrl/Shift 判定必须用 keyboard_check_direct —— 用 keyboard_check 时被清成 0，
     //   于是 _ctrl 恒假 → "Ctrl+↑ 调不出历史命令"（用户实测）；Shift 快滚同理失效。
@@ -327,6 +339,14 @@ if (global.ntl_console_open)
 else
 {
     global.kbdBlocked = false;
+    // ★★ t38 修复（搜索框打不出字的根因）：同一帧只做一次**字符**扫描 ——
+    //   旧写法这里只调 ntl_kb_scan(true) 重置，把 A-Z / 0-9 / 小键盘 / 标点的当前硬件
+    //   状态全部写进 global.ntl_kb_prev；随后本函数末尾的 ntl_root_step() 在搜索模式下
+    //   再调 ntl_kb_scan()（修改前的 api/ntl_root_step.gml:274）时 _was 已等于 _now ⇒ 按下沿恒为假，
+    //   搜索框一个字符都收不到（真实键盘与合成按键同样）。
+    //   现在：先扫描、把字符放进帧缓存（由 ntl_root_step 的搜索分支消费），再重置 prev。
+    //   重置调用与其语义保持不变（打开控制台首帧不把已按住的键当成新输入）。
+    global.ntl_kb_frame_chars = ntl_kb_scan();
     ntl_kb_scan(true);
 }
 

@@ -2,16 +2,29 @@
 if (ntl_is_root() != 1) return 0;          // ★ 章节里绝对不画（否则会盖在存档界面上）
 var _sel_obj = asset_get_index("obj_CHAPTER_SELECT");
 if (_sel_obj < 0) return 0;
-// 官方对象已被销毁（接管）→ 不依赖它
+// 官方对象已被我们停用（非破坏性接管）→ 不依赖它的实例
 if (global.ntl_ch_loaded != 1) return 0;
 
+// ★★ 尺寸必须分成两组，**不能混用**（2026-09-30 修 F-7：t24 真机验收判 ③ 可见性 fail）：
+//   ① 布局尺寸 _W/_H = display_get_gui_width()/height()。本函数由 Draw GUI 事件调用
+//      （api/events/Draw_64.gml:3），所有 draw_text 的坐标都在 GUI 空间里；t23 之前用的
+//      就是这一组（git show HEAD:api/ntl_root_draw.gml 的 var _W/_H，见对照件），
+//      真机 1280x972 窗口 / 640x480 GUI 下页码、页脚、toast、退出确认全部可见。
+//      控制台界面 api/ntl_console_draw.gml:2,4 同样用 GUI 尺寸，是同一空间的先例。
+//   ② 背景尺寸 _BW/_BH = max(gui, window)。黑底要盖住**整个窗口**：GUI 与窗口比例不一致
+//      时四周会漏出官方画面（用户实测 1296x999 窗口左右各漏 ~8px，官方存档/文件选择界面
+//      的按钮从缝里透出来 =「存档界面按钮错乱」）。t24 ④ 已验通过，不得回退。
+//   ⚠ t23 把两组混成一个 var _W = max(...) ⇒ 页码(_W-150)、页脚(_H-40/-22/-58)、
+//      toast(_H-116)、退出确认(_H-96)、匹配数(560,_H-22) 全被画到窗口外（t24 ③ fail）。
 var _W = display_get_gui_width();
 var _H = display_get_gui_height();
+var _BW = max(_W, window_get_width());
+var _BH = max(_H, window_get_height());
 
-// 背景（覆盖官方界面）
+// 背景（覆盖官方界面）：用 _BW/_BH，超出的部分被窗口裁掉，宁可多不可少
 draw_set_alpha(1);
 draw_set_color(c_black);
-draw_rectangle(0, 0, _W, _H, false);
+draw_rectangle(0, 0, _BW, _BH, false);
 
 // 字体：★ 必须用 Neutraled 的中文字体
 //   （游戏主字体 fnt_main 只有 96 个 ASCII 字形，中文会**整片画不出来** —— 这就是
@@ -119,20 +132,42 @@ if (variable_global_exists("ntl_root_toast") && string_length(string(global.ntl_
     if (global.ntl_root_toast_frames <= 0) global.ntl_root_toast = "";
 }
 // 退出确认 / 正在退出
+// ★ t35 F5②（t30 真机 ③：两帧截图 hash 相同、画面看不出任何提示）：以前是**黑底上的红字**，
+//   对比度极低；现在改成「c_red 实心条 + c_black 黑字」，文本 y 仍是 _H - 96（位置不变）。
+//   几何（布局只用 display_get_gui_*）：条 y = (_H-96)-2 .. (_H-96)+20 ⇒ GUI 480 下 382..404；
+//   上方 toast 墨迹止于 ≈382（_H-116+18）、下方 root.keys2 起于 422 ⇒ 三条互不重叠。
+var _qtext = "";
 if (variable_global_exists("ntl_quit_pending") && global.ntl_quit_pending > 0)
 {
-    draw_set_color(c_red);
-    draw_text(24, _H - 96, ntl_t("root.quit.bye"));
+    _qtext = ntl_t("root.quit.bye");
 }
 else if (variable_global_exists("ntl_quit_armed") && global.ntl_quit_armed == 1)
 {
+    _qtext = ntl_t("root.quit.confirm");
+}
+if (string_length(_qtext) > 0)
+{
+    var _qx1 = min(18 + string_width(_qtext) + 12, _W - 8);   // 右侧留 8px，不越过 GUI 边界
+    if (_qx1 < 24) _qx1 = 24;
     draw_set_color(c_red);
-    draw_text(24, _H - 96, ntl_t("root.quit.confirm"));
+    draw_rectangle(18, (_H - 96) - 2, _qx1, (_H - 96) + 20, false);
+    draw_set_color(c_black);
+    draw_text(24, _H - 96, _qtext);
+    draw_set_color(c_white);
 }
 var _cnt = array_length(global.ntl_ch_filtered);
 if (string_length(global.ntl_ch_search) > 0)
 {
+    // ★ t35 F2（t32 复核 F3：英文两位数会越过 GUI 右边界）：原来固定 x = 560。
+    //   字体实测（fonts/ntl_font_cjk.json 的 Shift 相加，EmSize=12，窗口宽 640 时缩放≈2.0）：
+    //   "匹配 3 项"=59 ⇒ 右端 619；"匹配 10 项"=68 ⇒ 628；"匹配 100 项"=77 ⇒ 637；
+    //   "3 matches"=79 ⇒ 639；"10 matches"=88 ⇒ **648（超出 640）**；"100 matches"=97 ⇒ 657。
+    //   公式 _mx = min(560, _W - string_width(文本) - 8)：中文两例仍是 560（不回归），
+    //   英文两位数 640-88-8 = 544 ⇒ 右端 632（留 8px 余量）。
+    var _mtxt = ntl_ts("root.match", [string(_cnt)]);
+    var _mx = min(560, _W - string_width(_mtxt) - 8);
+    if (_mx < 24) _mx = 24;
     draw_set_color(c_gray);
-    draw_text(560, _H - 22, ntl_ts("root.match", [string(_cnt)]));
+    draw_text(_mx, _H - 22, _mtxt);
 }
 return 1;

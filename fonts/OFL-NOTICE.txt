@@ -2,10 +2,12 @@
 Neutraled 字体包 —— 来源与许可声明（OFL NOTICE）
 ================================================================
 
-生成日期 : 2026-09-29（首版）／ **2026-09-30 全量重渲**（全角标点错位修复后重渲：6 页 → 4 页，见第二节末「版本沿革」）
+生成日期 : 2026-09-29（首版）／ **2026-09-30 全量重渲**／ **2026-09-30 t26 增补第七节「部署期本机字形覆盖」**（全角标点错位修复后重渲：6 页 → 4 页，见第二节末「版本沿革」）
 适用目录 : <游戏根>\Neutraled\fonts\
 随包文件 : ntl_font_cjk.json（字形表）
            ntl_font_cjk_o1..o4.png（字形位图页，2026-09-30 重渲后为 4 张）
+           ntl_native_sources.json（部署期字形来源声明：只有码位区间与来源种类，**不含任何位图**，见第七节）
+           本目录的 README.txt（逐文件来源/许可速查表）
            ofl\OFL-notosans{sc,jp,kr}.txt / ofl\OFL-notosanssymbols2.txt / ofl\OFL-notoemoji.txt（许可全文）
 写入依据 : 实读 Neutraled/fonts/ 下的 JSON 与 PNG、E:/aiwork/out/Neutraled2/_feat/ 下的渲染产物与 TTF 元数据
            （尺寸/字节/SHA-256/版权行都是实测值；上游路径来自 Google Fonts 仓库 ofl/ 目录清单，2026-09-29 通过代理实测可访问；2026-09-30 重渲的「页 → 来源 pass → 字节」见 E:/aiwork/out/Neutraled2/_feat/rerender-ofl-report.json）
@@ -149,5 +151,33 @@ https://raw.githubusercontent.com/google/fonts/main/ofl/<家族目录>/OFL.txt
 * 换字体/加语言时**不要**只改 JSON：位图页与坐标表必须成套生成，否则会出现空格或错位。
 * 本文件只覆盖**字体包**的许可。Neutraled 项目自身（代码、脚本、文档）采用 MIT 许可（2026-09-29 起；见仓库根 LICENSE 与 Neutraled/NOTICE），
   见 release-docs/KNOWN-LIMITATIONS.md 的「许可合规」一节。
+
+七、部署期本机字形覆盖（Native override）
+----------------------------------------------------------------
+背景：Neutraled 自绘 UI（章节选择器、F2 控制台、toast）原先直接用游戏字体；2026-09-29 起字体包全量改为
+OFL Noto 位图后，UI 文字观感与游戏明显不同（用户真机反馈「疑似又被换成微软雅黑」）。因此引入
+**部署期本机字形覆盖**：随包仍是纯 OFL，注入时在本机用游戏自己的字形覆盖对应码位。
+
+* **随包仍是纯 OFL**：仓库/发布包的 fonts\ 里只有第二节那 4 张 OFL 位图页与坐标表，
+  **没有任何游戏字体位图或汉化字库位图**。本机覆盖只发生在**用户自己的机器上、部署（注入）时**，
+  产物写在 <Neutraled>\.tmp\font-native\，**不回写 fonts\，也不进发布包**。
+* **声明式、可审计**：规则在随包的 fonts\ntl_native_sources.json（只声明码位区间与来源种类）：
+  * latin 区（0x20-0x7E、Latin-1/扩展 A-B、常用引号/省略号/欧元/箭头）……来源 game → base-mod；
+  * cjk 区（2E80-9FFF、F900-FAFF、FE30-FE4F、FF00-FFEF）……来源 game → base-mod，MinGlyphs=500
+    （目标里汉字不足 500 个就判定该来源不可用，整区退回 OFL）。
+  * 来源 **game** = 正在注入的那份 data.win（就是这台机器上游戏真正会用的字体：本机 fnt_main 的
+    ASCII 是 8bitoperator JVE，汉字来自本机已装的汉化包）；
+  * 来源 **base-mod** = 已安装基线汉化包的 ref\data.win（Neutraled\mods\<mod>\[<作者>]\<章节|root>\ref\data.win），
+    只在 game 缺字时使用。
+* **缺字自动回退**：本机没有覆盖到的码位继续用 OFL 位图（默认行为即 2026-09-30 全量重渲版）。
+  每次部署写出 <Neutraled>\.tmp\font-native\<scope>\_report\merge-report.json 与 ofl-fallback-list.txt
+  （哪些字换了本机字形、哪些字仍用 OFL、哪些字两边都没有）。任何一步失败都只记警告并**自动退回纯 OFL 包**，不会让部署失败。
+* **许可证说明**：本机覆盖取用的位图来自由**用户自己安装/拥有**的游戏与汉化包（8bitoperator JVE 属
+  DELTARUNE / Toby Fox；汉字位图属用户所装汉化包的作者）。Neutraled **不重新分发**这些位图，
+  只在用户本机做与游戏同源的本地渲染，因此**不改变发布包的 OFL-clean 结论**。
+  用户未安装汉化包时，汉字区自动回落到 OFL Noto（第二、三节），行为与旧版一致。
+* **复核方式（逐像素断言）**：node E:/aiwork/out/Neutraled2/_feat/_t26/verify-csharp.mjs
+  —— 新包 ASCII 0x20-0x7E / CJK 与游戏 fnt_main 逐像素一致；同时反证仓库 fonts\ 里没有任何本机页、
+  没有字体二进制、OFL 字形与游戏不同源。完整报告：release-docs/FONT-PIXEL-REPORT.md。
 
 —— 完 ——

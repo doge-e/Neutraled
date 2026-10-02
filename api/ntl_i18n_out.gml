@@ -784,5 +784,13 @@ ds_map_add(_en, "cmd.screenshot.u", "screenshot [name] [delay seconds]");
 ds_map_add(_zh, "cmd.trace.u", "trace on|off");
 ds_map_add(_en, "cmd.trace.u", "trace on|off");
 
+// ---- 事故修复批次（2026-09-30）：外部章节 park 门控 + 章节启动看门狗 ----
+ds_map_add(_zh, "ext.no_watcher", "未检测到启动器（守候进程）：外部章节无法启动，游戏仍可操作");
+ds_map_add(_en, "ext.no_watcher", "No launcher (watcher) detected: external chapter cannot start");
+ds_map_add(_zh, "ext.park_timeout", "外部引擎没有出现，已回到游戏");
+ds_map_add(_en, "ext.park_timeout", "External engine did not start; returned to the game");
+ds_map_add(_zh, "root.launch_fail", "章节启动失败：请按 Esc 退出游戏后重开");
+ds_map_add(_en, "root.launch_fail", "Chapter launch failed: press Esc to quit and restart");
+
 // @@NTL_I18N_OUT_APPEND@@ —— 后续批次在这里追加键（用 edit 在本行之前插入）
 return 1;

@@ -1,0 +1,73 @@
+{
+  "Version": 1,
+  "Note": "部署期字形来源声明：只声明码位区间与来源种类（game=正在打补丁的那份 data.win；base-mod=基线 mod 的 ref/data.win），不含任何位图；发布包不包含游戏字体位图或汉化字库位图。",
+  "License": "见同目录 OFL-NOTICE.txt 的「部署期本机字形覆盖（Native override）」一节。",
+  "BaseModIds": [
+    "hanhua"
+  ],
+  "Regions": [
+    {
+      "Name": "latin",
+      "Desc": "ASCII 0x20-0x7E + Latin-1/扩展 A-B + 常用引号/省略号/欧元/箭头（游戏 fnt_main 的 8bitoperator JVE 有全部字形）",
+      "Chars": [
+        [
+          32,
+          126
+        ],
+        [
+          160,
+          383
+        ],
+        [
+          8216,
+          8221
+        ],
+        [
+          8230,
+          8230
+        ],
+        [
+          8364,
+          8364
+        ],
+        [
+          8592,
+          8595
+        ]
+      ],
+      "Sources": [
+        "game",
+        "base-mod"
+      ],
+      "Font": "fnt_main"
+    },
+    {
+      "Name": "cjk",
+      "Desc": "中日韩标点/汉字/全角区（本机汉化包 mods/hanhua 的像素汉字；本机没有的用包里的 OFL Noto 字形）",
+      "Chars": [
+        [
+          11904,
+          40959
+        ],
+        [
+          63744,
+          64255
+        ],
+        [
+          65072,
+          65103
+        ],
+        [
+          65280,
+          65519
+        ]
+      ],
+      "Sources": [
+        "game",
+        "base-mod"
+      ],
+      "Font": "fnt_main",
+      "MinGlyphs": 500
+    }
+  ]
+}

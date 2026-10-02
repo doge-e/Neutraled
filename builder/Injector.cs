@@ -265,7 +265,12 @@ public static class Injector
         var ntlFontDir = Path.Combine(Path.GetDirectoryName(apiDir) ?? ".", "fonts");
         if (Directory.Exists(ntlFontDir))
         {
-            var ntlFonts = FontImport.Import(data, ntlFontDir);
+            // ★ 部署期「本机字形覆盖」：把用户自己 data.win 里的 8bitoperator JVE（拉丁）
+            //   与汉化像素汉字覆盖进 OFL 包的**副本** —— 发布包只带 OFL 字形，观感却与游戏一致。
+            //   （fonts/ntl_native_sources.json 声明区间；失败自动回退纯 OFL 包，绝不中断部署）
+            var ntlGameRoot = gameRoot ?? Path.GetDirectoryName(Path.GetDirectoryName(apiDir) ?? ".") ?? ".";
+            var ntlUseDir = FontNative.Prepare(data, ntlGameRoot, ntlFontDir, chapter ?? "root") ?? ntlFontDir;
+            var ntlFonts = FontImport.Import(data, ntlUseDir);
             if (ntlFonts > 0) Paths.Log(L("    内置字体包: {0} 个（中文等）", ntlFonts));
         }
 

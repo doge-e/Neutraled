@@ -12,12 +12,14 @@ if (ntl_lang_set(_next) == 1)
     ntl_config_set_lang(_next);
     global.ntl_root_toast = ntl_ts("root.lang.cur", [_next]);
     global.ntl_root_toast_frames = 120;
+    ntl_log("root", "[toast] lang=" + string(global.ntl_lang) + " key=root.lang.cur text=" + string(global.ntl_root_toast));
     ntl_log("root", "[root] 语言已切换为 " + _next + "（共 " + string(array_length(_list)) + " 种可选）");
 }
 else
 {
     global.ntl_root_toast = ntl_ts("root.lang.fail", [_next]);
     global.ntl_root_toast_frames = 120;
+    ntl_log("root", "[toast] lang=" + string(global.ntl_lang) + " key=root.lang.fail text=" + string(global.ntl_root_toast));
     ntl_log("root", "[root] 语言 " + _next + " 加载失败");
 }
 return 1;
