@@ -5,11 +5,28 @@
 //   --watch-external 守候进程，启动请求永远没人消费 ⇒ 用户只能杀进程。现在分三段：
 //   ① 确认门（≤120 帧 ≈2 秒）：请求文件被消费掉（守候进程读到就删，见 builder/Program.cs:1068）
 //      或 Neutraled/external-running.txt 出现（守候进程拉起外部引擎时写，Program.cs:1120）
-//      ⇒ 才算「外面真的有人」；确认期间**不静音、不改标题、不吞输入**。
+//      ⇒ 才算「外面真的有人」；确认期间**不静音、不改标题**，但选择器输入自 m27417 起即冻结。
 //   ② 确认不了 ⇒ 绝不 park：清标志、恢复音量与标题、删掉没人要的请求文件、给可见提示
 //      （ext.no_watcher），输入照常可用。
 //   ③ park 之后也有逃生口：按 Esc 立刻回到游戏；external-running.txt 一直没出现过时只等
 //      600 帧（≈10 秒），出现过才用 45 分钟兜底。
+//
+// ★★★ 用户主诉修复（2026-10-03 m27417）：「选择章节后不应该还能够再在选择器进行操作，直到返回」
+//   按下 Enter/Z 选定章节后**立刻上锁**（见文件末尾的确认分支）：导航 / 翻页 / 搜索 / 语言 /
+//   确认全部冻结，直到 ① 回到选择器（park 正常退出 / 外部引擎退出）② 本次启动被取消
+//   （没有守候进程 :86-95、运行时目录 15 秒仍不可写 :38-46）。
+//   这里做一次自愈：既没有「启动中」也没有「后台等待中」⇒ 锁必然是开的，
+//   杜绝任何异常路径把选择器永久锁死。
+if (!variable_global_exists("ntl_launch_locked")) global.ntl_launch_locked = 0;
+if (!variable_global_exists("ntl_launch_locked_n")) global.ntl_launch_locked_n = 0;
+var _launchBusy = ((variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1)
+    || (variable_global_exists("ntl_ext_running") && global.ntl_ext_running == 1));
+if (!_launchBusy && global.ntl_launch_locked == 1)
+{
+    global.ntl_launch_locked = 0;
+    global.ntl_launch_locked_n = 0;
+    ntl_log("root", "[root] 选择器输入已解冻（没有启动 / 等待在进行）");
+}
 var _extParked = (variable_global_exists("ntl_ext_running") && global.ntl_ext_running == 1);
 if (variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1)
 {
@@ -25,9 +42,29 @@ if (variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1
         if (!variable_global_exists("ntl_ext_req_frame")) global.ntl_ext_req_frame = global.ntl_frames;
         if (!variable_global_exists("ntl_ext_park_seen")) global.ntl_ext_park_seen = 0;
         if (!variable_global_exists("ntl_ext_req_seen")) global.ntl_ext_req_seen = 0;
-        if (global.ntl_ext_confirmed != 1)
+        // ★ 用户主诉修复（2026-10-03「无存档进入 kristal 章节不应当提示，应当自动修复后继续」）：
+        //   运行时目录不可写时，ntl_ext_launch 把启动请求**挂起**而不是弹提示（见 api/ntl_rt_stash.gml）。
+        //   这里每进一次门控（约 20 帧）自动重修一次目录并重试落盘；成功即接回下面的正常确认流程。
+        //   ⚠ 挂起期间必须跳过确认段，否则 120 帧后会把「请求还没写出去」误判成「没人消费」→ 误 toast。
+        if (variable_global_exists("ntl_rt_pending_txt") && string_length(string(global.ntl_rt_pending_txt)) > 0)
         {
-            var _extReq = "Neutraled/launch-request.json";
+            var _rtRc = ntl_rt_retry();
+            global.ntl_ext_wait = 20;
+            if (_rtRc == 2)
+            {
+                // 兜底：≈15 秒仍修不好（连自动补建联接目标都失败）才给一次可见提示并放开输入
+                ntl_rt_stash_clear();
+                global.ntl_ext_launching = 0;
+                global.ntl_ext_wait = 0;
+                global.ntl_root_toast = ntl_t("ext.no_runtime");
+                global.ntl_root_toast_frames = 600;
+                ntl_log("root", "[toast] lang=" + string(global.ntl_lang) + " key=ext.no_runtime text=" + string(global.ntl_root_toast));
+                ntl_log("ext", "[错误] 运行时目录 15 秒内仍不可写（自动修复失败），已放弃本次启动");
+            }
+        }
+        else if (global.ntl_ext_confirmed != 1)
+        {
+            var _extReq = ntl_rt_path("launch-request.json");
             var _extSeen = 0;
             // ★ F-3（t25 复核）：**不能**把「请求文件不存在」直接当成「已被守候消费」——
             //   请求若从未落盘、被第三方清掉、或写到了别的工作目录，旧写法会立刻误判为已确认
@@ -46,7 +83,7 @@ if (variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1
                 _extSeen = 1;
                 ntl_log("ext", "[ext] 启动请求已被守候进程消费（文件从存在变为不存在）");
             }
-            try { if (file_exists("Neutraled/external-running.txt")) _extSeen = 1; } catch (e_extr2) { }
+            try { if (file_exists(ntl_rt_path("external-running.txt"))) _extSeen = 1; } catch (e_extr2) { }
             if (_extSeen == 1)
             {
                 global.ntl_ext_confirmed = 1;
@@ -58,7 +95,8 @@ if (variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1
                 if (_extWaited < 0) _extWaited = 0;
                 if (_extWaited <= 120)
                 {
-                    // 确认窗口内：不静音、不改标题、不吞输入（用户还能继续操作）
+                    // 确认窗口内：不静音、不改标题（选择器输入自 m27417 起已冻结 —— 用户选定章节后
+                    // 不应再能操作选择器；这里不解除冻结，等 park 退出或上面的取消分支统一放开）
                     global.ntl_ext_wait = 0;
                 }
                 else
@@ -93,9 +131,9 @@ if (variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1
             {
                 try
                 {
-                    if (file_exists("Neutraled/external-exited.txt"))
+                    if (file_exists(ntl_rt_path("external-exited.txt")))
                     {
-                        file_delete("Neutraled/external-exited.txt");
+                        file_delete(ntl_rt_path("external-exited.txt"));
                         ntl_log("ext", "[ext] park 开始前清掉了残留回程标记（否则会立刻误判外部章节已退出）");
                     }
                 }
@@ -148,13 +186,13 @@ if (_extParked)
             }
         }
     }
-    var _extMarker = "Neutraled/external-exited.txt";
+    var _extMarker = ntl_rt_path("external-exited.txt");
     var _extDone = 0;
     try { if (file_exists(_extMarker)) _extDone = 1; } catch (e_extm1) { _extDone = 0; }
     var _extEsc = 0;
     try { _extEsc = ntl_key_fire(27, 0, 0); } catch (e_exte1) { _extEsc = 0; }
     var _extRunMark = 0;
-    try { if (file_exists("Neutraled/external-running.txt")) _extRunMark = 1; } catch (e_extm2) { }
+    try { if (file_exists(ntl_rt_path("external-running.txt"))) _extRunMark = 1; } catch (e_extm2) { }
     if (_extRunMark == 1) global.ntl_ext_park_seen = 1;
     var _extTimeout = 0;
     if (global.ntl_ext_park_seen != 1)
@@ -348,8 +386,12 @@ if (_ui_obj >= 0)
 //   活回来跟我们叠着画（用户实测：hub 里连按 30 次 Enter 全部静默无效）。
 //   现在只做一件事：把「选择屏专属」的官方实例停用（instance_deactivate_object，不销毁、
 //   随时可恢复），**obj_ui_choice 完全不碰**。幂等：每帧复查，状态变了才打日志。
+// ★ 2026-10-03：官方「开始屏」obj_screen_start 也纳入停用 —— 它是**官方移动音效的唯一音源**
+//   （gml_Object_obj_screen_start_Step_0.gml:33/:39 → audio_play_sound(7,50,0)）。停用它 + 我们
+//   自己播（api/ntl_ui_sfx.gml）⇒ 一次按键只响一声；而且从章节返回时（returning_1，官方根本
+//   不创建这个屏，见 obj_CHAPTER_SELECT_Create_0.gml:61-64）音效照常存在。
 var _takeMine = ["obj_CHAPTER_SELECT", "obj_screen_select", "obj_screen_select_footer",
-                 "obj_screen_select_list", "obj_ui_chapter"];
+                 "obj_screen_select_list", "obj_ui_chapter", "obj_screen_start"];
 if (!variable_global_exists("ntl_takeover_insts")) global.ntl_takeover_insts = 0;
 if (!variable_global_exists("ntl_takeover_frame")) global.ntl_takeover_frame = global.ntl_frames;
 var _takeNow = 0;
@@ -433,6 +475,21 @@ if (_choiceN != global.ntl_takeover_choice_n || _choiceIn != global.ntl_takeover
 var _pages = ntl_root_pages();
 ntl_root_filter();
 
+// ---- ★★★ 用户主诉修复（2026-10-03 m27417）：选定章节后，选择器不再接受任何操作 ----
+//   触发与释放全在外部章节那两段里（顶部自愈 + park 退出 + 取消分支），这里只负责冻结。
+//   冻结期间也不积累按键边沿（ntl_key_reset）：窗口被守候进程隐藏 / 恢复时，
+//   残留的按下沿不能变成一次导航或又一次启动（历史事故：一次 Enter 连拉两个外部引擎）。
+if (global.ntl_launch_locked == 1)
+{
+    if (global.ntl_launch_locked_n == 0)
+    {
+        ntl_log("root", "[root] 已选定章节：选择器输入已冻结（回到选择器后自动恢复）");
+    }
+    global.ntl_launch_locked_n += 1;
+    ntl_key_reset();
+    return 0;
+}
+
 // ---- 搜索模式 ----
 if (global.ntl_ch_search_mode == 1)
 {
@@ -488,6 +545,7 @@ if (global.ntl_ch_search_mode == 1)
 //   用绘制代码同款 API ntl_root_page_items(page)：7 个槽 → 章节索引（-1 = 空槽）
 if (ntl_key_fire(38, 250000, 90000) == 1)        // Up
 {
+    ntl_ui_sfx("move");   // ★ 自己发声，不依赖官方开始屏（api/ntl_ui_sfx.gml）
     var _itU = ntl_root_page_items(global.ntl_ch_page);
     if (array_length(_itU) < 7)
     {
@@ -521,6 +579,7 @@ if (ntl_key_fire(38, 250000, 90000) == 1)        // Up
 }
 if (ntl_key_fire(40, 250000, 90000) == 1)        // Down
 {
+    ntl_ui_sfx("move");   // ★ 自己发声（api/ntl_ui_sfx.gml）
     var _itD = ntl_root_page_items(global.ntl_ch_page);
     if (array_length(_itD) < 7)
     {
@@ -552,11 +611,13 @@ if (ntl_key_fire(40, 250000, 90000) == 1)        // Down
 }
 if (ntl_key_fire(37, 250000, 120000) == 1)        // Left
 {
+    ntl_ui_sfx("move");   // ★ 翻页音也由自己发（官方同用 7 号音效）
     global.ntl_ch_page -= 1;
     if (global.ntl_ch_page < 0) global.ntl_ch_page = _pages - 1;
 }
 if (ntl_key_fire(39, 250000, 120000) == 1)        // Right
 {
+    ntl_ui_sfx("move");   // ★ 翻页音也由自己发
     global.ntl_ch_page += 1;
     if (global.ntl_ch_page >= _pages) global.ntl_ch_page = 0;
 }
@@ -640,6 +701,13 @@ if (global.ntl_quit_pending > 0)
 //   :170-262）→ Enter/Z 不会再被抢走，普通章节和外部章节都可以直接按 Enter/Z
 if (ntl_key_fire(13, 0, 0) == 1 || ntl_key_fire(90, 0, 0) == 1)
 {
+    // ★ 确认音自己播（api/ntl_ui_sfx.gml）：必须**先响再启动** —— 外部章节会立刻 park
+    //   （静音 + 隐藏窗口），放在 ntl_root_launch 之后就听不到了。
+    // ★★★ 用户主诉修复（2026-10-03 m27417）：从这一刻起选择器不再响应任何操作，
+    //   直到回到选择器（park 退出）或本次启动被取消（见文件顶部自愈 + :86-95 / :38-46）。
+    global.ntl_launch_locked = 1;
+    global.ntl_launch_locked_n = 0;
+    ntl_ui_sfx("confirm");
     ntl_root_launch(global.ntl_ch_sel);
     // ★ 用户主诉修复（2026-10-03）：启动后立刻清掉 Enter/Z 的按下沿与按下状态。
     //   实测事故：外部章节请求写出后窗口被守候进程隐藏，GM 在窗口隐藏时会暂停 ⇒ 这次按下

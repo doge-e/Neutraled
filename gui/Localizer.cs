@@ -134,6 +134,16 @@ public static class Localizer
         ["源码级差异层"] = "Source-level Diff Layer",
         ["整包 mod → 可叠加 patch 层（反编译真实改动，绕过索引问题）"] =
             "Whole-pack mod → stackable patch layer (real changes, bypasses index drift)",
+        // ---- 守候进程（Kristal 等外部章节的接管者；见 builder/WatchAutostart.cs）----
+        ["守候进程：状态 / 立即启动"] = "Watcher: Status / Start Now",
+        ["看守候是否在跑、自启装了没有；没在跑就立刻起一个（选中 Kristal 章节需要它）"] =
+            "Check the watcher; start one now if it is not running (Kristal needs it)",
+        ["守候进程自启：开启"] = "Watcher Autostart: Enable",
+        ["登录 / 解锁 / 每 1 分钟兜底自动拉起守候（计划任务 + 开机启动项，都不需要管理员权限）"] =
+            "Start the watcher at logon / unlock / every minute (no admin rights)",
+        ["守候进程自启：关闭"] = "Watcher Autostart: Disable",
+        ["移除计划任务与开机启动项（不会杀掉当前正在跑的守候）"] =
+            "Remove the scheduled task and the Startup shortcut (does not kill a running watcher)",
         ["选择 Kristal 宿主项目目录（含 mod.json）"] = "Select the Kristal host project folder (with mod.json)",
         ["宿主: "] = "Host: ",
         ["添加插件目录..."] = "Add plug-in folder...",

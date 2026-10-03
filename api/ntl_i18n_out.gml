@@ -785,11 +785,14 @@ ds_map_add(_zh, "cmd.trace.u", "trace on|off");
 ds_map_add(_en, "cmd.trace.u", "trace on|off");
 
 // ---- 事故修复批次（2026-09-30）：外部章节 park 门控 + 章节启动看门狗 ----
-ds_map_add(_zh, "ext.no_watcher", "未检测到启动器（守候进程）：外部章节无法启动，游戏仍可操作");
-ds_map_add(_en, "ext.no_watcher", "No launcher (watcher) detected: external chapter cannot start");
-// ★ 用户主诉修复（2026-10-03「无存档下无法进入 kristal 章节」）：存档联接悬空 → 运行时目录不可写
-ds_map_add(_zh, "ext.no_runtime", "运行时目录不可写：Neutraled/ 的存档联接可能已悬空 —— 重开守候进程（scripts/watch-external.vbs）后重试");
-ds_map_add(_en, "ext.no_runtime", "Runtime directory not writable: the Neutraled save junction may be dangling — restart the watcher (scripts/watch-external.vbs) and retry");
+ds_map_add(_zh, "ext.no_watcher", "未检测到守候进程：外部章节无法启动 —— 打开 Neutraled 管理器（会自动启动它），或在工具箱里开启「守候进程自启」");
+ds_map_add(_en, "ext.no_watcher", "No watcher detected: external chapters cannot start -- open the Neutraled manager (it starts one) or enable Watcher Autostart in the Toolbox");
+// ★ 用户主诉修复（2026-10-03「无存档下无法进入 kristal 章节」）：存档联接悬空 → 运行时目录不可写。
+//   ★ 2026-10-03 二次修复（用户要求「不应当提示，应当自动修复后继续」）：
+//     现在先自动补建联接目标目录并继续启动（api/ntl_rt_repair.gml + api/ntl_rt_retry.gml），
+//     这条文案只在**自动修复 ≈15 秒仍未成功**时才作为兜底提示出现。
+ds_map_add(_zh, "ext.no_runtime", "运行时目录一直不可写（自动修复未能成功）：Neutraled/ 的存档联接可能已悬空 —— 重开守候进程（scripts/watch-external.vbs）后重试");
+ds_map_add(_en, "ext.no_runtime", "Runtime directory still not writable (auto-repair failed): the Neutraled save junction may be dangling — restart the watcher (scripts/watch-external.vbs) and retry");
 ds_map_add(_zh, "ext.park_timeout", "外部引擎没有出现，已回到游戏");
 ds_map_add(_en, "ext.park_timeout", "External engine did not start; returned to the game");
 ds_map_add(_zh, "root.launch_fail", "章节启动失败：请按 Esc 退出游戏后重开");

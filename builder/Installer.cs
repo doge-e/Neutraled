@@ -271,6 +271,22 @@ public static class Installer
             Console.WriteLine(L("  [警告] 找不到 ntl-gui.exe，跳过快捷方式（GUI 需要先构建 gui 项目）"));
         }
 
+        // 外部章节（Kristal 等）需要"守候进程"在跑：游戏内没有启动进程的内置函数，只能靠它消费
+        // launch-request.json。安装时**不**擅自替用户改开机项 / 计划任务，只给两条可复制的命令。
+        try
+        {
+            bool hasExternal = false;
+            foreach (var e in Chapters.LoadExternalList(gameRoot))
+                if (e.TryGetValue("exe", out var v) && v is string s && s.Length > 0) { hasExternal = true; break; }
+            if (hasExternal)
+            {
+                Console.WriteLine(L("  提示：你装了外部章节（如 Kristal）—— 在游戏里选中它需要守候进程在跑。"));
+                Console.WriteLine(L("        现在开一次：{0}", "ntl-builder --ensure-watcher"));
+                Console.WriteLine(L("        开机就有（免管理员）：{0}（管理器工具箱里也能一键开）", "ntl-builder --watch-autostart on"));
+            }
+        }
+        catch { }
+
         Console.WriteLine(L("  ✅ 安装完成"));
         if (guiExe != null)
             Console.WriteLine(L("  下一步：双击桌面上的 {0} 选择章节与 mod，然后点「部署并启动」", ShortcutName()));

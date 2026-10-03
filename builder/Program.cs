@@ -190,6 +190,7 @@ public static class Program
             int chapSlot = 0;                 // --new-chapter: --slot N（0=自动）
             string? chapFork = null;          // --new-chapter: --fork <mod>[:作者[:chapterN]]
             string chapTemplate = "room";     // --new-chapter: --template room|empty
+            string? watchMode = null;         // --watch-autostart: on|off|status（省略 = status，只读）
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -300,6 +301,11 @@ public static class Program
                 case "--kristal-merge" when i + 1 < args.Length: cmd = "kristal-merge"; importPath = args[++i]; break;
                 case "--conflicts": cmd = "conflicts"; break;
                 case "--watch-external": cmd = "watch-external"; break;
+                case "--ensure-watcher": cmd = "ensure-watcher"; break;
+                case "--watch-autostart":
+                    cmd = "watch-autostart";
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) watchMode = args[++i];
+                    break;
                 case "--focus-test" when i + 1 < args.Length: cmd = "focus-test"; importPath = args[++i]; break;
                 case "--send-f2": sendF2 = true; break;
                 case "--send-text" when i + 1 < args.Length: cmd = "focus-test"; sendText = args[++i]; break;
@@ -361,6 +367,7 @@ public static class Program
                     case "--dumpall" when i + 1 < args.Length: cmd = "dumpall"; importPath = args[++i]; break;
                     case "--no-save-rename": DisableSaveRename = true; break;
                     case "--link-saves" when i + 1 < args.Length: cmd = "link-saves"; saveTarget = args[++i]; break;
+                    case "--repair-saves": cmd = "repair-saves"; break;   // ★ 只做"存档联接悬空"自愈（不部署、不启动游戏）
                     case "--room" when i + 1 < args.Length: cmd = "room"; roomQuery = args[++i]; break;
                     case "--pack" when i + 1 < args.Length: cmd = "pack"; packName = args[++i]; break;
                     case "--import-kristal" when i + 1 < args.Length: cmd = "import-kristal"; importPath = args[++i]; break;
@@ -393,6 +400,7 @@ public static class Program
                 "make-bside" => BSide.MakeBSideSave(gameRoot, ChapterNum(chapter), bsideSlot, bsideAllSlots),
                 "dumpall" => DumpAll(gameRoot, chapter, importPath!),
                 "link-saves" => LinkSaves(gameRoot, saveTarget!),
+                "repair-saves" => RepairSaveLinksCli(gameRoot),
                 "room" => ListRooms(gameRoot, chapter, roomQuery!),
                 "pack" => Pack(gameRoot, packName!, author, chapter, packsOut),
                 "import-kristal" => KristalImport.Import(gameRoot, importPath!, modName, author, timeline),
@@ -440,6 +448,8 @@ public static class Program
                 "kristal-merge" => KristalMerge.Import(gameRoot, importPath!, withDirs, modName, author),
                 "conflicts" => ConflictsCli(gameRoot, chapter),
                 "watch-external" => WatchExternal(gameRoot),
+                "ensure-watcher" => WatchAutostart.EnsureRunningCli(gameRoot),
+                "watch-autostart" => WatchAutostart.Cli(gameRoot, watchMode),
                 "focus-test" => WinFocus.FocusTest(importPath!, sendF2 || sendText != null || sendKeys != null, keepProc, sendText, sendKeys),
                 "kristal-console" => KristalConsoleCli(gameRoot, importPath),
                 "kristal-ensure" => KristalEnsureCli(gameRoot, importPath),
@@ -546,9 +556,12 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         Console.WriteLine(L("  --api-doc                       生成 API 文档"));
         Console.WriteLine(L("  --selftest [--no-launch]        端到端自测"));
         Console.WriteLine(L("  --probe-timeline-runtime        只读预检：时间线产物的运行时文件章节（按 data.win 血统解析）+ 语言档覆盖守卫，不写盘"));
+        Console.WriteLine(L("  --repair-saves                  只修「存档联接悬空」（补建空目录；不部署、不启动游戏）"));
         Console.WriteLine();
         Console.WriteLine(L("  外部章节（Kristal / 冰封帷幕这类成品）:"));
         Console.WriteLine(L("  --add-external <exe> [名字]     注册成外部章节（章节选择器里可选）"));
+        Console.WriteLine(L("  --ensure-watcher                守候进程没在跑就立刻起一个（静默）；已在跑则什么都不做"));
+        Console.WriteLine(L("  --watch-autostart [on|off|status]  守候进程自启（登录 / 解锁 / 每 1 分钟兜底，免管理员）"));
         Console.WriteLine(L("  --watch-external                守候进程（静默，无窗口）：看到启动请求就拉起外部引擎，"));
         Console.WriteLine(L("                                  并负责隐藏/恢复 DELTARUNE 窗口 + 把焦点交给外部引擎"));
         Console.WriteLine(L("  --kristal-console [exe]         给**没有源码的融合版 Kristal exe** 注入 Neutraled 控制台"));
@@ -1058,6 +1071,15 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
 
     static int WatchExternal(string gameRoot)
     {
+        // ★ 单实例：守候现在有四个入口会拉起它（开机自启 / 解锁与每分钟兜底 / GUI / 启动游戏前），
+        //   重复启动必须无害 —— 两个守候会同时抢同一个 launch-request.json（一个读到、另一个读到空）。
+        //   必须在 GoSilent 之前判断：输掉的那个进程不该隐藏窗口、也不该往日志里灌东西。
+        using var single = WatchAutostart.TryAcquireWatcherMutex();
+        if (single == null)
+        {
+            Console.WriteLine(L("  已有守候进程在运行，本进程退出"));
+            return 0;
+        }
         GoSilent(gameRoot);
         EnsureKristalCjkFallback(Path.Combine(gameRoot, "Kristal-main"));
         RepairSaveLinks(gameRoot);      // ★ 存档联接悬空 → 运行时目录不可写（用户主诉「无存档进不了 Kristal」）
@@ -1710,6 +1732,16 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
 
     private static int DeployAll(string gameRoot, string chapter)
     {
+        // ★ 部署前先修"存档联接悬空"：悬空时游戏运行时目录整个不可写（连 dr-api.log 都没有），
+        //   症状看起来像 mod 坏了。只补建**空目录**，不动任何现有存档。
+        RepairSaveLinks(gameRoot);
+
+        // ★ 装/更新完就顺手确认"守候进程"在跑：外部章节（Kristal 等）在游戏内**没有**启动进程的
+        //   内置函数（url_open / os_start_process 在这个运行时里一个都不存在），只能由守候进程去
+        //   消费 launch-request.json。部署完它就在跑 → 玩家之后直接用 Steam 启动游戏也能进外部章节。
+        //   没有任何外部章节（配了 exe 的）时它什么都不做，也不会白起一个常驻进程。
+        WatchAutostart.EnsureWatcherIfNeeded(gameRoot);
+
         if (!chapter.Equals("all", StringComparison.OrdinalIgnoreCase))
             return Deploy(gameRoot, chapter);
 
@@ -2758,7 +2790,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     ///   于是游戏运行时目录 %LOCALAPPDATA%\DELTARUNE\Neutraled 整个不可写：dr-api.log 都不会生成，
     ///   启动请求/运行标记也写不出去 ⇒ 外部章节点了没反应（用户看到的就是"进不去 Kristal 章节"）。
     ///   这里只补建**缺失的目标目录**（空目录 = 没存档，正是玩家想要的状态），不动任何现有文件。</summary>
-    private static int RepairSaveLinks(string gameRoot)
+    private static int RepairSaveLinks(string gameRoot, bool verbose = false)
     {
         int healed = 0;
         try
@@ -2795,7 +2827,26 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 Console.WriteLine(L("  [修复] 共补建 {0} 个存档目录 —— 运行时目录与外部章节现在可以正常读写", healed));
         }
         catch (Exception ex) { Console.WriteLine(L("  [警告] 存档联接扫描失败: {0}", ex.Message)); }
+        if (verbose && healed == 0)
+            Console.WriteLine(L("  存档联接检查完成：未发现悬空（无需修复）"));
         return healed;
+    }
+
+    /// <summary>--repair-saves：只做"存档联接悬空"自愈，不部署、不启动游戏。
+    ///   给 GUI 启动时、开机自启/守候进程在**拉起游戏之前**调用。
+    ///   为什么必须在启动之前：GM 在进程启动时解析存档沙箱根（%LOCALAPPDATA%\&lt;名&gt; → Neutraled/saves/&lt;名&gt;），
+    ///   那一刻目标目录若不存在，整个文件子系统全线失效 —— 相对写、绝对写、directory_create 全部失败且**不抛异常**
+    ///   （2026-10-03 实测：删掉目标后启动，目标没被自愈、dr-api.log 在沙箱与安装区都不生成、
+    ///   绝对路径探针文件也未被重写）。所以游戏内自愈在这一场景下是死代码，只能在这里提前修。</summary>
+    private static int RepairSaveLinksCli(string gameRoot)
+    {
+        Console.WriteLine(L("===== 存档联接自愈 ====="));
+        Console.WriteLine(L("  存档区: {0}", Path.Combine(Paths.NeutraledRoot(gameRoot), "saves")));
+        var n = RepairSaveLinks(gameRoot, verbose: true);
+        Console.WriteLine(n > 0
+            ? L("  ✅ 已补建 {0} 个悬空目标目录（空目录 = 无存档，正是玩家要的状态）", n)
+            : L("  ✅ 存档联接全部正常"));
+        return 0;
     }
 
     /// <summary>取目录联接（junction）的目标路径；不是联接或读不到时返回空串。
@@ -3166,6 +3217,15 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             Cache.Store(gameRoot, sig, gameVer, chapter, mods, targets);
             Console.WriteLine(L("  ✅ 部署完成并已存入缓存"));
         }
+
+        // ★ 启动游戏之前**必须**确认存档联接不悬空：GM 在进程启动那一刻解析存档沙箱根，
+        //   目标目录若不存在，整个文件子系统全线失效（dr-api.log 都写不出来，游戏内自愈也不可能 ——
+        //   2026-10-03 实测）。这里补建的是**空目录**，不会动任何现有存档。
+        RepairSaveLinks(gameRoot);
+
+        // ★ 外部章节（Kristal 等）靠守候进程接管：游戏内没有任何"启动进程"的内置函数，
+        //   守候没在跑时玩家选中外部章节只会看到提示。启动游戏前顺手把它拉起来（幂等）。
+        WatchAutostart.EnsureWatcherIfNeeded(gameRoot);
 
         // 交给 Steam 拉起（保证计时 / 云存档 / 成就）
         Console.WriteLine(L("  启动游戏（通过 Steam）..."));

@@ -17,9 +17,13 @@ $before = (Get-FileHash (Join-Path $Sandbox 'data.win') -Algorithm SHA256).Hash
 $beforeCh1 = (Get-FileHash (Join-Path $Sandbox 'chapter1_windows\data.win') -Algorithm SHA256).Hash
 Write-Host '  sandbox ready (DELTARUNE.exe + data.win + chapter1_windows/data.win)'
 
-# Layout compatibility: installer layout -> <release root>\install\ntl-builder.exe
+# Layout compatibility: versioned layout -> <release root>\Neutraled-<ver>\install\ntl-builder.exe（tools\package.ps1 现在的输出）
+#                      installer layout -> <release root>\install\ntl-builder.exe
 #                      legacy layout    -> <release root>\bin\ntl-builder.exe
 $exeCands = @(
+    (Get-ChildItem -LiteralPath $Out -Directory -Filter 'Neutraled-*' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        ForEach-Object { Join-Path $_.FullName 'install\ntl-builder.exe' }),
     (Join-Path $Out 'install\ntl-builder.exe'),
     (Join-Path $Out 'bin\ntl-builder.exe')
 )

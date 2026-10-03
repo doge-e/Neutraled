@@ -174,6 +174,26 @@ public sealed class MainForm : Form
             Log(Localizer.T("部署加速档: {0}（工具箱里可改）", DeployOptions.FastDeploy ? "on" : "off"));
             if (!File.Exists(Path.Combine(Program.GameRoot, "DELTARUNE.exe")))
                 Log(Localizer.T("[警告] 未检测到 DELTARUNE.exe —— 请把整个 Neutraled 文件夹放到游戏根目录下运行"));
+
+            // ★ 打开管理器就先修一次"存档联接悬空"：玩家删掉 Neutraled/saves/<名>/ 之后联接会指向空气，
+            //   而游戏在**悬空状态下启动**会让 GM 的文件子系统整个失效（连绝对路径写都失败且不报错），
+            //   游戏内自愈那时已经不可能 —— 只能赶在游戏进程起来之前修（见 builder 的 RepairSaveLinks 注释）。
+            _ = Task.Run(async () =>
+            {
+                try { await Program.RunBuilderAsync("--repair-saves", s => Log("  " + s.TrimEnd())); }
+                catch { }
+            });
+
+            // ★ 顺手确认"守候进程"在跑：Kristal 这类外部章节的启动请求（launch-request.json）
+            //   只有守候进程会消费 —— 游戏内没有任何"启动进程"的内置函数，所以守候没跑时
+            //   玩家选中外部章节只会看到提示。幂等：已在跑时 --ensure-watcher 什么都不做，
+            //   一个外部章节都没配置时它也不会起（见 builder 的 WatchAutostart.EnsureWatcherIfNeeded）。
+            _ = Task.Run(async () =>
+            {
+                try { await Program.RunBuilderAsync("--ensure-watcher", s => Log("  " + s.TrimEnd())); }
+                catch { }
+            });
+
             RefreshMods();
         };
     }
@@ -873,6 +893,19 @@ public sealed class MainForm : Form
             .Click += async (_, _) => await ConflictsCheckAsync(dlg);
         Add(Localizer.T("源码级差异层"), Localizer.T("整包 mod → 可叠加 patch 层（反编译真实改动，绕过索引问题）"))
             .Click += async (_, _) => await LayerFromBaseAsync(dlg);
+        // ---- 守候进程（Kristal 等"外部章节"的接管者）----
+        //   游戏内没有启动进程的内置函数：选中外部章节时游戏只能写一个 launch-request.json，
+        //   等外部进程去把它拉起来（见 builder/WatchAutostart.cs）。守候没在跑 → 只能给提示。
+        Add(Localizer.T("守候进程：状态 / 立即启动"), Localizer.T("看守候是否在跑、自启装了没有；没在跑就立刻起一个（选中 Kristal 章节需要它）"))
+            .Click += async (_, _) =>
+            {
+                await Program.RunBuilderAsync("--watch-autostart status", Log);
+                await Program.RunBuilderAsync("--ensure-watcher", Log);
+            };
+        Add(Localizer.T("守候进程自启：开启"), Localizer.T("登录 / 解锁 / 每 1 分钟兜底自动拉起守候（计划任务 + 开机启动项，都不需要管理员权限）"))
+            .Click += async (_, _) => await Program.RunBuilderAsync("--watch-autostart on", Log);
+        Add(Localizer.T("守候进程自启：关闭"), Localizer.T("移除计划任务与开机启动项（不会杀掉当前正在跑的守候）"))
+            .Click += async (_, _) => await Program.RunBuilderAsync("--watch-autostart off", Log);
 
         // ---- 部署加速档（可选；代价就写在开关下面，不藏）----
         var cbFast = new CheckBox

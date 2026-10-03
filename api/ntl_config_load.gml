@@ -22,6 +22,7 @@ ds_map_add(global.ntl_cfg, "skip_logo", 0);        // 跳过"DELTARUNE"报幕
 ds_map_add(global.ntl_cfg, "intro_delay", 45);     // 跳过前等待帧数
 ds_map_add(global.ntl_cfg, "debug_live", 0);
 ds_map_add(global.ntl_cfg, "lang", "auto");     // zh / en / auto —— 只影响 Neutraled 新增的界面文字
+ds_map_add(global.ntl_cfg, "audio_sniff", 0);   // ★ 音频诊断开关（默认关；见 api/ntl_audio_report.gml）
 
 var _paths = ntl_config_paths();
 var _pList = "";
@@ -72,8 +73,24 @@ if (_n == 0)
 
 // 一律用 variable_struct_get（struct.field 形式在 UTMT 编译下不可靠）
 // 注意：这里不使用内部 function 定义（跨作用域不可靠），全部内联
+// ★ 2026-10-03：通用键直通 —— 白名单只覆盖"需要归一类型"的已知项，其余键（如 audio_sniff、
+//   theme、base_mod）在这里原样进 global.ntl_cfg，新增开关不必再改加载器。
+//   顺序：先直通、后白名单归一（布尔/数字在下面被规范化成 0/1 与 real）。
+for (var _gi = 0; _gi < _n; _gi += 1)
+{
+    var _gj = _js[_gi];
+    var _gkeys = variable_struct_get_names(_gj);
+    for (var _gk = 0; _gk < array_length(_gkeys); _gk += 1)
+    {
+        var _gname = _gkeys[_gk];
+        var _gval = variable_struct_get(_gj, _gname);
+        if (_gval == undefined) continue;
+        ds_map_replace(global.ntl_cfg, _gname, _gval);
+    }
+}
+
 var _keys = [
-    ["auto_skip_selector", 1], ["auto_skip_intro", 1], ["debug_live", 1],
+    ["auto_skip_selector", 1], ["auto_skip_intro", 1], ["debug_live", 1], ["audio_sniff", 1],
     ["skip_legend", 1], ["skip_logo", 1], ["auto_chapter", 0],
     ["auto_skip_delay", 0], ["intro_delay", 0], ["auto_chapter_id", 2],
     ["lang", 2]

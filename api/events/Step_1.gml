@@ -7,7 +7,7 @@ if (!_ntl_extOn)
 {
     // ★ 守候写的"外部引擎正在跑"标记：请求若不是本进程发起的（外部写请求 / 进程重启丢了状态），
     //   以前这里不屏蔽 → 玩家在 Kristal 里打字会**漏进章节选择**（用户实测，本次也复现了）。
-    try { if (file_exists("Neutraled/external-running.txt")) _ntl_extOn = true; } catch (e) { _ntl_extOn = false; }
+    try { if (file_exists(ntl_rt_path("external-running.txt"))) _ntl_extOn = true; } catch (e) { _ntl_extOn = false; }
 }
 if (_ntl_extOn)
 {
@@ -430,6 +430,16 @@ if (ntl_is_root() == 1)
 {
     ntl_autoskip();  // 按配置自动跳过章节选择器（含外部引擎章节）
     ntl_root_step();
+
+    // ★ 音频诊断（config: audio_sniff==1 时开启；默认关闭、对正常游戏零开销）
+    //   用途：定位「从外部章节返回后选择音效消失」——见 api/ntl_audio_report.gml
+    if (variable_global_exists("ntl_cfg"))
+    {
+        if (ds_map_find_value(global.ntl_cfg, "audio_sniff") == 1)
+        {
+            try { ntl_audio_report(); } catch (e_aud) { ntl_log("aud", "[aud] ntl_audio_report 异常: " + string(e_aud)); }
+        }
+    }
 }
 
 // Neutraled 地图导航：玩家移动 + 相机 + 对象交互

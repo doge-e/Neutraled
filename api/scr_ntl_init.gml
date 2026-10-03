@@ -10,7 +10,7 @@ global.ntl_log_path = "Neutraled/dr-api.log";
 //   整场游戏一个字都不写（实测踩过：%LOCALAPPDATA%\DELTARUNE\Neutraled\ 被清掉后，
 //   游戏跑得好好的却完全没有日志，排查了很久）。这里先确保目录存在。
 ntl_ensure_dir(global.ntl_log_path);
-global.ntl_version = "1.0.1";
+global.ntl_version = "1.0.3";
 global.ntl_live_api = "1.2.0";
 
 // 运行时脚本解释器的各个函数都是独立同名脚本资源（UTMT 编译器要求），无需预加载。
@@ -67,6 +67,12 @@ ntl_log("core", "Neutraled API v" + global.ntl_version + " init (room=" + string
 // 一次性诊断：本产物 Neutraled/mods.json 的读取/解析链路（用户 m23281「显示 0 mod 加载」）
 //   只打一条日志、不影响逻辑；定性后（1.0.1）可删。
 try { ntl_json_diag(); } catch (e) { ntl_log("jdiag", "[jdiag] 诊断脚本异常（已忽略）"); }
+
+// ★ 用户主诉修复（2026-10-03「无存档进入 kristal 章节不应当提示，应当自动修复后继续」）：
+//   开局就把运行时目录探一遍：若 <gameRoot>\Neutraled\saves\<存档区名> 缺失（%LOCALAPPDATA% 的
+//   存档联接悬空），立刻用绝对路径把目标目录补建回来，随后 saves / config.json / dr-api.log 一并恢复。
+//   全过程静默 —— 修不好也不提示，交给启动外部章节时的挂起重试（api/ntl_rt_stash.gml）兜底。
+try { ntl_rt_dir(); } catch (e_rt) { ntl_log("rt", "[rt] 运行时目录预探测异常（已忽略）: " + string(e_rt)); }
 
 // --- 创建常驻控制器 ---
 var _core = asset_get_index("obj_ntl_core");

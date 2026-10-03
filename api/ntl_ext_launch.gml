@@ -21,58 +21,6 @@ if (_exe == "" || _exe == "undefined")
     return 0;
 }
 
-// 用相对路径（GM 会把它重定向进存档区：%LOCALAPPDATA%\DELTARUNE\Neutraled\）；
-// 并确保目录存在 —— 目录不存在时 file_text_open_write 会失败，而失败**不会抛异常**
-var _req = "Neutraled/launch-request.json";
-ntl_ensure_dir(_req);
-// ★ 用户主诉修复（2026-10-03「无存档下无法进入 kristal 章节」）：
-//   存档区 %LOCALAPPDATA%\DELTARUNE 是指向 Neutraled/saves/DELTARUNE 的目录联接。玩家把 saves 下的
-//   目标目录删掉后联接就悬空，而 Windows **无法透过悬空联接创建文件** —— 请求文件根本写不出去，
-//   连 dr-api.log 都写不了（失败是静默的，玩家只看到"点了没反应"）。这里先探一次可写性：
-//   写得出探针文件才继续，否则给出**屏幕上可见**的可操作提示。
-var _rt_ok = 0;
-try
-{
-    var _pf = file_text_open_write("Neutraled/.rw-probe");
-    file_text_write_string(_pf, "ok");
-    file_text_close(_pf);
-    if (file_exists("Neutraled/.rw-probe"))
-    {
-        _rt_ok = 1;
-        file_delete("Neutraled/.rw-probe");
-    }
-}
-catch (e_rtw) { _rt_ok = 0; }
-if (_rt_ok != 1)
-{
-    global.ntl_root_toast = ntl_t("ext.no_runtime");
-    global.ntl_root_toast_frames = 600;
-    ntl_log("ext", "[错误] 运行时目录不可写（Neutraled/ 写不出探针文件）—— 存档联接可能已悬空");
-    return 0;
-}
-// ---- ★ 用户主诉修复（2026-10-03）：发请求前清掉**上一局残留**的外部标记 ----
-//   现象（真机复现 10:15）：进入外部章节后章节选择器 0 秒就回到前台（日志「0 秒回程」）、
-//   而且从没静音 —— park 常驻分支第一帧就看到上一局留下的 external-exited.txt，
-//   立刻判定「外部章节已退出」。运行标记 external-running.txt 同理（残留会让游戏以为
-//   引擎还开着而屏蔽输入）。必须在写请求**之前**清理：此刻守候进程还没动，删掉的一定是残留。
-try
-{
-    if (file_exists("Neutraled/external-exited.txt"))
-    {
-        file_delete("Neutraled/external-exited.txt");
-        ntl_log("ext", "[ext] 已清掉上一局残留的回程标记 external-exited.txt");
-    }
-}
-catch (e_ntlclr1) { ntl_log("ext", "[ext] 清理残留回程标记失败: " + string(e_ntlclr1)); }
-try
-{
-    if (file_exists("Neutraled/external-running.txt"))
-    {
-        file_delete("Neutraled/external-running.txt");
-        ntl_log("ext", "[ext] 已清掉上一局残留的运行标记 external-running.txt");
-    }
-}
-catch (e_ntlclr2) { ntl_log("ext", "[ext] 清理残留运行标记失败: " + string(e_ntlclr2)); }
 // ⚠ ntl_json_esc 已经返回**带引号的**字符串（"xxx"），外面不要再套 chr(34)，
 //   否则会变成 ""xxx"" —— 实测就是这么写出非法 JSON 的。
 // 注意 file_text_write_string 按本地代码页(GBK)写盘，中文经手会乱码
@@ -90,23 +38,58 @@ var _txt = "{"
     + chr(34) + "name" + chr(34) + ":" + ntl_json_esc(_name_ascii)
     + "}";
 
+// ---- ★ 用户主诉修复（2026-10-03「无存档进入 kristal 章节不应当提示，应当自动修复后继续」）----
+// 运行时目录＝游戏沙箱 Neutraled/：相对路径被 GM 重定向进 %LOCALAPPDATA%\DELTARUNE\，
+// 那是**指向 <游戏根>\Neutraled\saves\DELTARUNE 的目录联接**。联接一旦悬空，
+// 写文件全部**静默失败**（连 dr-api.log 都写不了），旧版只弹一句「运行时目录不可写」+ 拒绝启动。
+// 现在改成：先自动修复（api/ntl_rt_repair.gml 用绝对路径把联接目标目录建回来）；
+// 仍不可写就**不提示**、把请求挂起（ntl_rt_stash），由门控段每约 20 帧重试（ntl_rt_retry）——
+// 守候进程自己每 5 秒也会补联接，通常几百毫秒内就好了。
+var _pfx = ntl_rt_dir();
+if (_pfx == "") ntl_log("rt", "[rt] 运行时目录不可写：启动请求将挂起并自动重试（不打扰玩家）");
+
+if (_pfx == "") return ntl_rt_stash(_txt, _name);
+
+// ---- ★ 用户主诉修复（2026-10-03）：发请求前清掉**上一局残留**的外部标记 ----
+//   现象（真机复现 10:15）：进入外部章节后章节选择器 0 秒就回到前台（日志「0 秒回程」）、
+//   而且从没静音 —— park 常驻分支第一帧就看到上一局留下的 external-exited.txt，
+//   立刻判定「外部章节已退出」。运行标记 external-running.txt 同理（残留会让游戏以为
+//   引擎还开着而屏蔽输入）。必须在写请求**之前**清理：此刻守候进程还没动，删掉的一定是残留。
+try
+{
+    if (file_exists(_pfx + "external-exited.txt"))
+    {
+        file_delete(_pfx + "external-exited.txt");
+        ntl_log("ext", "[ext] 已清掉上一局残留的回程标记 external-exited.txt");
+    }
+}
+catch (e_ntlclr1) { ntl_log("ext", "[ext] 清理残留回程标记失败: " + string(e_ntlclr1)); }
+try
+{
+    if (file_exists(_pfx + "external-running.txt"))
+    {
+        file_delete(_pfx + "external-running.txt");
+        ntl_log("ext", "[ext] 已清掉上一局残留的运行标记 external-running.txt");
+    }
+}
+catch (e_ntlclr2) { ntl_log("ext", "[ext] 清理残留运行标记失败: " + string(e_ntlclr2)); }
+
+var _req = _pfx + "launch-request.json";
+ntl_ensure_dir(_req);
 var _ok = 0;
 try
 {
     var _f = file_text_open_write(_req);
-    file_text_write_string(_f, _txt);
-    file_text_close(_f);
-    _ok = 1;
+    if (_f != -1) { file_text_write_string(_f, _txt); file_text_close(_f); _ok = 1; }
 }
 catch (e) { ntl_log("ext", "[错误] 写启动请求失败: " + string(e)); }
 
 // 必须回读确认 —— file_text_open_write 失败时不会抛异常，只看 _ok 会误判成功
 if (_ok != 1 || !file_exists(_req))
 {
-    ntl_log("ext", "[错误] 启动请求没有落盘: " + _req);
-    global.ntl_root_toast = ntl_t("ext.no_runtime");
-    global.ntl_root_toast_frames = 600;
-    return 0;
+    // 探针过了却仍写不出去（权限/杀软/磁盘）：同样**不弹提示**，挂起自动重试
+    ntl_log("ext", "[rt] 启动请求没有落盘: " + _req + " —— 改为挂起，自动修复后重试");
+    return ntl_rt_stash(_txt, _name);
 }
 var _fc = -1;
 try { _fc = file_text_open_read(_req); } catch (e2) { _fc = -1; }
@@ -127,11 +110,10 @@ if (!variable_global_exists("ntl_ext_launching") || global.ntl_ext_launching != 
     global.ntl_ext_req_frame = global.ntl_frames;
     global.ntl_ext_confirmed = 0;
     global.ntl_ext_park_seen = 0;
-    // ★ F-3（t25 复核）：请求文件刚刚回读确认存在（见上面 :55-60 的存在性校验），
-    //   在此登记「本进程确实看到它存在过」。门控那边只在「存在 → 不存在」时才认为
-    //   被守候进程消费（api/ntl_root_step.gml 的确认段），于是「请求从未落盘 / 被
-    //   第三方删掉」不再被误判成已确认（假 park）。已在 pending 时不重置，避免反复
-    //   按 Enter 把「已被消费」的证据冲掉（与上面不重置计时的理由一致）。
+    // ★ F-3（t25 复核）：请求文件刚刚回读确认存在，在此登记「本进程确实看到它存在过」。
+    //   门控那边只在「存在 → 不存在」时才认为被守候进程消费（api/ntl_root_step.gml 的确认段），
+    //   于是「请求从未落盘 / 被第三方删掉」不再被误判成已确认（假 park）。已在 pending 时不重置，
+    //   避免反复按 Enter 把「已被消费」的证据冲掉（与上面不重置计时的理由一致）。
     global.ntl_ext_req_seen = 1;
 }
 global.ntl_ext_launching = 1;
