@@ -1388,7 +1388,7 @@ public sealed class MainForm : Form
         catch (Exception ex) { Log(Localizer.T("执行失败: {0}", ex.Message)); }
     }
 
-    // ==================== 本轮新功能整合 ====================
+    // ==================== 新功能整合 ====================
 
     /// <summary>mod 联动关系对话框（谁导出了什么、谁依赖谁）</summary>
     private void ShowInteropDialog()

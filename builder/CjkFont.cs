@@ -26,7 +26,7 @@ public static class CjkFont
         // ★ list 模式：只出 --chars 里点名的那几个字。
         //   用途：字体包里有些字是**空白格**（汉化字库缺字 / 系统字体没有这个字），界面上就是一片空白。
         //   按需用系统字体补渲这几个字（例：--chars "한국어⚠✓" --font C:/Windows/Fonts/segoeui.ttf），
-        //   再由 _feat/merge-fonts.mjs 以 replace 方式顶掉空白格。
+        //   再由构建机上的 merge-fonts.mjs（未随包）以 replace 方式顶掉空白格。
         if (kind == "list")
         {
             var only = new SortedSet<int>();
@@ -63,7 +63,7 @@ public static class CjkFont
         // ---- "extra"：只出「现有字体包里还没有的字」 ----
         // ★ 用途：从汉化 mod 搬来的字体是**简体**字库（3580 字形），繁体中文字（節/擇/內/關/結/換/遊/戲…）
         //   一个都没有 ⇒ 切到 zh-TW 后整片空洞（实测截图）。这里算出缺口集合，用系统 TTF
-        //   单独渲一张补充 sheet，再由 _feat/merge-fonts.mjs 追加进主包（**不覆盖**已有字形）。
+        //   单独渲一张补充 sheet，再由构建机上的 merge-fonts.mjs（未随包）追加进主包（**不覆盖**已有字形）。
         if (kind == "extra")
         {
             // ★ 先把"本工程实际用到的字"和"CJK 基本区"并进来，再减掉主包已有的 —— 否则集合是空的

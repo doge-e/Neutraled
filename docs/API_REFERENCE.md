@@ -52,7 +52,7 @@ mod.json 可声明 "api_version": "1.0" —— 若主版本号不匹配则警告
 设置(CONFIG)页当前的行窗口起点（0 或 1）。
 
 原版 7 项 + 我们的「Mod 设置」= 8 项；可见窗口是 7 行（y = yy+150 … yy+360，行高 35）。
-★ 用户 m11431 明确要求「不要伸缩设置窗口，可以设置滚动条来装下更多内容」⇒
+★ 用户明确要求「不要伸缩设置窗口，可以设置滚动条来装下更多内容」⇒
 ```gml
 菜单框回到原版高度（langopt([90,410,420],[85,412,422])），多出来的那一行靠滚动容纳：
 光标在第 8 项(Back)时窗口下移一行，第 1 项(Master Volume)让位。
@@ -62,7 +62,7 @@ mod.json 可声明 "api_version": "1.0" —— 若主版本号不匹配则警告
 
 CONFIG 页右侧的滚动条（8 项 / 可见 7 行）。
 
-官方二级菜单没有滚动条；用户要求「不要伸缩窗口，用滚动条装下更多内容」（m11431）。
+官方二级菜单没有滚动条；用户要求「不要伸缩窗口，用滚动条装下更多内容」。
 轨道 = 可见行区间（yy+150 … yy+384），滑块长度/位置按 可见÷总数 与 窗口起点 算。
 始终画（不是"滚动后才出现"）：让玩家一眼看出下面还有内容（第 8 项 Back）。
 
@@ -200,7 +200,7 @@ os_start_process / url_open 在 data.win 字符串池里一个都不存在），
 我们界面要用的「官方菜单字号」字体（mainbig，EmSize 24）。
 
 为什么不用 ntl_font_cjk：那是内置字体包（EmSize 12），只有官方菜单字号的一半大
-⇒ 用户反馈「mod设置及其二级菜单字体太小了」（m10511/m11431）。部署期 FontMerge 已把
+⇒ 用户反馈「mod设置及其二级菜单字体太小了」。部署期 FontMerge 已把
 CJK 字形补进 fnt_mainbig/fnt_main，所以直接用游戏自己的字体画中文就是官方字号。
 ```gml
 用 asset_get_index(名字) 而不是硬编码索引：主字体索引随游戏语言变化（日文语境下
@@ -250,7 +250,7 @@ font_map 的 mainbig 变成 fnt_ja_mainbig，那个字体没补我们的字形�
 
 ★ 为什么必须按名字取、不能硬编码索引：**精灵索引每个章节都不一样** ——
 chapter4 = 3695、chapter1 = 922（对照表见 docs/MANAGE.md §11.4）。
-硬编码 3695 的版本在 chapter1 真机弹过（2026-09-27，用户 m12373 报错）：
+硬编码 3695 的版本在 chapter1 真机弹过（2026-09-27，用户报错）：
 ERROR in action number 1 of Draw Event for object obj_darkcontroller:
 Trying to draw non-existing sprite.
 at gml_Script_ntl_modmenu_page_draw
@@ -373,7 +373,7 @@ repeatUs     = 重复间隔（微秒；<= 0 = 不重复）
 label/value 传文案，或传 "i18n:键名" 走 i18n 表；action 是脚本名（玩家按 Z/Enter 时调用），空串 = 只显示。
 owner（可选，第 6 参）= 这个开关属于哪个 mod（如 "60fps_layer"）——
 面板会把这些项收进分组标题「── <owner> ──」下面并缩进一档，
-这样玩家一眼能看出哪些开关是 mod 的、哪个 mod 的（用户 m17504 的诉求）。
+这样玩家一眼能看出哪些开关是 mod 的、哪个 mod 的（用户诉求）。
 不传 owner 的项会归到通用组「模组选项」。
 同 id 重复调用 = 覆盖（热重载不会出现两行）。例：
 ```gml
@@ -459,7 +459,7 @@ ntl_menu_add("mymod.speed", "i18n:mymod.speed", "2x", "mymod_toggle_speed", "i18
 本产物**实际加载**的 mod 清单（数组，元素 = struct: Id/Name/Version）
 
 来源：builder 每次部署写在**产物目录**里的 <working_directory>Neutraled/mods.json
-★ 2026-10-02（用户 m23281「显示 0 mod 加载」）真根因：builder 那时用**默认编码器**写 mods.json，
+★ 2026-10-02（用户反馈「显示 0 mod 加载」）真根因：builder 那时用**默认编码器**写 mods.json，
 「冰封帷幕」「汉化组」等含中文的 mod 名被写成 \uXXXX 转义，而 **GameMaker 的 json_parse 吃不下 \uXXXX**
 （老坑 15，chapters.json 已实测）⇒ json_parse 抛异常 ⇒ 本函数返回空数组 ⇒ 面板恒显示「已加载 0」。
 已在 builder 侧修掉（Program.cs:2432 改用 Paths.Json）；这里保留双形态读取 + 转义计数诊断作兜底。
@@ -476,7 +476,7 @@ ntl_menu_add("mymod.speed", "i18n:mymod.speed", "2x", "mymod_toggle_speed", "i18
 返回 -1 = 本产物没有 Neutraled/mods.json（老产物 / 外部章节 exe）⇒ 调用方回退显示"已安装"数。
 ```gml
 每帧都可能被入口行调用，所以缓存（面板打开时由 ntl_modmenu_open() 清掉重读）。
-★ 2026-10-02（用户 m23281「显示 0 mod 加载」）：旧实现 = file_exists 就 array_length(loaded())，
+★ 2026-10-02（用户反馈「显示 0 mod 加载」）：旧实现 = file_exists 就 array_length(loaded())，
 ```
 清单解析不出来时恒为 0（真机实测：文件在、11 条目、面板却报 0）。
 现在：清单解析不出来时按原文里 "Id" 出现次数兜底；只有**文件不存在**才返回 -1。
@@ -587,7 +587,7 @@ action 主视图按 Z 时干什么：
 "script:<脚本名>" = mod 用 ntl_menu_add 注册的开关（跑那个脚本）
 "" = 没有动作（分组标题）
 子视图（chapters/mods/langs）的输入由各自的按键分支处理，这里统一留 ""。
-★ 用户 m17504「设置选项无法分清是哪个 mod 的」的修法：mod 项不再与内置行混排，
+★ 用户反馈「设置选项无法分清是哪个 mod 的」的修法：mod 项不再与内置行混排，
 而是插在分组标题「── <mod 名> ──」下面并缩进一档。
 缓存：global.ntl_modmenu_rows_cache = [签名, 行数组]；按键确认 / 打开面板 / 切语言时清空
 （行内容会随开关状态变，别让缓存骗人）。
@@ -808,7 +808,7 @@ global.ntl_ch_display: 数组，元素 = 章节索引（>=0）或 -1（空槽/�
 ```gml
 ★ 选中红心不归我们画：官方红心公式 y = yy+160+(coord-滚动)*35 在 coord 5 时正好落在本行。
 ```
-字体（m11431）：改用游戏自己的 mainbig（EmSize 24，部署期 FontMerge 已补 CJK 字形）——
+字体：改用游戏自己的 mainbig（EmSize 24，部署期 FontMerge 已补 CJK 字形）——
 与上下官方行同字号。旧版只要出现非 ASCII 就切 ntl_font_cjk（EmSize 12，只有一半大），
 用户反馈「mod设置及其二级菜单字体太小了」指的就是这个。
 ★ 必须完整保存/恢复绘制状态：漏了颜色会把游戏的光标心形染成黄色（实测踩过）。
@@ -1867,7 +1867,7 @@ lang get <key>          读一条文本（覆盖优先，其次 lang_map）
 单行宽度适配：宽度超过 maxw 就按字符截断并在尾巴补 "…"
 
 为什么需要：面板的标签列/数值列都是固定列宽，而 draw_text 没有宽度限制 ——
-长名字会直接压到隔壁列上（用户 m17504 的截图：章节视图里 "Chapter 1 The Beginning" 与「官方」叠成一团，
+长名字会直接压到隔壁列上（用户的截图：章节视图里 "Chapter 1 The Beginning" 与「官方」叠成一团，
 模组视图里 "deltarune_but_it_s__percentage___color" 顶穿面板右边框）。
 ```gml
 必须在 draw_set_font(要用的字体) 之后调用。maxw <= 0 = 不做限制，原样返回。

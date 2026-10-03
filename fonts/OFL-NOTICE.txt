@@ -70,12 +70,12 @@ OFL 要求的版权与许可随附、保留字体名、不得单独售卖等条�
    字体版本 : Version 3.002
    版权行   : Copyright 2013 Google LLC
    产物溯源 : <构建机>/rerender-6-emo/ntl_rr_emo_sheet0.png（字节完全相同）
-   内容     : 本轮新增的 48 个 emoji 区符号（↩ ↪ ♈ … ⛽ ⛺）+ ℹ ✅ ❌ 等原有图标，共 50 个字形
+   内容     : 本次重渲新增的 48 个 emoji 区符号（↩ ↪ ♈ … ⛽ ⛺）+ ℹ ✅ ❌ 等原有图标，共 50 个字形
 
 未产出位图页的字体：
   · Noto Sans JP（NotoSansJP.ttf，9589900 B，sha256 c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f，Version 2.004-H2）
     —— 2026-09-30 重渲时，轮到它时剩余字符已经**一个都渲染不出来**（前面的 Noto Sans SC 主表已覆盖），
-    因此本轮没有 JP 页。它仍是「用到的字体」之一（见第一节与第三节）。
+    因此这次它没有产出位图页。它仍是「用到的字体」之一（见第一节与第三节）。
 
 （本地 TTF 文件名与上游文件名不同：上游是可变字体 NotoSansSC[wght].ttf 之类，本地存成 -VF 后缀；
  上表的 SHA-256 是**本地文件**的实测值，上游文件请以 Google Fonts 仓库为准。）
@@ -128,7 +128,7 @@ https://raw.githubusercontent.com/google/fonts/main/ofl/<家族目录>/OFL.txt
   # 2) 逐字体渲染位图页（示例：Noto Sans SC；其它字体同理换 --ttf 与包名）
   ntl-builder.exe --make-cjk-font <输出目录> --ttf <NotoSansSC-VF.ttf> --charset list --chars <字符表文件> --font-name ntl_font_cjk
 
-  #    → 输出 <包名>.json + <包名>_sheetN.png（本轮每个包都只有一张 sheet0）
+  #    → 输出 <包名>.json + <包名>_sheetN.png（这次每个包都只有一张 sheet0）
   #    渲染期有**墨迹门禁**：全透明（画不出来）的字形会被丢弃，不会进包
 
   # 3) 合并：把各包的字形记录并入 Neutraled\fonts\ntl_font_cjk.json
@@ -150,7 +150,7 @@ https://raw.githubusercontent.com/google/fonts/main/ofl/<家族目录>/OFL.txt
   2026-09-30 重渲口径：字符表 5666 个候选里有 **692 个**在 5 款字体中全部渲染不出（多为西里尔/希腊扩展、控制图形等极少用到的码位），
   它们不进包（墨迹门禁丢弃），在游戏里仍是空白；**丢弃 10 个 Unicode 未分配码位**的说明见第二节「版本沿革」。
 * 上游是可变字体（wght 轴），本包按 **EmSize=12** 静态渲染，与游戏像素风格对齐；放大时不做重采样。
-* Noto Sans JP 本轮**没有产出位图页**（轮到它时已无待补字符），见第二节「未产出位图页的字体」。
+* Noto Sans JP **没有产出位图页**（轮到它时已无待补字符），见第二节「未产出位图页的字体」。
 * 换字体/加语言时**不要**只改 JSON：位图页与坐标表必须成套生成，否则会出现空格或错位。
 * 本文件只覆盖**字体包**的许可。Neutraled 项目自身（代码、脚本、文档）采用 MIT 许可（2026-09-29 起；见仓库根 LICENSE 与 Neutraled/NOTICE），
   见 release-docs/KNOWN-LIMITATIONS.md 的「许可合规」一节。

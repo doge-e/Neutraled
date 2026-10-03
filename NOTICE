@@ -44,7 +44,7 @@ Neutraled 的像素字体包（fonts/ntl_font_cjk.json + fonts/ntl_font_cjk_o*.p
     o2  fonts/ntl_font_cjk_o2.png   ← Noto Sans KR            （韩文，3 个字形引用）
     o3  fonts/ntl_font_cjk_o3.png   ← Noto Sans Symbols 2     （符号 / 标点，232 个字形引用）
     o4  fonts/ntl_font_cjk_o4.png   ← Noto Emoji              （emoji，50 个字形引用）
-    （2026-09-30 全量重渲：合计 4974 字形 / 4 页；本轮 Noto Sans JP 未产出字形，因此没有 JP 页）
+    （2026-09-30 全量重渲：合计 4974 字形 / 4 页；Noto Sans JP 未产出字形，因此没有 JP 页）
 
 用到的字体（5 款，均以 SIL Open Font License 1.1 授权）：
     Noto Sans SC · Noto Sans JP · Noto Sans KR · Noto Sans Symbols 2 · Noto Emoji
