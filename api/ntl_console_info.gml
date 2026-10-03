@@ -19,7 +19,7 @@ if (_cmd == "mods")
     if (_nLoad < 0) ntl_console_log(ntl_ts("mods.head_nolist", [string(_dirN)]));
     else ntl_console_log(ntl_ts("mods.head", [string(array_length(_ld)), string(_dirN)]));
 
-    var _max = 30;      // 长列表不刷屏（控制台缓冲只有 200 行）
+    // ★ 用户主诉修复：不再限制显示条数（原为 30 条上限）—— 命中的 mod 全部列出
     var _shown = 0;
     var _hit = 0;
     for (var _i = 0; _i < array_length(_ld); _i += 1)
@@ -31,7 +31,6 @@ if (_cmd == "mods")
         var _vr = variable_struct_exists(_e, "Version") ? string(variable_struct_get(_e, "Version")) : "";
         if (_kw != "" && string_pos(_kw, string_lower(_nm + " " + _id + " " + _vr)) <= 0) continue;
         _hit += 1;
-        if (_shown >= _max) continue;
         _shown += 1;
         if (_nm == "") _nm = ntl_t("mods.noname");
         ntl_console_log(ntl_ts("mods.item", [string(_shown), _nm, _id, _vr]));

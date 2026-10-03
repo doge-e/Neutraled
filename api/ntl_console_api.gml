@@ -36,8 +36,8 @@ var _reg = global.ntl_api_reg;
 var _orig = variable_struct_get(_reg, "original");
 if (_orig == undefined) { ntl_console_log(ntl_t("api.badfmt")); return 0; }
 
-// ★ 反人类修复：原来命中 25 条就 break，用户看不出"还有多少没显示"。
-//   现在统计全部命中数，只打印前 25 条，末尾给"还有 N 条（加长关键词）"。
+// ★ 用户主诉修复：不再限制条数 —— 命中多少条就打多少条（原来只打印前 25 条 + 一条"还有 N 条"的尾巴）。
+//   _found 现在恒等于 _all，保留变量只是为了尾部文案的兼容。
 var _found = 0;
 var _all = 0;
 var _cats = ["functions", "objects", "rooms", "sprites", "sounds"];
@@ -52,7 +52,6 @@ for (var _ci = 0; _ci < array_length(_cats); _ci += 1)
         var _nm = string(_list[_i]);
         if (string_pos(_kw, string_lower(_nm)) <= 0) continue;
         _all += 1;
-        if (_found >= 25) continue;
         _found += 1;
         ntl_console_log("  [" + string_copy(_cat, 1, string_length(_cat) - 1) + "] " + _nm);
     }

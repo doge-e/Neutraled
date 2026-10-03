@@ -1,7 +1,7 @@
 /// ntl_console_state(cmd, rest) —— 状态类命令实现
 var _cmd = string(argument[0]);
 var _rest = (argument_count > 1) ? string(argument[1]) : "";
-var _LIMIT = 40;   // 长列表的显示上限（控制台缓冲只有 200 行，刷屏会把前面的输出挤掉）
+var _LIMIT = 1000000;   // ★ 用户主诉修复：不再限制显示条数（原为 40 条上限）；缓冲已同步放大，见 ntl_console_log.gml
 
 if (_cmd == "room")
 {
@@ -137,8 +137,8 @@ if (_cmd == "saves")
     var _zips = ntl_file_list(_bak, "*.zip");
     ntl_console_log(ntl_ts("st.saves", [string(array_length(_zips))]));
     var _shown = 0;
-    // 备份是按时间追加的，最新的在最后 → 只显示最近 20 个（旧备份意义不大）
-    var _from = max(0, array_length(_zips) - 20);
+    // ★ 用户主诉修复：不再只显示最近 20 个 —— 备份全部列出（按时间顺序，最新的在最后）
+    var _from = 0;
     for (var _i = _from; _i < array_length(_zips); _i += 1)
     {
         _shown += 1;

@@ -46,10 +46,11 @@ for (var _i = 0; _i < array_length(_parts); _i += 1)
     _n += 1;
 }
 
-// ★ 反人类修复：缓冲区满了会**静默丢掉最早的行**，用户用 save 导出的「全部输出」其实被截断过而不自知。
-//   现在：上限提到 400，并把丢掉的条数记在 global.ntl_console_dropped，由标题行与导出头部显示。
+// ★ 用户主诉修复：缓冲区从 400 行放大到 20000 行 —— api/mods/objs 等命令不再限制条数后，
+//   一次输出几千行是正常的，400 行会把用户最想看的开头直接挤掉。
+//   仍保留上限（防内存失控），丢掉的条数记在 global.ntl_console_dropped，由标题行与导出头部显示。
 if (!variable_global_exists("ntl_console_dropped")) global.ntl_console_dropped = 0;
-while (ds_list_size(global.ntl_console_lines) > 400)
+while (ds_list_size(global.ntl_console_lines) > 20000)
 {
     ds_list_delete(global.ntl_console_lines, 0);
     global.ntl_console_dropped += 1;

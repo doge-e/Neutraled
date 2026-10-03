@@ -1060,6 +1060,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     {
         GoSilent(gameRoot);
         EnsureKristalCjkFallback(Path.Combine(gameRoot, "Kristal-main"));
+        RepairSaveLinks(gameRoot);      // ★ 存档联接悬空 → 运行时目录不可写（用户主诉「无存档进不了 Kristal」）
         RecoverHiddenGame(gameRoot);
         // ★ 坑：GameMaker 的 file_text_open_write 会把路径**重定向进存档区**
         //   （实测写 "E:\...\Neutraled\launch-request.json" 实际落在
@@ -1088,11 +1089,13 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
 
         var deadline = DateTime.Now.AddHours(12);
         bool sawGame = false;
+        int healTick = 0;                               // ★ 每 12 次轮询（≈5 秒）检查一次存档联接是否悬空
         System.Diagnostics.Process? extProc = null;      // 正在运行的���部引擎（Kristal）
         while (DateTime.Now < deadline)
         {
             System.Threading.Thread.Sleep(400);   // 轮询间隔（原 1500ms：退出检测白等）
 
+            if (++healTick >= 12) { healTick = 0; RepairSaveLinks(gameRoot); }   // ★ 守候期间持续自愈（玩家删存档/删目录后 5 秒内恢复）
             var req = reqs.FirstOrDefault(File.Exists);
             if (req != null)
             {
@@ -1368,6 +1371,10 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     /// 避免共享 Injector/ScanMods 等静态状态。</summary>
     private static int RunParallelDeploy(string gameRoot)
     {
+        // -1) 存档联接自愈：用户为了"无存档"删掉 Neutraled/saves/<名>/ 会让联接悬空，
+        //     运行时目录整个不可写（连 dr-api.log 都没有）→ 外部章节点了没反应。先补建目标目录。
+        RepairSaveLinks(gameRoot);
+
         // 0) 更新检测（并行开始之前只做一次）：检测到游戏更新/整包基底漂移时只提示并停止，
         //    除非用户显式 --yes（--yes 会先 --adopt-current 采纳当前原版，再继续）。
         if (!NoUpdateCheck && !GameUpdate.Gate(gameRoot, Yes, "deploy-all")) return 2;
@@ -2742,6 +2749,69 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         }
         catch { }
         return blocked;   // ★ 返回值 = 被守卫拦下的条数（0 = 全部通过），调用方据此判退出码
+    }
+
+    /// <summary>★ 修复"悬空的存档联接"（2026-10-03 用户主诉「无存档下无法进入 kristal 章节」）：
+    ///   %LOCALAPPDATA%\DELTARUNE（以及 DRTL* 平行章节）是指向 &lt;游戏根&gt;/Neutraled/saves/&lt;名&gt;/ 的目录联接。
+    ///   玩家为了造"无存档"把 saves 下的目标目录删掉之后，联接就指向空气，
+    ///   而 Windows **无法透过悬空联接创建文件**（实测 New-Item 报 Could not find a part of the path）——
+    ///   于是游戏运行时目录 %LOCALAPPDATA%\DELTARUNE\Neutraled 整个不可写：dr-api.log 都不会生成，
+    ///   启动请求/运行标记也写不出去 ⇒ 外部章节点了没反应（用户看到的就是"进不去 Kristal 章节"）。
+    ///   这里只补建**缺失的目标目录**（空目录 = 没存档，正是玩家想要的状态），不动任何现有文件。</summary>
+    private static int RepairSaveLinks(string gameRoot)
+    {
+        int healed = 0;
+        try
+        {
+            var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var officialTarget = Path.Combine(Paths.NeutraledRoot(gameRoot), "saves", "DELTARUNE");
+            foreach (var dir in Directory.GetDirectories(local))
+            {
+                try
+                {
+                    var target = JunctionTarget(dir);
+                    if (target.Length == 0) continue;              // 不是联接（真目录）→ 不动
+                    if (Directory.Exists(target)) continue;        // 联接正常 → 不动
+                    Directory.CreateDirectory(target);
+                    healed++;
+                    Console.WriteLine(L("  [修复] 存档联接的目标目录缺失（联接悬空），已补建: {0} -> {1}", dir, target));
+                    // 非官方存档名要带一份配置（与 LinkSaveFolder 口径一致：缺 ini 会让菜单渲染异常）
+                    if (!Path.GetFileName(dir).Equals("DELTARUNE", StringComparison.OrdinalIgnoreCase) &&
+                        Directory.Exists(officialTarget))
+                    {
+                        foreach (var f in Directory.GetFiles(officialTarget))
+                        {
+                            var fn = Path.GetFileName(f);
+                            if (!fn.EndsWith(".ini", StringComparison.OrdinalIgnoreCase) &&
+                                !fn.EndsWith(".vdf", StringComparison.OrdinalIgnoreCase)) continue;
+                            var dst = Path.Combine(target, fn);
+                            if (!File.Exists(dst)) File.Copy(f, dst, true);
+                        }
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine(L("  [警告] 存档联接检查失败: {0}", ex.Message)); }
+            }
+            if (healed > 0)
+                Console.WriteLine(L("  [修复] 共补建 {0} 个存档目录 —— 运行时目录与外部章节现在可以正常读写", healed));
+        }
+        catch (Exception ex) { Console.WriteLine(L("  [警告] 存档联接扫描失败: {0}", ex.Message)); }
+        return healed;
+    }
+
+    /// <summary>取目录联接（junction）的目标路径；不是联接或读不到时返回空串。
+    ///   用 DirectoryInfo.LinkTarget（.NET 6+）—— 目标不存在时它**仍然**返回目标字符串，
+    ///   这正是判断"悬空"所必需的（Directory.Exists 对悬空联接只返回 false，看不出原因）。</summary>
+    private static string JunctionTarget(string path)
+    {
+        try
+        {
+            var di = new DirectoryInfo(path);
+            var lt = di.LinkTarget;
+            if (string.IsNullOrEmpty(lt)) return "";
+            if (Path.IsPathRooted(lt)) return Path.GetFullPath(lt);
+            return Path.GetFullPath(Path.Combine(di.Parent?.FullName ?? path, lt));
+        }
+        catch { return ""; }
     }
 
     /// <summary>把章节的存档目录做成目录联接（junction）：

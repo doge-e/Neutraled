@@ -1668,7 +1668,7 @@
   "共 {0} 个匹配（总房间数 {1}）": "{0} coincidencias en total ({1} salas en total)",
   "共 {1} 个 hook，其中 {2} 个函数被多个 mod 修改": "{1} hooks en total, de los cuales {2} funciones están modificadas por varios mods",
   "共 {n} 条命令": "{n} comandos en total",
-  "共找到 {1} 个（最多显示 25 个）": "Se encontraron {1} (se muestran como máximo 25)",
+  "共找到 {1} 个": "Se encontraron {1}",
   "故意触发运行时错误 kind={1} —— 用于验证崩溃隔离": "Provocando a propósito un error en tiempo de ejecución, kind={1} —— sirve para verificar el aislamiento de fallos",
   "故意触发运行时错误（验证崩溃隔离）": "Provocar a propósito un error en tiempo de ejecución (verificar el aislamiento de fallos)",
   "关闭": "cerrado",

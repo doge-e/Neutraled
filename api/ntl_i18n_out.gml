@@ -322,8 +322,8 @@ ds_map_add(_zh, "api.badfmt", "(注册表格式异常)");
 ds_map_add(_en, "api.badfmt", "(Registry format is invalid)");
 ds_map_add(_zh, "api.nomatch", "(没有匹配 '{1}' 的资源)");
 ds_map_add(_en, "api.nomatch", "(No asset matching '{1}')");
-ds_map_add(_zh, "api.found", "共找到 {1} 个（最多显示 25 个）");
-ds_map_add(_en, "api.found", "Found {1} match(es) (showing up to 25)");
+ds_map_add(_zh, "api.found", "共找到 {1} 个");
+ds_map_add(_en, "api.found", "Found {1} match(es)");
 ds_map_add(_zh, "macro.start", "宏录制已开始（输入的命令会被记录）");
 ds_map_add(_en, "macro.start", "Macro recording started (your commands are recorded)");
 ds_map_add(_zh, "macro.stop", "宏录制已停止，共 {1} 条");
@@ -787,6 +787,9 @@ ds_map_add(_en, "cmd.trace.u", "trace on|off");
 // ---- 事故修复批次（2026-09-30）：外部章节 park 门控 + 章节启动看门狗 ----
 ds_map_add(_zh, "ext.no_watcher", "未检测到启动器（守候进程）：外部章节无法启动，游戏仍可操作");
 ds_map_add(_en, "ext.no_watcher", "No launcher (watcher) detected: external chapter cannot start");
+// ★ 用户主诉修复（2026-10-03「无存档下无法进入 kristal 章节」）：存档联接悬空 → 运行时目录不可写
+ds_map_add(_zh, "ext.no_runtime", "运行时目录不可写：Neutraled/ 的存档联接可能已悬空 —— 重开守候进程（scripts/watch-external.vbs）后重试");
+ds_map_add(_en, "ext.no_runtime", "Runtime directory not writable: the Neutraled save junction may be dangling — restart the watcher (scripts/watch-external.vbs) and retry");
 ds_map_add(_zh, "ext.park_timeout", "外部引擎没有出现，已回到游戏");
 ds_map_add(_en, "ext.park_timeout", "External engine did not start; returned to the game");
 ds_map_add(_zh, "root.launch_fail", "章节启动失败：请按 Esc 退出游戏后重开");

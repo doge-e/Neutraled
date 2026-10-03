@@ -25,6 +25,54 @@ if (_exe == "" || _exe == "undefined")
 // 并确保目录存在 —— 目录不存在时 file_text_open_write 会失败，而失败**不会抛异常**
 var _req = "Neutraled/launch-request.json";
 ntl_ensure_dir(_req);
+// ★ 用户主诉修复（2026-10-03「无存档下无法进入 kristal 章节」）：
+//   存档区 %LOCALAPPDATA%\DELTARUNE 是指向 Neutraled/saves/DELTARUNE 的目录联接。玩家把 saves 下的
+//   目标目录删掉后联接就悬空，而 Windows **无法透过悬空联接创建文件** —— 请求文件根本写不出去，
+//   连 dr-api.log 都写不了（失败是静默的，玩家只看到"点了没反应"）。这里先探一次可写性：
+//   写得出探针文件才继续，否则给出**屏幕上可见**的可操作提示。
+var _rt_ok = 0;
+try
+{
+    var _pf = file_text_open_write("Neutraled/.rw-probe");
+    file_text_write_string(_pf, "ok");
+    file_text_close(_pf);
+    if (file_exists("Neutraled/.rw-probe"))
+    {
+        _rt_ok = 1;
+        file_delete("Neutraled/.rw-probe");
+    }
+}
+catch (e_rtw) { _rt_ok = 0; }
+if (_rt_ok != 1)
+{
+    global.ntl_root_toast = ntl_t("ext.no_runtime");
+    global.ntl_root_toast_frames = 600;
+    ntl_log("ext", "[错误] 运行时目录不可写（Neutraled/ 写不出探针文件）—— 存档联接可能已悬空");
+    return 0;
+}
+// ---- ★ 用户主诉修复（2026-10-03）：发请求前清掉**上一局残留**的外部标记 ----
+//   现象（真机复现 10:15）：进入外部章节后章节选择器 0 秒就回到前台（日志「0 秒回程」）、
+//   而且从没静音 —— park 常驻分支第一帧就看到上一局留下的 external-exited.txt，
+//   立刻判定「外部章节已退出」。运行标记 external-running.txt 同理（残留会让游戏以为
+//   引擎还开着而屏蔽输入）。必须在写请求**之前**清理：此刻守候进程还没动，删掉的一定是残留。
+try
+{
+    if (file_exists("Neutraled/external-exited.txt"))
+    {
+        file_delete("Neutraled/external-exited.txt");
+        ntl_log("ext", "[ext] 已清掉上一局残留的回程标记 external-exited.txt");
+    }
+}
+catch (e_ntlclr1) { ntl_log("ext", "[ext] 清理残留回程标记失败: " + string(e_ntlclr1)); }
+try
+{
+    if (file_exists("Neutraled/external-running.txt"))
+    {
+        file_delete("Neutraled/external-running.txt");
+        ntl_log("ext", "[ext] 已清掉上一局残留的运行标记 external-running.txt");
+    }
+}
+catch (e_ntlclr2) { ntl_log("ext", "[ext] 清理残留运行标记失败: " + string(e_ntlclr2)); }
 // ⚠ ntl_json_esc 已经返回**带引号的**字符串（"xxx"），外面不要再套 chr(34)，
 //   否则会变成 ""xxx"" —— 实测就是这么写出非法 JSON 的。
 // 注意 file_text_write_string 按本地代码页(GBK)写盘，中文经手会乱码
@@ -56,6 +104,8 @@ catch (e) { ntl_log("ext", "[错误] 写启动请求失败: " + string(e)); }
 if (_ok != 1 || !file_exists(_req))
 {
     ntl_log("ext", "[错误] 启动请求没有落盘: " + _req);
+    global.ntl_root_toast = ntl_t("ext.no_runtime");
+    global.ntl_root_toast_frames = 600;
     return 0;
 }
 var _fc = -1;

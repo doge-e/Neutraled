@@ -1668,7 +1668,7 @@
   "共 {0} 个匹配（总房间数 {1}）": "insgesamt {0} Treffer ({1} Räume insgesamt)",
   "共 {1} 个 hook，其中 {2} 个函数被多个 mod 修改": "insgesamt {1} Hooks, davon werden {2} Funktionen von mehreren mods geändert",
   "共 {n} 条命令": "insgesamt {n} Befehle",
-  "共找到 {1} 个（最多显示 25 个）": "insgesamt {1} gefunden (es werden höchstens 25 angezeigt)",
+  "共找到 {1} 个": "insgesamt {1} gefunden",
   "故意触发运行时错误 kind={1} —— 用于验证崩溃隔离": "absichtlich einen Laufzeitfehler auslösen kind={1} —— dient der Prüfung der Absturzisolierung",
   "故意触发运行时错误（验证崩溃隔离）": "absichtlich einen Laufzeitfehler auslösen (prüft die Absturzisolierung)",
   "关闭": "Aus",

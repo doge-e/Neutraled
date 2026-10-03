@@ -80,9 +80,27 @@ if (variable_global_exists("ntl_ext_launching") && global.ntl_ext_launching == 1
             global.ntl_ext_running = 1;
             global.ntl_ext_frames = 0;
             global.ntl_ext_park_wd = working_directory;
-            try { audio_master_gain(0); } catch (e_exta1) { }
+            // ★ 用户主诉修复（2026-10-03「进入外部章节后章节选择器没有静音」）：
+            //   这里只是第一道静音；真正的静音在下面的 park 常驻分支里每帧重申
+            //   （audio_master_gain 会被游戏自己的音量逻辑覆盖，且失败原来被空 catch 吞掉）。
+            try { audio_master_gain(0); } catch (e_exta1) { ntl_log("ext", "[ext] 进入后台等待时 audio_master_gain(0) 失败: " + string(e_exta1)); }
             try { window_set_caption(ntl_t("root.caption")); } catch (e_extk1) { }
             ntl_log("ext", "[ext] 转入后台等待：外部章节退出后会自动回到这里（不再重启进程）");
+            // ---- ★ 用户主诉修复（2026-10-03）：park 开始时再兜一道 ----
+            //   本局引擎的 external-running.txt 还没出现过（ntl_ext_park_seen != 1）⇒
+            //   此刻若存在回程标记，只可能是残留（见 ntl_ext_launch.gml 的清理），删掉。
+            if (global.ntl_ext_park_seen != 1)
+            {
+                try
+                {
+                    if (file_exists("Neutraled/external-exited.txt"))
+                    {
+                        file_delete("Neutraled/external-exited.txt");
+                        ntl_log("ext", "[ext] park 开始前清掉了残留回程标记（否则会立刻误判外部章节已退出）");
+                    }
+                }
+                catch (e_extclr) { ntl_log("ext", "[ext] park 前清理回程标记失败: " + string(e_extclr)); }
+            }
             _extParked = 1;
         }
     }
@@ -92,6 +110,44 @@ if (_extParked)
     if (!variable_global_exists("ntl_ext_frames")) global.ntl_ext_frames = 0;
     if (!variable_global_exists("ntl_ext_park_seen")) global.ntl_ext_park_seen = 0;
     global.ntl_ext_frames += 1;
+    // ---- ★ 用户主诉修复（2026-10-03）：park 期间**每帧**强制静音 ----
+    //   现象：进入外部章节后章节选择器的 BGM（AUDIO_STORY）还在响。
+    //   原因：① 转入 park 时只静音了一次，游戏自己的音量逻辑会把 audio_master_gain 覆盖回去；
+    //         ② 原来的 catch 是空的 ⇒ 静音失败在 dr-api.log 里完全无痕，无法排查。
+    //   现在：每帧重申 audio_master_gain(0)，并 audio_pause_all()（暂停与增益无关，最可靠）；
+    //   pause 不可用才退到 audio_stop_all()，退出时按走过的路原样撤销。
+    if (!variable_global_exists("ntl_ext_mute_tried"))
+    {
+        global.ntl_ext_mute_tried = 0;
+        global.ntl_ext_paused = 0;
+        global.ntl_ext_stopped = 0;
+        global.ntl_ext_mute_warn = 0;
+    }
+    try { audio_master_gain(0); } catch (e_extg0)
+    {
+        if (global.ntl_ext_mute_warn != 1) { global.ntl_ext_mute_warn = 1; ntl_log("ext", "[ext] audio_master_gain(0) 不可用: " + string(e_extg0)); }
+    }
+    if (global.ntl_ext_stopped != 1)
+    {
+        try
+        {
+            audio_pause_all();
+            if (global.ntl_ext_mute_tried != 1)
+            {
+                global.ntl_ext_mute_tried = 1;
+                global.ntl_ext_paused = 1;
+                ntl_log("ext", "[ext] park 期间已暂停全部音频（外部章节运行期间静音）");
+            }
+        }
+        catch (e_extp1)
+        {
+            if (global.ntl_ext_mute_warn != 2) { global.ntl_ext_mute_warn = 2; ntl_log("ext", "[ext] audio_pause_all 不可用，改用 audio_stop_all: " + string(e_extp1)); }
+            try { audio_stop_all(); global.ntl_ext_stopped = 1; } catch (e_extp2)
+            {
+                if (global.ntl_ext_mute_warn != 3) { global.ntl_ext_mute_warn = 3; ntl_log("ext", "[ext] audio_stop_all 也不可用，只能靠 audio_master_gain(0): " + string(e_extp2)); }
+            }
+        }
+    }
     var _extMarker = "Neutraled/external-exited.txt";
     var _extDone = 0;
     try { if (file_exists(_extMarker)) _extDone = 1; } catch (e_extm1) { _extDone = 0; }
@@ -117,7 +173,38 @@ if (_extParked)
         global.ntl_ext_wait = 0;
         global.ntl_ext_confirmed = 0;
         try { if (file_exists(_extMarker)) file_delete(_extMarker); } catch (e_extm3) { }
-        try { audio_master_gain(1); } catch (e_exta2) { }
+        // ★ 用户主诉修复：把 park 期间的静音**原位撤销**（暂停→恢复；被 stop 掉的 BGM→按官方口径重起），
+        //   失败一律写日志，不再用空 catch 吞掉。
+        if (variable_global_exists("ntl_ext_paused") && global.ntl_ext_paused == 1)
+        {
+            try { audio_resume_all(); } catch (e_extr3) { ntl_log("ext", "[ext] audio_resume_all 失败: " + string(e_extr3)); }
+            global.ntl_ext_paused = 0;
+        }
+        else if (variable_global_exists("ntl_ext_stopped") && global.ntl_ext_stopped == 1)
+        {
+            global.ntl_ext_stopped = 0;
+            var _extStream = -1;
+            try { _extStream = audio_create_stream("mus/AUDIO_STORY.ogg"); } catch (e_exts1) { _extStream = -1; }
+            if (_extStream < 0) { try { _extStream = audio_create_stream(working_directory + "../mus/AUDIO_STORY.ogg"); } catch (e_exts2) { _extStream = -1; } }
+            if (_extStream >= 0)
+            {
+                var _extInst = -1;
+                try { _extInst = audio_play_sound(_extStream, 90, 1); } catch (e_exts3) { _extInst = -1; }
+                if (_extInst >= 0)
+                {
+                    try { audio_sound_gain(_extInst, 0.95, 0); } catch (e_exts4) { }
+                    if (variable_global_exists("currentsong")) { global.currentsong[0] = _extStream; global.currentsong[1] = _extInst; }
+                    ntl_log("ext", "[ext] 已重新补起章节选择器 BGM（AUDIO_STORY.ogg）");
+                }
+                else ntl_log("ext", "[ext][警告] 回到章节选择器后 BGM 重启失败（audio_play_sound 失败）");
+            }
+            else ntl_log("ext", "[ext][警告] 回到章节选择器后 BGM 重启失败（打不开 mus/AUDIO_STORY.ogg）");
+        }
+        if (variable_global_exists("ntl_ext_mute_tried")) global.ntl_ext_mute_tried = 0;
+        // ★ 用户主诉修复（2026-10-03）：回程时清掉滞留的按键边沿（窗口隐藏期间 GM 暂停，
+        //   隐藏前按下的键会留到窗口恢复后才被读到 ⇒ 会误触发一次章节启动 / 误滚动）。
+        ntl_key_reset();
+        try { audio_master_gain(1); } catch (e_exta2) { ntl_log("ext", "[ext] audio_master_gain(1) 失败: " + string(e_exta2)); }
         try { window_set_caption("DELTARUNE"); } catch (e_extk2) { }
         if (_extEsc == 1)
         {
@@ -145,13 +232,92 @@ if (_extParked)
 }
 
 
-// ★★★ 控制台打开时，章节选择器完全不响应任何输入（包括 Enter/Z 进入章节）
-if (variable_global_exists("ntl_console_open") && global.ntl_console_open) return 0;
+// ★ 用户主诉修复（2026-10-03）收尾：离开章节选择器时，把被我们压到 0 的背景音乐增益还原。
+//   只影响那一个音乐实例；选择音效从未被我们碰过，所以不需要任何恢复动作。
+if (variable_global_exists("ntl_sel_bgm_muted") && global.ntl_sel_bgm_muted == 1)
+{
+    var _sel_left = (asset_get_index("obj_CHAPTER_SELECT") < 0 || global.ntl_ch_loaded != 1);
+    if (_sel_left)
+    {
+        var _sel_bgm_restore = 1;   // 官方 start_bgm 的起始增益就是 1
+        if (variable_global_exists("ntl_sel_bgm_gain")) _sel_bgm_restore = global.ntl_sel_bgm_gain;
+        try
+        {
+            if (variable_global_exists("ntl_sel_bgm_i") && global.ntl_sel_bgm_i >= 0)
+            {
+                audio_sound_gain(global.ntl_sel_bgm_i, _sel_bgm_restore, 0);
+            }
+        }
+        catch (e_selbgm9) { }
+        global.ntl_sel_bgm_muted = 0;
+        global.ntl_sel_bgm_i = -1;
+        ntl_log("root", "[root] 已离开章节选择器：背景音乐增益还原为 " + string(_sel_bgm_restore));
+    }
+}
 
 var _sel_obj = asset_get_index("obj_CHAPTER_SELECT");
 if (_sel_obj < 0) return 0;
 // 官方对象已被我们停用（非破坏性接管）→ 不依赖它的实例；只看章节表是否加载好
 if (global.ntl_ch_loaded != 1) return 0;
+// ★★★ 用户主诉修复（2026-10-03）：章节选择器里**除「选择音效」外全部静音**
+//   用户原话：「我觉得你可以让章节选择器除了选择音效外的所有声音静音」。
+//   官方 root 启动器的音乐口径（用 ntl-builder --dump gml_Object_obj_CHAPTER_SELECT_Create_0 实测反编译得到）：
+//       start_bgm = function() { if (global.bgm == -4 || !audio_is_playing(global.bgm)) global.bgm = audio_play_sound(8, 15, 1); };
+//       stop_bgm  = function() { if (global.bgm != -4) { audio_stop_sound(global.bgm); global.bgm = -4; } };
+//       show_transition() 里：audio_sound_gain(global.bgm, 0, 500); audio_play_sound(sound_file, 50, 0, volume);  ← 这里的是选择音效
+//   ⇒ 章节选择器的背景音乐实例就是 **global.bgm**（声音资源 8，循环，起始增益 1）；
+//     而「选择音效」是 show_transition() 另起的一次性实例（sound_file），**不共用 global.bgm**，
+//     所以只压 global.bgm 的增益即可做到「只留选择音效」——这正是用户要的效果。
+//   绝不动 audio_master_gain(0) / audio_pause_all()：那会把选择音效一并掐掉。
+//   每帧重申：房间切换 / 设置菜单 / 官方重新 start_bgm 都会把增益覆盖回去。
+//   （2026-10-03 修正：早期版本读的是 global.currentsong[1]，那是**章节内**的音乐口径，root 里不存在 ⇒ 静音从未生效。）
+if (!variable_global_exists("ntl_sel_bgm_muted")) global.ntl_sel_bgm_muted = 0;
+if (!variable_global_exists("ntl_sel_bgm_warn")) global.ntl_sel_bgm_warn = 0;
+if (!variable_global_exists("ntl_sel_bgm_i")) global.ntl_sel_bgm_i = -1;
+if (variable_global_exists("bgm"))
+{
+    var _sel_bgm = -4;   // 官方用 -4 表示「没有背景音乐」
+    try { _sel_bgm = global.bgm; } catch (e_selbgm0) { _sel_bgm = -4; }
+    var _sel_play = 0;
+    if (_sel_bgm != -4)
+    {
+        try { _sel_play = audio_is_playing(_sel_bgm); } catch (e_selbgm1) { _sel_play = 0; }
+    }
+    if (_sel_play == 1)
+    {
+        try
+        {
+            if (global.ntl_sel_bgm_muted != 1)
+            {
+                var _sel_g0 = 1;   // audio_play_sound(8, 15, 1) 的起始增益就是 1
+                try { _sel_g0 = audio_sound_get_gain(_sel_bgm); } catch (e_selbgm3) { _sel_g0 = 1; }
+                if (_sel_g0 <= 0) _sel_g0 = 1;   // 别把上一次残留的 0 当成「原增益」
+                global.ntl_sel_bgm_gain = _sel_g0;
+                global.ntl_sel_bgm_muted = 1;
+                ntl_log("root", "[root] 章节选择器：背景音乐已静音（global.bgm=" + string(_sel_bgm) + "，原增益 " + string(_sel_g0) + "），选择音效保留");
+            }
+            global.ntl_sel_bgm_i = _sel_bgm;
+            audio_sound_gain(_sel_bgm, 0, 0);
+        }
+        catch (e_selbgm2)
+        {
+            if (global.ntl_sel_bgm_warn != 1)
+            {
+                global.ntl_sel_bgm_warn = 1;
+                ntl_log("root", "[root] 章节选择器静音失败（audio_sound_gain）: " + string(e_selbgm2));
+            }
+        }
+    }
+    else
+    {
+        // 音乐此刻没在播（例如 show_transition 已经淡出 / stop_bgm）→ 清掉静音状态，等它重新 start_bgm 时再压
+        global.ntl_sel_bgm_muted = 0;
+        global.ntl_sel_bgm_i = -1;
+    }
+}
+
+// ★★★ 控制台打开时，章节选择器完全不响应任何输入（包括 Enter/Z 进入章节）
+if (variable_global_exists("ntl_console_open") && global.ntl_console_open) return 0;
 
 // 禁用官方章节 UI 的输入（视觉被我们覆盖，输入由我们处理）
 var _ui_obj = asset_get_index("obj_ui_chapter");
@@ -475,6 +641,14 @@ if (global.ntl_quit_pending > 0)
 if (ntl_key_fire(13, 0, 0) == 1 || ntl_key_fire(90, 0, 0) == 1)
 {
     ntl_root_launch(global.ntl_ch_sel);
+    // ★ 用户主诉修复（2026-10-03）：启动后立刻清掉 Enter/Z 的按下沿与按下状态。
+    //   实测事故：外部章节请求写出后窗口被守候进程隐藏，GM 在窗口隐藏时会暂停 ⇒ 这次按下
+    //   一直留在按键状态里，等 park 结束、窗口恢复时**又触发一次启动**（一次 Enter 连拉两个
+    //   外部引擎：日志里 Kanacole 之后又冒出 Frostveil）。ntl_key_reset 清我们自己的边沿表，
+    //   keyboard_clear 清 GM 状态（同 :195 / :380 的写法）。
+    keyboard_clear(vk_enter);
+    keyboard_clear(90);
+    ntl_key_reset();
     return 1;
 }
 return 1;
