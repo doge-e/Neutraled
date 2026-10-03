@@ -8,9 +8,9 @@
     <AssemblyName>ntl-builder</AssemblyName>
     <!-- 产品版本随发行包走；AssemblyVersion 故意钉在 1.0.1.0 不动：
          插件 DLL 是编译期引用 ntl-builder 的，改 AssemblyVersion 会动到程序集绑定。 -->
-    <Version>1.0.6</Version>
+    <Version>1.0.7</Version>
     <AssemblyVersion>1.0.1.0</AssemblyVersion>
-    <FileVersion>1.0.6.0</FileVersion>
+    <FileVersion>1.0.7.0</FileVersion>
     <RootNamespace>Neutraled.Builder</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
 

@@ -157,13 +157,13 @@ public static class Cache
         catch { return "err"; }
     }
 
-    public static string Signature(string gameVersion, string chapter, IEnumerable<ModEntry> mods, string extra = "")
-        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(SignatureRaw(gameVersion, chapter, mods, extra)))).ToLowerInvariant();
+    public static string Signature(string gameVersion, string chapter, IEnumerable<ModEntry> mods, string extra = "", string linebox = "")
+        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(SignatureRaw(gameVersion, chapter, mods, extra, linebox)))).ToLowerInvariant();
 
     /// <summary>签名原文（未哈希）。只给 NTL_SIG_DEBUG=1 的诊断输出用：
     /// 出现「签名每轮都变、跳过永不生效」时，把检查时与写回时的原文一比就知道哪个输入项在动。
     /// 正常路径不要拿它做比较（很长：含每个 mod 目录的完整文件清单）。</summary>
-    public static string SignatureRaw(string gameVersion, string chapter, IEnumerable<ModEntry> mods, string extra = "")
+    public static string SignatureRaw(string gameVersion, string chapter, IEnumerable<ModEntry> mods, string extra = "", string linebox = "")
     {
         var sb = new StringBuilder();
         sb.Append("ntl=").Append(Paths.ApiVersion()).Append('|');
@@ -180,6 +180,10 @@ public static class Cache
         // ★ 必须纳入部署档位：否则两种档位共用一个缓存键 —— 关掉开关仍会复用旧的加速产物，
         //   玩家以为已恢复，实际输入屏蔽还是坏的（开发者 1 实测发现）。
         sb.Append("fast=").Append(Injector.FastDeploy ? '1' : '0').Append('|');
+        // ★ 行盒 +N px 也要进签名（config.json 的 font_linebox_extra / 环境变量 NTL_FONTMERGE_LINEBOX_EXTRA，
+        //   取值见 FontMerge.LineboxSig）：只改 N 不改别的输入时，不加这一项 --deploy 会「内容未变」跳过，
+        //   游戏里的行距永远不会变（fast / fonts / basemod 都踩过同一个坑）。
+        sb.Append("linebox=").Append(linebox).Append('|');
         // ★ 也要纳入**构建器自身**的指纹：注入补丁（Injector.cs 里的 FR 查找替换）改了以后
         //   api/ 与 fonts/ 都没变，缓存会命中旧产物 —— 明明加了新补丁却被"内容未变"直接跳过
         //   （实测踩过：设置菜单第 6 行绘制 / 第 8 项解夹 等补丁加完，--deploy 直接说内容未变）。

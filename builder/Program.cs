@@ -2172,8 +2172,9 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 var bi = new FileInfo(baseWinOverride);
                 extra += "|base=" + bi.FullName + ":" + bi.Length + "@" + bi.LastWriteTimeUtc.Ticks;
             }
-            return raw ? Cache.SignatureRaw(Paths.ApiVersion(), chapter, sigMods, extra)
-                       : Cache.Signature(Paths.ApiVersion(), chapter, sigMods, extra);
+            var linebox = FontMerge.LineboxSig(gameRoot);   // 行盒开关也是输入（见 FontMerge.ResolveLineboxExtra）
+            return raw ? Cache.SignatureRaw(Paths.ApiVersion(), chapter, sigMods, extra, linebox)
+                       : Cache.Signature(Paths.ApiVersion(), chapter, sigMods, extra, linebox);
         }
 
         // 2) 扫描 mods（先扫描以便选择基底）
@@ -2572,7 +2573,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         // 运行时清单（供 GUI 显示）
         var listPath = Path.Combine(chapterDir, "Neutraled", "mods.json");
         Directory.CreateDirectory(Path.GetDirectoryName(listPath)!);
-        // ★ 2026-10-02（用户 m23281「显示 0 mod 加载」）真根因：这里以前用的是**默认编码器**——
+        // ★ 2026-10-02（用户反馈「显示 0 mod 加载」）真根因：这里以前用的是**默认编码器**——
         //   「冰封帷幕」「汉化组」等 mod 名含中文，C# 默认编码器会写成 \u51B0\u5C01… 转义，
         //   而 GameMaker 的 json_parse **吃不下 \uXXXX**（老坑 15，chapters.json 已实测过）⇒
         //   整个清单解析失败，api/ntl_modmenu_loaded.gml 拿到空数组 ⇒ 面板恒显示「已加载 0」。
@@ -3091,7 +3092,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         chapter = string.IsNullOrEmpty(chapter) ? "root" : chapter;
         var mods = Mods.ScanMods(Path.Combine(Paths.NeutraledRoot(gameRoot), "mods"), chapter, false, true);
         var gameVer = Cache.GameVersion(gameRoot);
-        var sig = Cache.Signature(gameVer, chapter, mods, ExternalSig(gameRoot));
+        var sig = Cache.Signature(gameVer, chapter, mods, ExternalSig(gameRoot), FontMerge.LineboxSig(gameRoot));
         var hit = Cache.Lookup(gameRoot, sig);
         Console.WriteLine(L("===== 启动缓存查验（不启动游戏）====="));
         Console.WriteLine(L("  章节        : {0}", chapter));
@@ -3147,7 +3148,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     {
         var mods = Mods.ScanMods(Path.Combine(Paths.NeutraledRoot(gameRoot), "mods"), chapter, false, true);
         var gameVer = Cache.GameVersion(gameRoot);
-        var sig = Cache.Signature(gameVer, chapter, mods, ExternalSig(gameRoot));
+        var sig = Cache.Signature(gameVer, chapter, mods, ExternalSig(gameRoot), FontMerge.LineboxSig(gameRoot));
         var hit = Cache.Lookup(gameRoot, sig);
         Console.WriteLine(JsonSerializer.Serialize(new
         {
@@ -3240,7 +3241,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         var gameVer = Cache.GameVersion(gameRoot);
         var targets = new List<string> { "root" };
         if (!string.Equals(chapter, "root", StringComparison.OrdinalIgnoreCase)) targets.Add(chapter);
-        var sig = Cache.Signature(gameVer, chapter, mods);
+        var sig = Cache.Signature(gameVer, chapter, mods, "", FontMerge.LineboxSig(gameRoot));
 
         Console.WriteLine(L("===== Neutraled 启动器 ====="));
         Console.WriteLine(L("  签名: {0}  目标: {1}", Cache.SigShort(sig), string.Join("/", targets)));

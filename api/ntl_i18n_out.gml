@@ -651,13 +651,13 @@ ds_map_add(_en, "menu.d_deploy", "Redeploy every chapter and restart the game (n
 ds_map_add(_zh, "menu.d_close", "返回设置菜单。");
 ds_map_add(_en, "menu.d_close", "Back to the settings menu.");
 
-// —— 已加载 / 已安装 计数（m10511：面板与入口行显示"已加载"） ——
+// —— 已加载 / 已安装 计数（面板与入口行显示"已加载"） ——
 ds_map_add(_zh, "menu.mods_loaded", "已加载模组");
 ds_map_add(_en, "menu.mods_loaded", "Loaded mods");
 ds_map_add(_zh, "menu.d_loaded", "本产物实际加载 {1} 个（磁盘上已安装 {2} 个）。");
 ds_map_add(_en, "menu.d_loaded", "Loaded into this build: {1} (installed on disk: {2}).");
 
-// —— 面板可读性（用户 m17504：长文本溢出 / 分不清哪个开关属于哪个 mod） ——
+// —— 面板可读性（用户反馈：长文本溢出 / 分不清哪个开关属于哪个 mod） ——
 ds_map_add(_zh, "menu.group_head",     "【{1}】");
 ds_map_add(_en, "menu.group_head",     "[{1}]");
 ds_map_add(_zh, "menu.group_generic",  "模组选项");

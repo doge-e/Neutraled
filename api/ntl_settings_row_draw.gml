@@ -2,7 +2,7 @@
 /// ★ 位置与样式完全照 mods/deltarune_60_fps 的「Mod Settings」：入口行插在原版第 6 行，
 ///   原版「Return to Title」「Back」由 builder 顺移一位（见 builder/Injector.cs 2.6 / 2.9）。
 /// ★ 选中红心不归我们画：官方红心公式 y = yy+160+(coord-滚动)*35 在 coord 5 时正好落在本行。
-/// 字体（m11431）：改用游戏自己的 mainbig（EmSize 24，部署期 FontMerge 已补 CJK 字形）——
+/// 字体：改用游戏自己的 mainbig（EmSize 24，部署期 FontMerge 已补 CJK 字形）——
 ///   与上下官方行同字号。旧版只要出现非 ASCII 就切 ntl_font_cjk（EmSize 12，只有一半大），
 ///   用户反馈「mod设置及其二级菜单字体太小了」指的就是这个。
 /// ★ 必须完整保存/恢复绘制状态：漏了颜色会把游戏的光标心形染成黄色（实测踩过）。
@@ -27,7 +27,7 @@ var _oha = draw_get_halign();
 var _ova = draw_get_valign();
 
 var _label = ntl_t("set.row");
-// ★ 右列显示"已加载"数（m10511）：本产物实际加载的 mod 数；读不到 mods.json 时回退"已安装"数
+// ★ 右列显示"已加载"数：本产物实际加载的 mod 数；读不到 mods.json 时回退"已安装"数
 var _loaded = ntl_modmenu_loaded_count();
 var _value = ntl_ts("set.value", [string(_loaded >= 0 ? _loaded : ntl_modmenu_modcount())]);
 

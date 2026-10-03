@@ -21,6 +21,8 @@ namespace Neutraled.Builder;
 /// 长页上时，中文**画得出来但取样是错的**（字形来自图集别处）⇒ 字体页不要超过 2048 见方。
 /// 调试开关：NTL_FONTMERGE_MAXSIDE（默认 2048，可设 4096）、NTL_FONTMERGE_SCALED（默认 1）、
 /// NTL_FONTMERGE_FITBOX（默认 1：补进来的字形不许超过目标字体原有字形盒高，见 Complete 里的「限高」注释）。
+/// 行盒开关（1.0.7）：config.json 的 font_linebox_extra（或环境变量 NTL_FONTMERGE_LINEBOX_EXTRA）= 行盒额外像素 N，
+/// **默认 0 = 1.0.6 行为、逐像素一致**；N>0 时把限高上限抬到「原版盒高 + N」，行距随之松 N 像素（见 Complete 里 ceilH 的注释）。
 /// 触发条件是"真的缺"：纯 ASCII 产物的目标字体一个字形都不用补 ⇒ 产物与以前完全一致。
 /// </summary>
 public static class FontMerge
@@ -46,7 +48,9 @@ public static class FontMerge
             }
             if (needed.Count == 0) { Paths.Log(L("    字体补全: 没有取到文本，跳过")); return 0; }
             Paths.Log(L("    字体补全: 文本来源 {0}（{1} 个字符）", source, needed.Count));
-            return Complete(data, needed);
+            int linebox = ResolveLineboxExtra(gameRoot);
+            if (linebox > 0) Paths.Log(L("    字体行盒: +{0}px（font_linebox_extra）", linebox));
+            return Complete(data, needed, null, linebox);
         }
         catch (Exception ex)
         {
@@ -56,7 +60,9 @@ public static class FontMerge
     }
 
     /// <summary>把 needed 里目标字体缺失、内置包又有的字形补进去；返回补进去的字形总数。</summary>
-    public static int Complete(UndertaleData data, HashSet<char> needed, IEnumerable<string>? targets = null)
+    /// <param name="lineboxExtra">行盒额外像素（config.json 的 font_linebox_extra / NTL_FONTMERGE_LINEBOX_EXTRA）：
+    /// 0 = 1.0.6 行为；N&gt;0 时字形盒高上限抬到「原版盒高 + N」，行距随之松 N 像素。见下面 ceilH 的注释。</param>
+    public static int Complete(UndertaleData data, HashSet<char> needed, IEnumerable<string>? targets = null, int lineboxExtra = 0)
     {
         var pack = data.Fonts.FirstOrDefault(f => f.Name?.Content == PackName);
         if (pack == null)
@@ -105,6 +111,14 @@ public static class FontMerge
             int boxH = 0;
             foreach (var g0 in font.Glyphs) if (g0.SourceHeight > boxH) boxH = (int)g0.SourceHeight;
             bool fitBox = EnvUInt("NTL_FONTMERGE_FITBOX", 1) != 0;
+            // ★ 行盒 +N px（1.0.7；默认 N=0 = 1.0.6 逐像素一致）：这三个主字体在原版与汉化包里
+            //   LineHeight/Ascender **都是 0**，运行期的行盒 = 字形最大高（fnt_main 16 / mainbig 32 / small 7）。
+            //   所以「行距松 N 像素」的做法就是把限高上限从 boxH 抬到 boxH+N：被压进盒里的高字形
+            //   （⏳✔✗ 等）随之长到 boxH+N ⇒ 盒高确定性地变成 boxH+N，行距跟着松 N。
+            //   为什么不去写 font.LineHeight/Ascender：docs/PIPELINE.md:937 的教训「度量照抄源字体，
+            //   自己编会让字形垂直位置偏移」—— Ascender 没法一起编，只改 LineHeight 会把基线比例搞乱。
+            int lineN = lineboxExtra > 0 ? lineboxExtra : 0;
+            int ceilH = boxH > 0 ? boxH + lineN : 0;   // 0 = 不限高
             int clamped = 0;
 
             using var oldPage = oldImage.GetMagickImage();
@@ -139,14 +153,14 @@ public static class FontMerge
             foreach (var g in miss)
             {
                 double k = ratio;
-                if (fitBox && boxH > 0 && g.SourceHeight * ratio > boxH)
+                if (fitBox && ceilH > 0 && g.SourceHeight * ratio > ceilH)
                 {
-                    k = ratio * boxH / (g.SourceHeight * ratio);   // 缩到盒高，保持外观比例
+                    k = ratio * ceilH / (g.SourceHeight * ratio);   // 缩到盒高（+N），保持外观比例
                     clamped++;
                 }
                 int w = Math.Max(1, (int)Math.Round(g.SourceWidth * k));
                 int h = Math.Max(1, (int)Math.Round(g.SourceHeight * k));
-                if (boxH > 0 && h > boxH) h = boxH;                // 取整兜底：绝不越过盒高
+                if (ceilH > 0 && h > ceilH) h = ceilH;             // 取整兜底：绝不越过盒高（+N）
                 items.Add((g, w, h, k));
             }
             items.Sort((a, b) => b.h.CompareTo(a.h));       // 高的排前面，货架更满
@@ -257,7 +271,9 @@ public static class FontMerge
                 name, placed.Count, have.Count, have.Count + placed.Count, oldW, oldH, cropW, cropH, pageW, pageH, ratio,
                 skipped > 0 ? L("，另有 {0} 个放不下", skipped) : ""));
             if (fitBox && clamped > 0)
-                Paths.Log(L("      限高 {0}px：{1} 个超高字形已缩进盒内（原版字形盒高，行距不变）", boxH, clamped));
+                Paths.Log(lineN > 0
+                    ? L("      限高 {0}px（原版盒高 {1} + 行盒 {2}px）：{3} 个超高字形已缩进盒内", ceilH, boxH, lineN, clamped)
+                    : L("      限高 {0}px：{1} 个超高字形已缩进盒内（原版字形盒高，行距不变）", boxH, clamped));
         }
         if (totalAdded == 0) Paths.Log(L("    字体补全: 无需补（目标字体已覆盖所需字符）"));
         return totalAdded;
@@ -278,6 +294,30 @@ public static class FontMerge
         }
         return chars;
     }
+
+    /// <summary>「行盒 +N px」的当前取值（默认 0）：环境变量 NTL_FONTMERGE_LINEBOX_EXTRA 优先
+    /// （接受 0，便于临时关掉），否则读游戏根 config.json 的 font_linebox_extra。上限 64：
+    /// 再大行距就离谱了，而且被压的字形会跟着长、纹理页更吃紧。</summary>
+    public static int ResolveLineboxExtra(string? gameRoot)
+    {
+        var raw = Environment.GetEnvironmentVariable("NTL_FONTMERGE_LINEBOX_EXTRA");
+        if (raw != null && int.TryParse(raw, out var ev) && ev >= 0) return Math.Min(ev, 64);
+        if (string.IsNullOrWhiteSpace(gameRoot))
+        {
+            try { gameRoot = Paths.DetectGameRoot(); } catch { gameRoot = null; }
+        }
+        int v = 0;
+        if (!string.IsNullOrWhiteSpace(gameRoot))
+        {
+            try { v = ConfigFile.GetInt(gameRoot!, "font_linebox_extra") ?? 0; } catch { v = 0; }
+        }
+        if (v < 0) v = 0;
+        return Math.Min(v, 64);
+    }
+
+    /// <summary>签名项（见 Cache.SignatureRaw）：把行盒开关带进缓存键 —— 改 N 后必须重新部署，
+    /// 否则 --deploy 会「内容未变」静默跳过、游戏里还是旧行距（1.0.6 在 fast/fonts 上踩过同类坑）。</summary>
+    public static string LineboxSig(string? gameRoot) => ResolveLineboxExtra(gameRoot).ToString();
 
     /// <summary>环境变量整数（调试/实验用；给不出正整数就用默认值）。</summary>
     private static int EnvInt(string name, int def)

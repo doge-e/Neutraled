@@ -1,6 +1,6 @@
 /// ntl_modmenu_loaded() —— 本产物**实际加载**的 mod 清单（数组，元素 = struct: Id/Name/Version）
 /// 来源：builder 每次部署写在**产物目录**里的 <working_directory>Neutraled/mods.json
-///   ★ 2026-10-02（用户 m23281「显示 0 mod 加载」）真根因：builder 那时用**默认编码器**写 mods.json，
+///   ★ 2026-10-02（用户反馈「显示 0 mod 加载」）真根因：builder 那时用**默认编码器**写 mods.json，
 ///     「冰封帷幕」「汉化组」等含中文的 mod 名被写成 \uXXXX 转义，而 **GameMaker 的 json_parse 吃不下 \uXXXX**
 ///     （老坑 15，chapters.json 已实测）⇒ json_parse 抛异常 ⇒ 本函数返回空数组 ⇒ 面板恒显示「已加载 0」。
 ///     已在 builder 侧修掉（Program.cs:2432 改用 Paths.Json）；这里保留双形态读取 + 转义计数诊断作兜底。

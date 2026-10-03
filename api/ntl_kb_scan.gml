@@ -100,7 +100,7 @@ for (var _n = 0; _n < 10; _n += 1)
 //   Insert(0x2D=45) / Delete(0x2E=46) / 未定义(0x3D) / 左Win(0x5B) 等，实测后果：
 //     · 真实标点键（VK 0xBD 减号、0xBE 句点、0xBB 等号 …）**一个字符都收不到** ——
 //       用户在控制台里根本打不出 "_ . / + = [ ] : < > ?"，于是 loadmap before_palace、
-//       eval 1+1、whatis obj_kris 这类输入全部作废（用户 m17451「全量测试控制台」实测抓到）；
+//       eval 1+1、whatis obj_kris 这类输入全部作废（用户反馈「全量测试控制台」实测抓到）；
 //     · 反过来按 Insert 会插入 "-"、按 Delete 会插入 "."（因为 45/46 就是这两个键的 VK）。
 //   现在改用 0xBA-0xDE 这组 OEM VK 码，并补齐 \ ` ' 三个键。
 var _symKeys = [vk_space, 0xBD, 0xBB, 0xDB, 0xDD, 0xBA, 0xBC, 0xBE, 0xBF, 0xDC, 0xC0, 0xDE];

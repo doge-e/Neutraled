@@ -476,7 +476,7 @@ dotnet build sdk\samples\SampleHello\SampleHello.csproj -c Release
 | `broken` | `清单解析失败: <异常>` | `plugin.json` 不是合法 JSON | 修 JSON（读取允许注释/尾逗号，但不允许缺括号） |
 | `broken` | `目录名不合法: <原因>` | 手工改名成了非法 id | 改成 `[A-Za-z0-9._-]` 且不以点开头结尾 |
 | `broken` | `清单 id 与目录名不一致: 目录 X，清单 Y（拒绝启用/禁用，防目录穿越）` | id ≠ 目录名 | 让两者一致 |
-| `broken` | `最低 builder 版本 X，当前 Y —— 需要升级 Neutraled` | `min_builder` 高于 `Paths.ApiVersion()`（当前 `1.0.6`） | 升级 Neutraled 或降 `min_builder` |
+| `broken` | `最低 builder 版本 X，当前 Y —— 需要升级 Neutraled` | `min_builder` 高于 `Paths.ApiVersion()`（当前 `1.0.7`） | 升级 Neutraled 或降 `min_builder` |
 | `broken` | `清单没有 entry（无法加载）` | 缺 `entry` 字段 | 补上 DLL 相对路径 |
 | `broken` | `入口路径不合法（越出插件目录）: <entry>` | `entry` 含 `..` / 绝对路径 | 改成插件目录内的相对路径 |
 | **`installed`** | **`入口程序集缺失: <entry>`** | **`entry` 指向的 DLL 不在插件目录里**（还没构建 / 还没下载完 / 名字写错） | 构建出 DLL 放进插件目录；或修 `entry`。**这个状态是"差一步就能用"，不是坏** |

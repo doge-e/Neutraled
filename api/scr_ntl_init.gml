@@ -10,7 +10,7 @@ global.ntl_log_path = "Neutraled/dr-api.log";
 //   整场游戏一个字都不写（实测踩过：%LOCALAPPDATA%\DELTARUNE\Neutraled\ 被清掉后，
 //   游戏跑得好好的却完全没有日志，排查了很久）。这里先确保目录存在。
 ntl_ensure_dir(global.ntl_log_path);
-global.ntl_version = "1.0.6";
+global.ntl_version = "1.0.7";
 global.ntl_live_api = "1.2.0";
 
 // 运行时脚本解释器的各个函数都是独立同名脚本资源（UTMT 编译器要求），无需预加载。
@@ -64,7 +64,7 @@ if (!variable_global_exists("ntl_fighting_last")) global.ntl_fighting_last = 0;
 
 ntl_log("core", "Neutraled API v" + global.ntl_version + " init (room=" + string(room) + ")");
 
-// 一次性诊断：本产物 Neutraled/mods.json 的读取/解析链路（用户 m23281「显示 0 mod 加载」）
+// 一次性诊断：本产物 Neutraled/mods.json 的读取/解析链路（用户反馈「显示 0 mod 加载」）
 //   只打一条日志、不影响逻辑；定性后（1.0.1）可删。
 try { ntl_json_diag(); } catch (e) { ntl_log("jdiag", "[jdiag] 诊断脚本异常（已忽略）"); }
 

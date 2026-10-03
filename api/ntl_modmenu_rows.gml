@@ -6,7 +6,7 @@
 ///          "script:<脚本名>" = mod 用 ntl_menu_add 注册的开关（跑那个脚本）
 ///          "" = 没有动作（分组标题）
 ///          子视图（chapters/mods/langs）的输入由各自的按键分支处理，这里统一留 ""。
-/// ★ 用户 m17504「设置选项无法分清是哪个 mod 的」的修法：mod 项不再与内置行混排，
+/// ★ 用户反馈「设置选项无法分清是哪个 mod 的」的修法：mod 项不再与内置行混排，
 ///   而是插在分组标题「── <mod 名> ──」下面并缩进一档。
 /// 缓存：global.ntl_modmenu_rows_cache = [签名, 行数组]；按键确认 / 打开面板 / 切语言时清空
 ///（行内容会随开关状态变，别让缓存骗人）。
@@ -28,7 +28,7 @@ if (_view == "main")
 {
     array_push(_rows, [ntl_t("menu.chapters"), ntl_ts("menu.ch_count", [string(_chN)]), ntl_t("menu.d_chapters"), 0, 0, "chapters"]);
 
-    // ★ 显示"本产物实际加载 N / 磁盘已安装 M"：只写一个 12 会让人以为是已安装数（用户 m10511 的老诉求）
+    // ★ 显示"本产物实际加载 N / 磁盘已安装 M"：只写一个 12 会让人以为是已安装数（用户的老诉求）
     var _ld = ntl_modmenu_loaded_count();
     var _ins = ntl_modmenu_modcount();
     var _vl = (_ld >= 0) ? (string(_ld) + " / " + string(_ins)) : string(_ins);

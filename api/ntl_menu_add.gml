@@ -2,7 +2,7 @@
 /// label/value 传文案，或传 "i18n:键名" 走 i18n 表；action 是脚本名（玩家按 Z/Enter 时调用），空串 = 只显示。
 /// owner（可选，第 6 参）= 这个开关属于哪个 mod（如 "60fps_layer"）——
 ///   面板会把这些项收进分组标题「── <owner> ──」下面并缩进一档，
-///   这样玩家一眼能看出哪些开关是 mod 的、哪个 mod 的（用户 m17504 的诉求）。
+///   这样玩家一眼能看出哪些开关是 mod 的、哪个 mod 的（用户诉求）。
 ///   不传 owner 的项会归到通用组「模组选项」。
 /// 同 id 重复调用 = 覆盖（热重载不会出现两行）。例：
 ///   ntl_menu_add("mymod.speed", "i18n:mymod.speed", "2x", "mymod_toggle_speed", "i18n:mymod.d_speed", "mymod");

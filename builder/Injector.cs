@@ -854,7 +854,7 @@ public static class Injector
            "var _hspace = (global.darkzone == 1) ? 16 : 8;",
            "var _hspace = (global.darkzone == 1) ? 16 : 8; if (global.lang != \"ja\" && ord(mychar) > 255) { _hspace = 0; }",
            "文本字距(宽字符不吃 jpused 的额外补量)");
-        // 2.9) 设置菜单容纳第 8 行：**不伸缩窗口**，改用滚动（用户 m11431）
+        // 2.9) 设置菜单容纳第 8 行：**不伸缩窗口**，改用滚动
         // ★ 用户原话：「mod设置及其二级菜单字体太小了，不要伸缩设置窗口，可以设置滚动条来装下更多内容」
         //   ① 字体：入口行与面板改用游戏自己的 mainbig（EmSize 24，部署期 FontMerge 已补 CJK 字形）——
         //      见 api/ntl_settings_row_draw.gml / api/ntl_modmenu_page_draw.gml（旧版切 ntl_font_cjk，只有一半大）；

@@ -1,7 +1,7 @@
 /// ntl_heart_sprite() —— 官方二级菜单里那个「选中红心」的精灵索引。
 /// ★ 为什么必须按名字取、不能硬编码索引：**精灵索引每个章节都不一样** ——
 ///   chapter4 = 3695、chapter1 = 922（对照表见 docs/MANAGE.md §11.4）。
-///   硬编码 3695 的版本在 chapter1 真机弹过（2026-09-27，用户 m12373 报错）：
+///   硬编码 3695 的版本在 chapter1 真机弹过（2026-09-27，用户报错）：
 ///     ERROR in action number 1 of Draw Event for object obj_darkcontroller:
 ///     Trying to draw non-existing sprite.
 ///     at gml_Script_ntl_modmenu_page_draw

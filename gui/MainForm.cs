@@ -1008,11 +1008,11 @@ public sealed class MainForm : Form
         MessageBox.Show(this, rc == 0 ? Localizer.T("B 面存档已创建：进游戏选该章节即可直接开 B 面") : Localizer.T("失败，详见日志"), "Neutraled");
     }
 
-    /// <summary>导入 B 面存档（m28374）：选文件 → 识别章节/槽位 → 输入名字（≤12 字母）→ 直接写进存档并标记 SideB。
+    /// <summary>导入 B 面存档：选文件 → 识别章节/槽位 → 输入名字（≤12 字母）→ 直接写进存档并标记 SideB。
     ///
     /// 两条游戏规则决定了这个界面长这样：
     ///   ① 存档文件**第 1 行就是角色名**（scr_saveprocess 的第一个字段）⇒ 必须输入名字，
-    ///      否则游戏里的存档槽显示不出名字（用户 m28374：玩家需要输入名字，≤12 个字母）；
+    ///      否则游戏里的存档槽显示不出名字（用户反馈：玩家需要输入名字，≤12 个字母）；
     ///   ② 「按实际情况改模板文件名」= 源文件叫什么不重要，模板一律按**实际章节**存成
     ///      Neutraled/bside/chapterN.sav（你自己导入的；随包默认模板在 bside/templates/chapterN.sav，
     ///      --make-bside 优先用自己的、其次用随包的），再把存档写成 filech&lt;N&gt;_&lt;slot&gt;（builder/BSide.cs 统一处理）。

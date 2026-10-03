@@ -10,7 +10,7 @@ namespace Neutraled.Builder;
 ///      （draw_sprite(3695, …) / sprite_index = 922 / draw_sprite_ext(3695, …)…）
 ///      ⇒ 换章节必炸：精灵索引用的是"这一份 data.win 里的序号"，每个章节各不相同。
 ///
-///      真实事故（2026-09-27，用户 m12373 报"报错了"）：
+///      真实事故（2026-09-27，用户报"报错了"）：
 ///      api/ntl_modmenu_page_draw.gml 写死 draw_sprite(3695, 0, _heartXPos, …)
 ///      （3695 是 **chapter4** 的红心；chapter1 的红心是 922，对照表见 docs/MANAGE.md §11.4）
 ///      ⇒ chapter1 里一开 Mod 设置面板就弹 Code Error：
