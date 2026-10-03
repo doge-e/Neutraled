@@ -258,18 +258,27 @@ public static class WatchAutostart
     {
         var self = Environment.ProcessPath ?? Path.Combine(Paths.NeutraledRoot(gameRoot), "builder", "bin", "Release", "net9.0", "ntl-builder.exe");
         var root = Paths.NeutraledRoot(gameRoot);
+        // ★ --game 必须是**游戏根**，不是 Neutraled 目录：这里曾经把 root 传下去（1.0.3 / 1.0.4 出厂件
+        //   就带这个毛病），于是「登录 / 解锁 / 每分钟兜底」拉起的守候全程把 Neutraled 当游戏根 ——
+        //   config / lang 读不到（日志整篇回退英文）、Kristal 中文回退路径拼成 ...\Neutraled\Kristal-main、
+        //   chapters.json 判定失效、面板「重新部署」会往 ...\Neutraled\Neutraled\ 里部署，还留下垃圾日志目录。
+        //   （外部章节本身仍能被拉起：游戏写的 launch-request.json 还有 %LOCALAPPDATA% 那条与根无关的路径；
+        //     2026-10-03 实测垃圾日志里确实成功启动过冰封帷幕。）
+        //   root 只留给 CurrentDirectory —— 守候的工作目录仍在 Neutraled 下，日志与相对路径照旧。
+        var game = Path.GetFullPath(gameRoot);
         var sb = new StringBuilder();
         sb.Append("' Neutraled 守候进程启动器（由 ntl-builder --watch-autostart on 生成，可随时重新生成）\r\n");
         sb.Append("' 作用：无窗口、无弹窗地启动 --watch-external。选中 Kristal 等外部章节时，只有它在跑才能接管。\r\n");
         sb.Append("Option Explicit\r\n");
-        sb.Append("Dim fso, sh, ntl, root\r\n");
+        sb.Append("Dim fso, sh, ntl, root, game\r\n");
         sb.Append("Set fso = CreateObject(\"Scripting.FileSystemObject\")\r\n");
         sb.Append("Set sh  = CreateObject(\"WScript.Shell\")\r\n");
         sb.Append("ntl = \"" + self + "\"\r\n");
         sb.Append("If Not fso.FileExists(ntl) Then WScript.Quit 0\r\n");
         sb.Append("root = \"" + root + "\"\r\n");
+        sb.Append("game = \"" + game + "\"\r\n");
         sb.Append("sh.CurrentDirectory = root\r\n");
-        sb.Append("sh.Run \"\"\"\" & ntl & \"\"\" --watch-external --game \"\"\" & root & \"\"\"\", 0, False\r\n");
+        sb.Append("sh.Run \"\"\"\" & ntl & \"\"\" --watch-external --game \"\"\" & game & \"\"\"\", 0, False\r\n");
         return sb.ToString();
     }
 

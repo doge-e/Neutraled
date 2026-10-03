@@ -107,8 +107,32 @@ public static class Program
     {
         for (int k = 0; k + 1 < args.Length; k++)
             if (args[k] == "--game" && !string.IsNullOrWhiteSpace(args[k + 1]))
-                return Path.GetFullPath(args[k + 1]);
+                return NormalizeGameRoot(Path.GetFullPath(args[k + 1]));
         return Paths.DetectGameRoot();
+    }
+
+    /// <summary>★ 兜底：有人把 <c>Neutraled</c> 目录当游戏根传进来时，纠正回它的上一级。
+    /// <para>踩过：1.0.3 / 1.0.4 的 <c>--watch-autostart on</c> 生成的 <c>scripts\watch-external.vbs</c> 里
+    /// <c>--game</c> 写成了 Neutraled 目录（源码 WatchAutostart.WatcherVbsBody 已修），于是登录 / 解锁 /
+    /// 每分钟兜底拉起的守候把 Neutraled 当成游戏根：config / lang 读不到（日志回退英文）、
+    /// <c>Neutraled\chapters.json</c> 判定失效、Kristal 中文回退路径错、面板「重新部署」会部署进
+    /// <c>...\Neutraled\Neutraled\</c>，并留下 <c>...\Neutraled\Neutraled\logs\watch-external.log</c> 垃圾目录。</para>
+    /// <para>老 vbs 已经躺在用户机器上、只有再点一次「开启自启」才会被重写，所以这里也认 Neutraled 目录：
+    /// 换上修好的 exe 就自动恢复正常。只在上一级**看起来像游戏根**时才纠正（认错就原样返回）。</para></summary>
+    internal static string NormalizeGameRoot(string root)
+    {
+        try
+        {
+            var trimmed = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!string.Equals(Path.GetFileName(trimmed), "Neutraled", StringComparison.OrdinalIgnoreCase)) return root;
+            var parent = Path.GetDirectoryName(trimmed);
+            if (string.IsNullOrEmpty(parent)) return root;
+            bool looksLikeGame = File.Exists(Path.Combine(parent, "DELTARUNE.exe"))
+                              || File.Exists(Path.Combine(parent, "data.win"))
+                              || Directory.Exists(Path.Combine(parent, "chapter1_windows"));
+            return looksLikeGame ? parent : root;
+        }
+        catch { return root; }
     }
 
     public static int Main(string[] args)
