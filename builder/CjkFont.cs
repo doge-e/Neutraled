@@ -345,6 +345,18 @@ public static class CjkFont
         var gm = font.Texture?.TexturePage?.TextureData?.Image;
         if (gm == null) throw new Exception(L("字体 {0} 没有可用的纹理页", font.Name?.Content));
 
+        // ★ TPI 原点：字形坐标（SourceX/Y）是**相对本字体 TPI 子矩形**的，而下面导出的是**整张纹理页**，
+        //   所以取像素必须加上 TPI 的 SourceX/SourceY。
+        //   证据（2026-10-03 0-mod 启动截图：章节选择器拉丁字形全糊、中文正常）：
+        //   原版根 data.win 的 fnt_main 只是 2048x2048 共享纹理页里的一个 128x128 子矩形
+        //   （TPI src=(1806,1162)），字形 'A' 的相对坐标是 (2,36)。忽略 TPI 原点就搬成了页上
+        //   (2,36) 那块别的字形碎片（像素比对完全一致），真正的 'A' 在 (1806+2, 1162+36)。
+        //   运行期 GMS2 取样 = TPI.Source + 字形 Source（builder/FontMerge.cs:102,107 与
+        //   builder/PackExport.cs:453,498 都是这个约定，原版字体也正因此才能画对）。
+        //   注：TPI 原点为 (0,0) 时本式恒等 —— 汉化基线那种「整页就是该字体自己的页」的情况一直是对的。
+        int ox = 0, oy = 0;
+        if (font.Texture != null) { ox = font.Texture.SourceX; oy = font.Texture.SourceY; }
+
         Paths.Log(L("  源字体: {0}  EmSize={1} AA={2} 字形={3}", font.Name?.Content, font.EmSize, font.AntiAliasing, font.Glyphs.Count));
 
         // ★ 原样搬运：直接把源纹理页导出成 PNG 当我们的页，字形坐标**一个都不改**。
@@ -370,8 +382,10 @@ public static class CjkFont
             int ch = g.Character;
             if (!seen.Add(ch)) continue;
             int w = g.SourceWidth, h = g.SourceHeight;
-            if (w <= 0 || h <= 0 || g.SourceX + w > srcW || g.SourceY + h > srcH) { skipped++; continue; }
-            if (pageRgba != null && !HasInkIn(pageRgba, srcW, g.SourceX, g.SourceY, w, h))
+            // 页内**绝对**坐标 = TPI 原点 + 字形相对坐标（见上方 ★ TPI 原点 说明）
+            int sx = ox + g.SourceX, sy = oy + g.SourceY;
+            if (w <= 0 || h <= 0 || sx + w > srcW || sy + h > srcH) { skipped++; continue; }
+            if (pageRgba != null && !HasInkIn(pageRgba, srcW, sx, sy, w, h))
             {
                 noInk++;
                 if (noInkSample.Count < 40) noInkSample.Add(ch);
@@ -380,7 +394,7 @@ public static class CjkFont
             glyphs.Add(new GlyphDef
             {
                 Char = ch, File = "", Sheet = sheetName,
-                SX = g.SourceX, SY = g.SourceY, SW = w, SH = h,
+                SX = sx, SY = sy, SW = w, SH = h,
                 Shift = g.Shift, Offset = g.Offset
             });
         }
