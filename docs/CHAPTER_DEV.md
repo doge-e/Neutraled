@@ -205,7 +205,7 @@ files\
 --- timeline:9:ntl_chapter_<slug>:<slug> 「我的房间」 <- 自带data（运行时文件取自 chapter1）+ 1 个 mod ---
   运行时文件复制: 43 个
   [存档] 独立存档名: DELTARUNE -> DRTL9_xxxxxxxx（FileName + Name）
-  存档目录联接: C:\Users\<你>\AppData\Local\DRTL9_xxxxxxxx -> ...\Neutraled\saves\DRTL9_xxxxxxxx
+  存档目录联接: %LOCALAPPDATA%\DRTL9_xxxxxxxx -> ...\Neutraled\saves\DRTL9_xxxxxxxx
   章节注册表: 10 条 -> ...\Neutraled\chapters.json
 ===== 时间线部署完成: 1/1 =====
 ```

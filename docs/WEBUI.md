@@ -33,7 +33,7 @@ ntl-builder --web --no-open --port 7933 --auto-stop # 空闲自动退出（脚�
 & 'E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0\ntl-builder.exe' --web --no-open --port 7933 --auto-stop
 ```
 
-真实输出（本次实测，工作目录 = 游戏根）：
+真实输出（实测，工作目录 = 游戏根）：
 
 ```
 游戏根: E:\steam\steamapps\common\DELTARUNE
@@ -76,7 +76,7 @@ LocalAddress LocalPort  State
 [Web] 网页界面已启动: http://127.0.0.1:7934/
 ```
 
-`port`..`port+5` 六个端口全被占住时（本次用 6 个 TcpListener 占 7933..7938 造的）：
+`port`..`port+5` 六个端口全被占住时（用 6 个 TcpListener 占住 7933..7938 复现）：
 
 ```
 [Web] 无法绑定端口 7933-7938: 另一个程序正在使用此文件，进程无法访问。
@@ -272,7 +272,7 @@ Get-NetTCPConnection -LocalPort 7933 -State Listen -ErrorAction SilentlyContinue
 {"ok":true,"code":"zh","result":0,"report":"===== 语言覆盖率 =====\r\n  词条总数: 1854（当前语言 zh）\r\n  游戏内词条: 416 条（api/ 的 zh 表）\r\n[语言] zh  总键 1854  已译 1854  缺失 0  覆盖率 100.0%"}
 ```
 
-`GET /api/gb/search?q=test&perPage=200`（`perPage` 被夹到上限 50；本次命中 14 条，截前两条）
+`GET /api/gb/search?q=test&perPage=200`（`perPage` 被夹到上限 50；命中 14 条，截前两条）
 
 ```
 {"ok":true,"query":"test","count":14,"filtered":0,"results":[{"id":698708,"name":"BTCYOADSG - Custom Chart","model":"Mod","author":"The14thBananaKing","profileUrl":"https://gamebanana.com/mods/698708","description":"","downloadCount":0,"likeCount":0,"updated":""},{"id":666188,"name":"Deltarune BUT You are Queen","model":"Mod","author":"JSHGHDDFSG","profileUrl":"https://gamebanana.com/mods/666188","description":"","downloadCount":0,"likeCount":2,"updated":""}]}

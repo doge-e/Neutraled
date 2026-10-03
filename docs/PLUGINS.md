@@ -305,8 +305,7 @@ $ ntl-builder.exe --lang zh --help
 
 ### 7.2 真实输出
 
-以下全部是**本机真跑过的**（`ntl-builder.exe` = `builder\bin\Release\net9.0\ntl-builder.exe`；
-证据原件见 `E:\aiwork\out\Neutraled2\_feat\docs-plugins\*.txt`）。
+以下全部是**在真实环境跑过的**（`ntl-builder.exe` = `builder\bin\Release\net9.0\ntl-builder.exe`）。
 
 **列清单** —— 注意 `sample-hello` 显示 `broken`（见文末已知限制第 1 条）：
 
@@ -464,7 +463,7 @@ dotnet build sdk\samples\SampleHello\SampleHello.csproj -c Release
 插件目录里**不放** `.csproj`/`obj`/`bin`；`AfterTargets="Build"` 的 `CopyPluginToPluginDir` 把 DLL 拷回插件目录。
 
 > 本条命令源自 `SampleHello.csproj` 的头注释与工程定义 —— **写本文档时未实跑**
-> （任务约束：不跑 `dotnet build`）。
+> （为避免改动构建产物，未跑 `dotnet build`）。
 
 ---
 
@@ -537,7 +536,7 @@ dotnet build sdk\samples\SampleHello\SampleHello.csproj -c Release
    * **影响面**：`enabled` 与 `disabled` 两个状态**当前不可能被观测到**；
      `--plugin-enable/--plugin-disable` 会成功写清单但**在 `--plugin-list` 里看不出区别**（仍显示 `broken`）；
      `installed`（缺入口 DLL）是唯一能正常显示的状态。整条插件链路（含钩子）等于未启用。
-   * **未修**：本次任务只写文档，未改任何源码。
+   * **未修**：源码未改动。
    * **验证方式**（修后应当看到）：`--plugin-hooks` 出现 `register\tsample-hello\tbefore_deploy,after_import`
      且 `已加载 1 个插件`；`--plugin-list` 显示 `enabled`。
 
@@ -558,7 +557,7 @@ dotnet build sdk\samples\SampleHello\SampleHello.csproj -c Release
    `"type": "csharp"` 示例错误；"目录名不必相同"与代码硬约束矛盾；
    `sample-hello/README.md` 里说的 `docs/MANAGE.md` 第 7 节仍然可用，但细节以本文为准。
 
-6. **本轮未执行的命令**（它们会**改动状态**，超出"只写文档"的授权）：
+6. **未实测的命令**（它们会**改动状态**，为了不破坏现有环境而未执行）：
    `--plugin-enable <合法 id>`、`--plugin-disable <合法 id>`、
    `--plugin-install <真实包>`、`--plugin-remove <id> --force`、以及
    `dotnet build sdk\samples\SampleHello\SampleHello.csproj`。
@@ -590,10 +589,9 @@ dotnet build sdk\samples\SampleHello\SampleHello.csproj -c Release
 
 ## 附：证据文件
 
-本文所有代码块里的命令输出都来自本机实跑，原始件在
-`E:\aiwork\out\Neutraled2\_feat\docs-plugins\`：
+本文所有代码块里的命令输出都在真实环境跑过（开发期取证文件，不随包）。对应的覆盖清单：
 
-| 文件 | 内容 |
+| 取证编号 | 内容 |
 |---|---|
 | `01`–`10` | 不带 `--lang` 的同一批命令（可见第 10 条俄语现象） |
 | `11-zh-plugin-list.txt` | `--lang zh --plugin-list` |

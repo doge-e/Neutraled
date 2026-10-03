@@ -128,7 +128,7 @@ return _fn;
 
 ---
 
-### 本轮修的 bug 总览
+### 已修复的 bug 总览
 
 | # | Bug | 影响 |
 |---|---|---|
@@ -150,7 +150,6 @@ return _fn;
 | docs/CONSOLE.md | 控制台交互（滚动/历史/补全） |
 | docs/CONSOLE.md | 命令系统（范围解析/自动化） |
 | docs/THEMES-LANGS.md | 中英双语 |
-| E:/CLAUDE.md | 项目上下文（新增 5 条坑） |
 
 ---
 

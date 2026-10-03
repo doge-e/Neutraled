@@ -409,8 +409,7 @@ ntl-builder.exe --deploy --chapter chapter1 --game <游戏根> --no-launch --for
 ntl-builder.exe --dump gml_Object_obj_writer_Draw_0 --chapter chapter1 | Out-File -Encoding utf8 dump.txt
 ```
 
-dump 里要能看到 `if (hspace < _ntlw)`；然后真机截图 + 像素测量字距（脚本 `E:\aiwork\out\Neutraled2\measure-pitch.ps1`：
-按 y 带找墨迹、算自相关峰值 lag）。修复前后对照：墨迹宽 312 px → 600 px，步进 lag 12 px → 64 px（屏幕像素）。
+dump 里要能看到 `if (hspace < _ntlw)`；然后真机截图 + 像素测量字距（开发期脚本（不随包）：按 y 带找墨迹、算自相关峰值 lag）。修复前后对照：墨迹宽 312 px → 600 px，步进 lag 12 px → 64 px（屏幕像素）。
 
 ### 11.4 字号与滚动条（不伸缩窗口）
 
@@ -546,7 +545,7 @@ dotnet publish builder/Neutraled.Builder.csproj -c Release -r osx-arm64   --self
 
 功能概览见 [MANAGE.md](MANAGE.md) §2；本文是配置档的细节文档与实测记录。所有命令都走同一个 `ntl-builder.exe`。
 
-> **关于下面的输出**：本文每个代码块都是**真跑出来的**（把 exe 放进一个沙箱游戏根，路径形如 `E:\aiwork\out\Neutraled2\_feat\docs-c1\sb`，只有演示 mod），这样测试不会动真实仓库。
+> **关于下面的输出**：本文每个代码块都是**真跑出来的**（把 exe 放进一个沙箱游戏根，路径形如 `<演示用游戏根>`，只有演示 mod），这样测试不会动真实仓库。
 > 在你机器上第一行会是你的真实游戏根，其余格式完全一致。所有 `[配置档]` 行都写在 **stdout**，只有用法错误写 stderr。
 
 ---
@@ -691,8 +690,8 @@ ntl-builder.exe --profile-list
 ```
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
-[配置档] 配置档目录：E:\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\profiles
+游戏根: <演示用游戏根>
+[配置档] 配置档目录：<演示用游戏根>\Neutraled\profiles
 [配置档]   docsdemo  文档演示档  启用 2 个 mod  更新 2026-09-26T12:32:33
 [配置档] * ghostdemo  手写导入的档  启用 2 个 mod  更新 2026-09-26T12:32:34
 [配置档] 共 2 个配置档（活动：ghostdemo）
@@ -713,7 +712,7 @@ ntl-builder.exe --profile-show
 ```
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [配置档] id: ghostdemo
 [配置档] 名称: 手写导入的档
 [配置档] 说明: 演示导入 + 找不到 mod 的提示
@@ -845,17 +844,17 @@ ntl-builder.exe --profile-export docsdemo
 ```
 
 ```
-[配置档] 已导出 docsdemo → E:\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\profiles\docsdemo.export.json
+[配置档] 已导出 docsdemo → <演示用游戏根>\Neutraled\profiles\docsdemo.export.json
 ```
 
 不写 `--out` 时落在 `profiles/<id>.export.json`；`--out` 可以是任意路径：
 
 ```bash
-ntl-builder.exe --profile-export docsdemo --out "E:\aiwork\out\Neutraled2\_feat\docs-c1\docsdemo-backup.json"
+ntl-builder.exe --profile-export docsdemo --out "<演示目录>\docsdemo-backup.json"
 ```
 
 ```
-[配置档] 已导出 docsdemo → E:\aiwork\out\Neutraled2\_feat\docs-c1\docsdemo-backup.json
+[配置档] 已导出 docsdemo → <演示目录>\docsdemo-backup.json
 ```
 
 导出文件是**自包含**的（带 schema 版本，便于以后升级格式）：
@@ -949,7 +948,7 @@ ntl-builder.exe --profile-import "<…>\docsdemo.export.json"
 6. **配置档不记录 mod 的版本与内容**：它只管「开/关」。要能还原到某个版本，用快照（[MANAGE.md](MANAGE.md)）；要整游戏回退用恢复点（[MANAGE.md](MANAGE.md)）。
 7. **采集的设置键是白名单**：只有上面那 8 个键 + 档里原本记过的键会被跟到；其它模块以后新加的键，除非该档曾经记过，否则不会自动采集。
 8. **游戏内控制台没有配置档命令**。控制台里的 `profile` 是**性能统计**（FPS / 缓存命中 / Hook 数 / 对象数，`api/ntl_console_profile.gml`、`ntl_i18n_init.gml:118`）—— 与本文的配置档**同名但无关**。切档目前只有 CLI 与 GUI/Web 两个入口。
-9. **未验证的部分**：GUI / Web / 插件侧的配置档入口（本轮只测 CLI）；游戏**正在运行时**切档（会改 `mod.json`，下一次部署才生效，未实测并发场景）；macOS/Linux 上的行为（本机 Windows 10 实测，路径校验与大小写规则在源码里按平台分支）。
+9. **未验证的部分**：GUI / Web / 插件侧的配置档入口（只测了 CLI）；游戏**正在运行时**切档（会改 `mod.json`，下一次部署才生效，未实测并发场景）；macOS/Linux 上的行为（本机 Windows 10 实测，路径校验与大小写规则在源码里按平台分支）。
 10. **`profiles/active.json` 的语义与 [MANAGE.md](MANAGE.md) §1 的描述有出入**：那里写它「仅记录，不改行为」，实测它在 `config.json` 的 `active_profile` 缺失/为空时**会被当成活动档**（回退读取，见「活动档指针」）。
 
 ---
@@ -974,7 +973,7 @@ ntl-builder.exe --profile-import "<…>\docsdemo.export.json"
 配置档管「开哪些 mod」（见 [MANAGE.md](MANAGE.md)），整游戏回退用恢复点（见 [MANAGE.md](MANAGE.md)）；本文只管**单个 mod 的版本**。
 功能概览见 [MANAGE.md](MANAGE.md) §3。
 
-> **关于下面的输出**：本文每个代码块都是**真跑出来的**（exe 指向一个沙箱游戏根 `…\_feat\docs-c1\sb`，里面有 4 个演示 mod），避免动真实仓库。
+> **关于下面的输出**：本文每个代码块都是**真跑出来的**（exe 指向一个临时搭的沙箱游戏根 `…\<演示用游戏根>`，里面有 4 个演示 mod），避免动真实仓库。
 > 在你机器上第一行是你的真实游戏根，其余格式一致。`[快照]` 行都在 **stdout**；失败原因写 **stderr** 并带 `[错误] ` 前缀。
 
 ---
@@ -1082,7 +1081,7 @@ ntl-builder.exe --snapshot-create --version 9.9.9 demoa.docs
 ```
 
 ```
-[stdout] 游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+[stdout] 游戏根: <演示用游戏根>
 [stderr] 用法: --snapshot-create <modId> [--version 版本] [--note 备注]
 [退出码] 2
 ```
@@ -1102,7 +1101,7 @@ ntl-builder.exe --snapshot-list
 ```
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [快照] 还没有快照
 ```
 
@@ -1227,7 +1226,7 @@ ntl-builder.exe --snapshot-use demoa.docs 1.0.0 --force
 从**目录**导入（来源 = `dir`，版本缺省读目录里 `mod.json` 的 `version`）：
 
 ```bash
-ntl-builder.exe --snapshot-import demoa.docs "E:\aiwork\out\Neutraled2\_feat\docs-c1\snapimport"
+ntl-builder.exe --snapshot-import demoa.docs "<演示目录>\snapimport"
 ```
 
 ```
@@ -1238,7 +1237,7 @@ ntl-builder.exe --snapshot-import demoa.docs "E:\aiwork\out\Neutraled2\_feat\doc
 从**压缩包**导入（zip / 7z / rar，走 SharpCompress；来源 = `zip`）：
 
 ```bash
-ntl-builder.exe --snapshot-import demoa.docs "E:\aiwork\out\Neutraled2\_feat\docs-c1\DemoA-1.6.0.zip"
+ntl-builder.exe --snapshot-import demoa.docs "<演示目录>\DemoA-1.6.0.zip"
 ```
 
 ```
@@ -1261,9 +1260,9 @@ ntl-builder.exe --snapshot-import demoa.docs "…\evil.zip"
 ```
 
 ```
-[stdout] 游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+[stdout] 游戏根: <演示用游戏根>
 [stdout] [快照] 压缩包内含越界路径，已拒绝: ../evil.txt
-[stderr] [错误] [快照] 解压失败: E:\aiwork\out\Neutraled2\_feat\docs-c1\evil.zip
+[stderr] [错误] [快照] 解压失败: <演示目录>\evil.zip
 [退出码] 1
 ```
 
@@ -1345,10 +1344,10 @@ ntl-builder.exe --snapshot-auto
 
 ```
 # live
-\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\mods\DemoA\docs\chapter1\gml\main.gml
+<演示用游戏根>\Neutraled\mods\DemoA\docs\chapter1\gml\main.gml
 
 # 快照里的同名文件
-\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\snapshots\demoa.docs\1.0.0\gml\main.gml
+<演示用游戏根>\Neutraled\snapshots\demoa.docs\1.0.0\gml\main.gml
 ```
 
 回切覆盖时也是「**先删目标文件再复制**」（`File.Delete` 后 `File.Copy`），目的同样是**断掉可能存在的硬链接**，保证 live 拿到的是一份独立数据。
@@ -1391,7 +1390,7 @@ ntl-builder.exe --snapshot-list
 ```
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [快照] 元数据损坏，按目录内容兜底: …\snapshots\democ.docs\0.9.0\.snapshot.json（Expected depth to be zero at the end of the JSON payload. There is an open JSON object or array that should be closed. Path: $.version | LineNumber: 0 | BytePositionInLine: 36.）
 [快照] 缺少元数据文件，按目录内容兜底: …\snapshots\demod.docs\3.0.0
 [快照] 共 3 个 mod，4 份快照
@@ -1420,7 +1419,7 @@ ntl-builder.exe --snapshot-list
 7. **失败消息在 stderr 且退出码不统一**：`create` / `import` / 名字非法是 **1**（stderr 带 `[错误] ` 前缀），而 `--snapshot-use` 找不到快照是 **2**（stdout 一行 `找不到快照: …`）。脚本要同时看退出码和 stderr。
 8. **`--snapshot-auto` 只认扫描到的 mod 列表**：扫描器跳过的目录（不是 `root`/`chapterN` 叶子、`mod.json` 坏掉等）不会进快照，也不会被提示。
    另外它按「mod id 去重」——同一个 mod 的多个章节目录只会存一份（快照的是该 mod 的**一个**目录，多章节 mod 的其它章节不在这份快照里）。
-9. **未验证的部分**：GUI / Web / 插件侧的快照入口（本轮只测 CLI）；7z/rar 压缩包导入（实测只用了 zip，代码走同一个 SharpCompress 入口）；正在运行的游戏进程并发读写 mod 目录；macOS/Linux（本机 Windows 10 实测，路径比较在源码里按平台分支）。
+9. **未验证的部分**：GUI / Web / 插件侧的快照入口（只测了 CLI）；7z/rar 压缩包导入（实测只用了 zip，代码走同一个 SharpCompress 入口）；正在运行的游戏进程并发读写 mod 目录；macOS/Linux（本机 Windows 10 实测，路径比较在源码里按平台分支）。
 
 ---
 
@@ -1443,9 +1442,9 @@ ntl-builder.exe --snapshot-list
 
 概览见 [MANAGE.md](MANAGE.md) §4–§5；单 mod 的版本回退见 [MANAGE.md](MANAGE.md)；「哪些 mod 开着」的组合切换见 [MANAGE.md](MANAGE.md)。
 
-> **关于下面的输出**：本文的命令与输出都是**真跑出来的**，用的是沙箱假游戏根 `E:\aiwork\out\Neutraled2\_feat\docs-c1\sb`（里面有 4 个演示 mod、1 份配置档，以及我自己写的 3 个占位 `data.win`：root 4096 B / chapter1 5120 B / chapter2 6144 B —— 只为验证复制、打包与校验链路，真实游戏里它们是数百 MB 的产物）。
+> **关于下面的输出**：本文的命令与输出都是**真跑出来的**，用的是沙箱假游戏根 `<演示用游戏根>`（里面有 4 个演示 mod、1 份配置档，以及 3 个占位 `data.win`：root 4096 B / chapter1 5120 B / chapter2 6144 B —— 只为验证复制、打包与校验链路，真实游戏里它们是数百 MB 的产物）。
 > 在你机器上第一行会是你的真实游戏根，其余格式一致。
-> **一处例外**：`--restore-apply` 本轮**没有执行**（任务约束禁止运行它），它的行为只按源码描述并明确标注 —— 见「7. 回切」小节。
+> **一处例外**：`--restore-apply` **没有真跑过**（它会改写游戏文件，出于安全未在演示环境执行），它的行为只按源码描述并明确标注 —— 见「7. 回切」小节。
 
 ---
 
@@ -1532,7 +1531,7 @@ ntl-builder.exe --restore-apply rp-20260926-123841
 | --- | --- | --- |
 | `--restore-list` | 列出全部恢复点（新→旧） | 0 |
 | `--restore-create [--name 名称] [--from live\|profile] [--profile 档id] [--no-backup]` | 建立恢复点；**没有位置参数** | 0 |
-| `--restore-apply <id> [--force]` | 回切（游戏在跑时拒绝） | **本轮未执行**；源码契约：0 成功 / 1 id 非法 / 2 点不存在或没有数据副本 / 3 游戏正在运行 |
+| `--restore-apply <id> [--force]` | 回切（游戏在跑时拒绝） | **未实测**；源码契约：0 成功 / 1 id 非法 / 2 点不存在或没有数据副本 / 3 游戏正在运行 |
 | `--restore-export <id> <输出.ntlrestore>` | 导出成单个 zip 包 | 0（**失败也是 0**，见「已知限制」1） |
 | `--restore-import <文件.ntlrestore> [--force]` | 导入包 | 0；找不到包 / 包非法 **1** |
 | `--restore-delete <id> [--force]` | 删除一个恢复点（`--force` = 删不掉时先清只读属性再删） | 0；找不到 **1** |
@@ -1552,16 +1551,16 @@ ntl-builder.exe --restore-list
 一个点都没有时：
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
-[恢复点] 目录：E:\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\restore
+游戏根: <演示用游戏根>
+[恢复点] 目录：<演示用游戏根>\Neutraled\restore
 [恢复点] 没有恢复点
 ```
 
 有几个点时（排序是 `created` 新→旧；一行一个点、字段名固定，方便 grep）：
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
-[恢复点] 目录：E:\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\restore
+游戏根: <演示用游戏根>
+[恢复点] 目录：<演示用游戏根>\Neutraled\restore
 [恢复点] rp-20260926-123843  name=只存清单  created=2026-09-26 12:38:43  from=live  hasData=false  chapters=root,chapter1,chapter2  mods=1  bytes=0
 [恢复点] rp-20260926-123841  name=演示恢复点  created=2026-09-26 12:38:42  from=live  hasData=true  chapters=root,chapter1,chapter2  mods=1  bytes=15360
 ```
@@ -1575,7 +1574,7 @@ ntl-builder.exe --restore-create --name "演示恢复点"
 ```
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [恢复点]   root → 复制
 [恢复点]   chapter1 → 复制
 [恢复点]   chapter2 → 复制
@@ -1592,7 +1591,7 @@ ntl-builder.exe --restore-create --no-backup --name "只存清单"
 ```
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
   [扫描] mods 清单命中磁盘缓存（4 个）
 [恢复点] 只写了清单（没有备份数据），回切时无法还原 data.win
 [恢复点] 已创建 rp-20260926-123843（只存清单）
@@ -1605,7 +1604,7 @@ ntl-builder.exe --restore-create --from profile --profile docsdemo --name "按�
 ```
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [恢复点]   root → 复制
 [恢复点]   chapter1 → 复制
 [恢复点]   chapter2 → 复制
@@ -1631,10 +1630,10 @@ ntl-builder.exe --restore-export rp-20260926-123841 "E:\backup\before-boss.ntlre
 ```
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [恢复点] 冻结副本（硬链接可能被就地改写）→ 打包含 manifest.json
-[恢复点] 打包 4 个文件 → E:\aiwork\out\Neutraled2\_feat\docs-c1\demo.ntlrestore
-[恢复点] 已导出 → E:\aiwork\out\Neutraled2\_feat\docs-c1\demo.ntlrestore
+[恢复点] 打包 4 个文件 → <演示目录>\demo.ntlrestore
+[恢复点] 已导出 → <演示目录>\demo.ntlrestore
 ```
 
 `.ntlrestore` 就是一个 zip（Deflate），条目名 = 相对恢复点目录的路径：
@@ -1657,7 +1656,7 @@ ntl-builder.exe --restore-import "E:\backup\before-boss.ntlrestore"
 同名点已存在时**不覆盖**：
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [恢复点] 已存在同名恢复点 rp-20260926-123841，用 --force 覆盖
 [恢复点] 已导入 rp-20260926-123841
 ```
@@ -1665,16 +1664,16 @@ ntl-builder.exe --restore-import "E:\backup\before-boss.ntlrestore"
 加 `--force` 覆盖（旧点先被挪到 `.rp-…old-<时间戳>` 暂存，成功后才删）：
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [恢复点] 已覆盖恢复点 rp-20260926-123841
-[恢复点] 解包 4 个文件 → E:\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\restore\rp-20260926-123841
+[恢复点] 解包 4 个文件 → <演示用游戏根>\Neutraled\restore\rp-20260926-123841
 [恢复点] 已导入 rp-20260926-123841
 ```
 
 包不存在：
 
 ```
-[恢复点] 找不到恢复包 E:\aiwork\out\Neutraled2\_feat\docs-c1\nosuch.ntlrestore   （退出码 1）
+[恢复点] 找不到恢复包 <演示目录>\nosuch.ntlrestore   （退出码 1）
 ```
 
 导入时会先解到 `restore/.import-<进程号>` 临时目录校验 `manifest.json`，再整体挪进 `restore/<id>/`；条目路径越界（zip-slip）会打 `[恢复点] 拒绝：压缩包条目路径越界 <条目>` 并整体失败。
@@ -1698,22 +1697,22 @@ ntl-builder.exe --restore-delete nosuchpoint
 从别人那里拷来的、或手动解包的目录，只要里面有 `data.win`，列表里就能看到它（兜底：章节名取 `data.win` 所在目录名，时间取目录修改时间）：
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
+游戏根: <演示用游戏根>
 [恢复点] [警告] manifest.json 损坏（brokenrp）：Expected depth to be zero at the end of the JSON payload. There is an open JSON object or array that should be closed. Path: $.files[0] | LineNumber: 0 | BytePositionInLine: 30.
-[恢复点] 目录：E:\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\restore
+[恢复点] 目录：<演示用游戏根>\Neutraled\restore
 [恢复点] brokenrp  name=brokenrp  created=2026-09-26 12:39:09  from=  hasData=false  chapters=  mods=0  bytes=0
 [恢复点] handmade  name=handmade  created=2026-09-26 12:39:09  from=  hasData=true  chapters=root  mods=0  bytes=4096
 [恢复点] rp-20260926-123843  name=只存清单  created=2026-09-26 12:38:43  from=live  hasData=false  chapters=root,chapter1,chapter2  mods=1  bytes=0
 [恢复点] rp-20260926-123841  name=演示恢复点  created=2026-09-26 12:38:42  from=live  hasData=true  chapters=root,chapter1,chapter2  mods=1  bytes=15360
 ```
 
-* `brokenrp` = `manifest.json` 损坏（我自己写坏的）→ 一行警告 + 兜底（`from=` 空、`chapters=` 空）；
+* `brokenrp` = `manifest.json` 损坏（演示用的损坏样本）→ 一行警告 + 兜底（`from=` 空、`chapters=` 空）；
 * `handmade` = 只有 `data\root\data.win`、完全没有 `manifest.json` → 兜底后 `hasData=true`、`chapters=root`；
 * 这两种情况**都不会从列表里消失**，`--restore-export` 也会替它们补写一份 `manifest.json`（注意：这会往你的目录里写文件）。
 
-#### 7. 回切：`--restore-apply`（⚠ 本轮没有执行）
+#### 7. 回切：`--restore-apply`（⚠ 未实测）
 
-按任务约束，`--restore-apply` **没有被真跑过**，所以这里没有可粘贴的真实输出。以下是源码契约（`RestorePoints.cs:176-251`、`CliFeatures.cs:229-238`），真机验收待补：
+`--restore-apply` **没有真跑过**（它会改写游戏文件，出于安全未在演示环境执行），所以这里没有可粘贴的真实输出。以下是源码契约（`RestorePoints.cs:176-251`、`CliFeatures.cs:229-238`），真机验收待补：
 
 1. id 非法 → `[恢复点] 拒绝：非法恢复点 id …`，退出码 **1**；
 2. `DELTARUNE` 进程在跑 → `[恢复点] 拒绝：游戏正在运行（DELTARUNE），请先关闭游戏再恢复`，退出码 **3**；
@@ -1742,8 +1741,8 @@ ntl-builder.exe --block-remove 12345
 实测：
 
 ```
-游戏根: E:\aiwork\out\Neutraled2\_feat\docs-c1\sb
-[黑名单] 文件：E:\aiwork\out\Neutraled2\_feat\docs-c1\sb\Neutraled\blacklist.json
+游戏根: <演示用游戏根>
+[黑名单] 文件：<演示用游戏根>\Neutraled\blacklist.json
 [黑名单] 没有条目                                                        ← 空表
 
 [黑名单] 已加入 12345
@@ -1825,7 +1824,7 @@ ntl-builder.exe --block-remove 12345
 
    脚本不能靠退出码判断导出是否成功，要自己检查目标文件是否存在。
 2. **`--restore-import` 遇到同名点且没给 `--force`** 时，只打 `已存在同名恢复点 … 用 --force 覆盖`，但 CLI 仍然追加 `[恢复点] 已导入 <id>` 并退出 **0** —— 实际上**什么都没导入**（返回的是磁盘上已有的那份）。要判断是否真导入，看有没有 `已覆盖` / `解包` 行。
-3. **`--restore-apply` 本轮未真跑**（见「7. 回切」），是本文唯一没有真实输出支撑的命令；退出码 1/2/3 与 auto 后路均来自源码，真机验收待补。
+3. **`--restore-apply` 未真跑**（见「7. 回切」），是本文唯一没有真实输出支撑的命令；退出码 1/2/3 与 auto 后路均来自源码，真机验收待补。
 4. **章节白名单只到 `chapter5`**（`RestorePoints.cs:84`）。
 5. **建点很占盘**：真实复制 6 个 `data.win` ≈ 530 MB/点（`--no-backup` 可建「只有清单」的点，但那种点不能回切）。
 6. **恢复点不含 mod 文件本身**，也不含 `profiles/*.json`：只有 `config.json` 快照 + 启用 id 列表。mod 被删掉之后，回切只能打一行 `忽略：找不到 mod <id>`。

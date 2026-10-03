@@ -27,7 +27,7 @@
 - **过滤器生效时**标题栏追加 `[filter: xxx]`。
 - 输出缓冲 **400 行**（源码 `api/ntl_console_log.gml:49-56`），超出会丢弃最早的行，并把**丢弃条数**记在 `global.ntl_console_dropped`（标题行与 `save` 导出的头部会显示，避免「导出其实是截断过的」而不自知）；`style lines <5-30>` 控制可见行数。
 
-**已知限制（Tab 补全）**：补全逻辑在 `api/events/Step_1.gml`（控制台输入处理，本次审计的改动范围之外），它遍历注册表取**第一个**前缀匹配项 —— 同一前缀有多个候选时（例如 `s` 对应 `save/style/saves/setvar/...`）结果取决于 `ds_map` 键序，可能不稳定；唯一候选时正常。修法见 `docs/CONSOLE.md` 所在目录的审计报告"未决问题"。
+**已知限制（Tab 补全）**：补全逻辑在 `api/events/Step_1.gml`（控制台输入处理），它遍历注册表取**第一个**前缀匹配项 —— 同一前缀有多个候选时（例如 `s` 对应 `save/style/saves/setvar/...`）结果取决于 `ds_map` 键序，可能不稳定；唯一候选时正常。建议修法见本文第十节「已知限制 / 未决问题」。
 
 ---
 
@@ -399,7 +399,7 @@ end
 
 ## 十、已知限制 / 未决问题
 
-1. **Tab 补全**在多候选时结果取决于 `ds_map` 键序（逻辑在 `api/events/Step_1.gml:139-175`，不在本次改动范围）。建议修法：先 `ntl_dsmap_keys` 排序，再按前缀收集候选并循环切换 + 列出候选。
+1. **Tab 补全**在多候选时结果取决于 `ds_map` 键序（逻辑在 `api/events/Step_1.gml:139-175`）。建议修法：先 `ntl_dsmap_keys` 排序，再按前缀收集候选并循环切换 + 列出候选。
 2. `ntl_mod_require`（取别的 mod 的导出表）仍报"调用了不存在的函数"；已确认 GML 侧分派存在（`api/ntl_call_host.gml:93`），待查 `ntl_lua_ev_stat.gml` 的名字解析。
 3. `maps`/`saves`/`cache` 用的是 `program_directory`（游戏根），与运行目录 `working_directory` 不同的部署方式下可能看不到文件。
 4. `inst`/`objs` 等列表默认上限 40 条，只给"用关键词缩小范围"的提示，没有 `--more` 式的逐页翻（`flags` 支持按起点翻页）。
@@ -412,7 +412,6 @@ end
 |---|---|
 | `docs/CONSOLE.md` | 本文件：控制台命令、交互与自动化 |
 | `docs/THEMES-LANGS.md` | 中英双语与主题 |
-| `E:\\CLAUDE.md` | 项目上下文与已知坑 |
 
 ### dry —— 破坏性命令的干跑（演练）开关
 

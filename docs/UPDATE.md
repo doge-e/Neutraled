@@ -75,7 +75,7 @@ ntl-builder --adopt-current                    # 预览：会归档哪些旧备�
 ntl-builder --adopt-current --yes              # 采纳当前原版为新基线（旧备份移进 backup/history/，不删）
 ntl-builder --deploy-all --force               # 用新基线重新注入全部章节
 ntl-builder --deploy-all --yes                 # 检测到更新时：先采纳、再继续部署（不加 --yes 会停下）
-ntl-builder --base-mod none                    # 本次不用整包 mod 的 data.win（整包 mod 还没适配新版时）
+ntl-builder --base-mod none                    # 不使用整包 mod 的 data.win（整包 mod 还没适配新版时）
 ntl-builder --accept-base-drift                # 明知整包基底与游戏版本不匹配仍继续
 ntl-builder --no-update-check                  # 跳过前置检测（并行 worker 内部使用）
 ```
@@ -111,7 +111,7 @@ $ ntl-builder --update-check               # 应变成 退出码 0
 整包 mod 的 `ref/data.win` 是绑定游戏版本的。游戏更新后继续用它 = 把本体回退到旧版本，因此检测会拦下：
 
 ```powershell
-ntl-builder --deploy-all --base-mod none        # 本次只用新原版（该 mod 的字体/文本不会进产物）
+ntl-builder --deploy-all --base-mod none        # 只用新原版（该 mod 的字体/文本不会进产物）
 ntl-builder --deploy-all --accept-base-drift    # 或者：确认过差异，明知风险继续
 ```
 

@@ -255,7 +255,7 @@ $exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0
 | `fr` | Français | 外部 `lang_fr.json` | 同上 |
 | `ja` | 日本語 | 外部 `lang_ja.json` | 同上 |
 
-> 2026-09-26 起只随包 **6 种**：`ko` / `ru` / `zh-TW` 被移除。原因：这三种语言的正文（谚文 / 西里尔 / 繁体汉字）**游戏自身和汉化字库里都没有字形**，只能用系统 TTF 现渲染，风格与游戏像素字对不上；与其塞一个风格不一致的补充字库，不如不支持这些语言。语言包文件已移到 `E:\aiwork\out\Neutraled2\_feat\lang-removed\` 备份，想恢复只需拷回 `Neutraled/lang/`（并重新补字形）。
+> 2026-09-26 起只随包 **6 种**：`ko` / `ru` / `zh-TW` 被移除。原因：这三种语言的正文（谚文 / 西里尔 / 繁体汉字）**游戏自身和汉化字库里都没有字形**，只能用系统 TTF 现渲染，风格与游戏像素字对不上；与其塞一个风格不一致的补充字库，不如不支持这些语言。原有语言包文件已被移出（备份在开发工作区，不随包），想恢复只需把它们重新放进 `Neutraled/lang/`（并重新补字形）。
 
 ### 2. 语言包文件格式
 
@@ -406,13 +406,13 @@ builder 侧（`L("中文原文")`）：
 
 ### 已知限制
 
-- **`--theme-use` 与 `--lang-use` 的成功路径本次没有实跑**（它们会写 `Neutraled/config.json`，本次任务禁止改这个文件）。上面关于「写 config.json / 重新生成 console-theme.json / 进程内记录活动主题」的描述来自源码，不是实测；已实跑的是它们的失败路径（非法 id → 2、找不到 → 1）。
+- **`--theme-use` 与 `--lang-use` 的成功路径尚未实测**（它们会写 `Neutraled/config.json`，测试期间刻意不改这个文件）。上面关于「写 config.json / 重新生成 console-theme.json / 进程内记录活动主题」的描述来自源码，不是实测；已实测的是它们的失败路径（非法 id → 2、找不到 → 1）。
 - **未在游戏里验证换主题后的画面**：只确认到 `console-theme.json` 被正确写出、以及游戏侧读取逻辑（读不到就退回默认配色）。配色在画面上的最终效果没有截图证据。
 - **游戏侧与 builder 侧对「译文 == 中文」的处理不一致**：GML 侧会把这类条目丢弃（回退中文），builder 侧保留（所以覆盖率算它已译）。两者显示出来的字**完全一样**（值就等于原文），差别只在覆盖率统计口径。以 [MANAGE.md](MANAGE.md) §9 那句「译文==中文的占位一律丢弃」为准时，它描述的其实是游戏侧行为。
 - **覆盖率只覆盖两处文案表**：builder 的编译期表（1854 条）与 `api/ntl_i18n_init.gml` + `api/ntl_i18n_out.gml` 的 zh 表（416 条）。游戏里其它硬编码文本、mod 自己打印的文本、以及注入产物里的注释都不在统计范围内（见 [THEMES-LANGS.md](THEMES-LANGS.md) 的「有意保持中文」清单）。
 - **语言包没有版本号**：换了一版 builder、新增了词条，旧语言包不会提醒你「有新词条待译」，只能自己重跑 `--lang-coverage` 对比。
-- **`--lang-list` 的「外部（已加载）」是本次进程的状态**，不代表磁盘上没有别的包；判断有没有某个语言，看它有没有在这一行里出现。
-- 主题只影响**颜色**：字体名与字号虽然会被写进 `config.json`（`theme_font` / `theme_font_size`），但本次没有验证它们在游戏内的实际效果。
+- **`--lang-list` 的「外部（已加载）」是当前进程的状态**，不代表磁盘上没有别的包；判断有没有某个语言，看它有没有在这一行里出现。
+- 主题只影响**颜色**：字体名与字号虽然会被写进 `config.json`（`theme_font` / `theme_font_size`），但在游戏内的实际效果尚未验证。
 - 未在 macOS / Linux 上验证主题与语言包路径；本文实测都在 Windows 上。
 
 ---
@@ -445,7 +445,7 @@ builder 侧（`L("中文原文")`）：
 ```
 
 ```bat
-:: 只让本次命令输出英文
+:: 只让该条命令输出英文
 ntl-builder --lang en --info --chapter chapter4
 set NTL_LANG=en
 ```
@@ -584,10 +584,10 @@ set NTL_LANG=en
 - `ntl_log(...)` 开发日志、注入产物、生成文档**不在**规则 13 的范围内（有意保留中文）。
 
 **builder 英文表是生成物（改表只能改源 JSON）**：`builder/LangTable_*.cs` 由
-`E:\aiwork\out\Neutraled2\_i18n-builder\gen-tables.mjs` 整文件重写（源 = 同目录 `keys-*.json`：Program/Deploy/Mods/Tools 各一份、
+开发期的表生成脚本（不随包）整文件重写（源 = 它的 `keys-*.json`：Program/Deploy/Mods/Tools 各一份、
 Extra = `keys-extra-g1..g6.json`（g5 = 2026-10 游戏更新检测 105 条，g6 = 回填历史手补键）、Features = `keys-feat-*.json` 七份）。
 
-- 用法：在该目录 `node gen-tables.mjs --check`（只校验）→ `node gen-tables.mjs`（写盘）；脚本自检空译文、`{0}` 占位符一致性、
+- 用法：`node gen-tables.mjs --check`（只校验）→ `node gen-tables.mjs`（写盘；脚本与源 JSON 都在开发工作区，不随包）；脚本自检空译文、`{0}` 占位符一致性、
   以及**跨组同 key 译文不同**（`[DUP-DIFF]` ⇒ 拒绝写盘）。所以要给同一句中文写两种英文，必须**先拆成两个不同的中文 key**
   （例：DeploySelfCheck 的 `已扫描 ` 与 KristalConvert 的 `扫描 `）。
 - **重跑前先确认源 JSON 是全量**：历史上有人用 `_patch-tables.mjs` 直接往 .cs 补键而没回填 JSON，重跑会把这些键**静默删掉**
@@ -596,6 +596,6 @@ Extra = `keys-extra-g1..g6.json`（g5 = 2026-10 游戏更新检测 105 条，g6 
   `d["key"]` 集合与新文件比对，必须「丢失 0 / 同 key 译文改变 0」。
 - 语言来源（`builder/Lang.cs:83 Init`）：`--lang` > `NTL_LANG` > `<游戏根>/Neutraled/config.json` 的 `lang` > **按 `CultureInfo.CurrentUICulture` 猜**
   （zh ⇒ zh，否则 en）。**非中文系统 + 无 config.json 会直接出英文** ⇒ 断言中文文案的测试脚本要显式加 `--lang zh`。
-- 辅助校验脚本（开发工作区，非产品）：`E:\aiwork\out\Neutraled2\_i18n-gml-check.mjs`（GML 表键集/占位符/引用完整性）、
-  `E:\aiwork\out\Neutraled2\_i18n-builder\_check-wrap.mjs`（builder 的 `L()` 包裹完整性）、
+- 辅助校验脚本（开发工作区，不随包）：`_i18n-gml-check.mjs`（GML 表键集/占位符/引用完整性）、
+  `_i18n-builder\_check-wrap.mjs`（builder 的 `L()` 包裹完整性）、
   `_check-gui-keys.mjs`（GUI/Studio 词条）、`_scan-gml-left2.mjs`（GML 残留中文清单）。

@@ -389,7 +389,7 @@ BossRush 的 5367 个"真实改动"拆开看是这样：
 同样的形状出现在 percentage_color（chapter1：`真实改动 117 / 索引噪声 670 / 反编译失败 2` ⇒ 12 patches + 94 gml + **无法表达 6**）。
 
 2026-09-27 补齐：`mods\pctobj\probe` 已抽出 **chapter1-5** 五层（各章 `patches` 12 / 6 / 6 / 38 / 7，`gml` 94-97，`objects` 6），五章产物都含 pct 的新对象 `obj_colorfiltermenu`（5 个事件：`Create_0` / `Draw_75` / `KeyPress_27` / `Other_5` / `Step_0`）与整套 `scr_cf_*` 脚本；
-逐章真机复验（`E:\aiwork\out\Neutraled2\nat-ch.ps1 -Chapter N`，日志 `ch<N>-shots\run-log.txt`）：**5/5 章节正常启动、无 Code Error**，ch3 传说卡显示中文「光与暗相互调和，」，ch5 存档界面显示 pct 皮肤「DELTARUNE BUT IT'S COLORFUL!」⇒ 层的代码 + 新对象在真机生效。
+逐章真机复验（开发期逐章冒烟脚本，不随包；带 `-Chapter N`，日志 `ch<N>-shots\run-log.txt`）：**5/5 章节正常启动、无 Code Error**，ch3 传说卡显示中文「光与暗相互调和，」，ch5 存档界面显示 pct 皮肤「DELTARUNE BUT IT'S COLORFUL!」⇒ 层的代码 + 新对象在真机生效。
 
 **结论（2026-09-27 更新：已实现）**：`--layer-from-base` 现在能表达三类改动 ——
 ① **修改**现有逻辑（`patches/`）；② **加函数库**（`gml/`，`gml_Script_` / `gml_GlobalScript_` 两种前缀都认）；
@@ -514,7 +514,7 @@ chapter2-5 各 6 个：`shd_hue` / `shd_grayscale` / `shd_dissolve` / `shd_fade`
 部署后 `sdump --res sh_` 在 chapter1 产物里数到 `Shaders n=1 sh_color_filter`（改前 `n=0`），守卫对 pct 的告警 4 → 3 ——
 剩下的 `sh_picker_wheel` / `sh_ui_panel` / `sh_ui_blur` 连 pct 自己的包里也没有（全工程只被赋值、没有使用点，属上游遗留），不影响滤镜。
 
-> 工具：`sdump`（`E:\aiwork\out\Neutraled2\sdump`）现有三种用法 —— `sdump <data.win> [关键字]`（脚本/代码条目名与重名、空壳检查）、
+> 工具：`sdump`（开发期工具，不随包）现有三种用法 —— `sdump <data.win> [关键字]`（脚本/代码条目名与重名、空壳检查）、
 > `sdump <data.win> --res [关键字]`（26 类命名资源的数量与命中名）、
 > `sdump <data.win> --code <条目名> [关键字]`（**反编译某个代码条目并逐行打印/过滤**，2026-09-27 加；
 > 注意 `--probe-code` 只给指令级取证、`sdump <data.win> <关键字>` 只匹配条目名，都看不到源码，源码级验证要用 `--code`）。
@@ -561,10 +561,10 @@ Neutraled 的菜单 / 文本注入是**文本级 find/replace**，注入点是�
 `gml_Object_obj_darkcontroller_Step_0`（1805 行）里第 245 行 `ntl_settings_row_press()`、第 482 行 `ntl_modmenu_page_step()`，
 第 333 / 367 行是层的 `scr_bossrush_townreturn();` ⇒ **内置注入点与层的改动同时存在于产物**（修前层会整脚本盖掉它们）。
 
-真机验证（2026-09-27，chapter1，机器人 `E:\aiwork\out\Neutraled2\nat-22.ps1`）：进游戏后 `C → →×3 → Z` 第一轮就命中设置页，
+真机验证（2026-09-27，chapter1，开发期自动化按键脚本，不随包）：进游戏后 `C → →×3 → Z` 第一轮就命中设置页，
 dr-api.log 留下 `[设置页] 已进入：我们的行已绘制（submenu=30 coord30=0）` 与 `[menu] 打开 Mod 设置面板（submenu=51 coord30=5）`；
 红心探针同一行附带 `room_speed=60 fps=60 fps_real=285.71` ⇒ **层在真机确实生效**（原版 chapter1 的 `room_speed` 是 30）。
-截图 `E:\aiwork\out\Neutraled2\nat22-shots\02-config-page.png`（CONFIG 页只有我们那 7 行、无叠行）
+截图 `02-config-page.png`（CONFIG 页只有我们那 7 行、无叠行）
 与 `04-panel.png`（MOD 设置面板正常打开，红心在「章节选择」前），全程无 Code Error。
 
 #### ⚠ 层 vs 层：多个层 patch 同一个对象（2026-09-27 修）
@@ -596,18 +596,18 @@ chapter1 的 `DEVICE_MENU_Draw_0` / `DEVICE_MENU_Step_0` / `obj_time_Create_0` �
 真机验证（2026-09-27，full-mods 版本 chapter1）：启动后停在 DEVICE 菜单（存档选择页），
 点右上角 `[D] DOJO` 方框（或按 `D`）⇒ dojo 正常开局，`DOJO_LOGS\dojo.log` 出现新会话
 `INIT chapter 1 → SESSION START chapter=1 → INTRO start → [1|20] ROOM room_dojo battle=0 → INTRO end`，
-截图 `E:\aiwork\out\Neutraled2\dojo2-shots\03-after-click.png` 是 dojo 的 XANZO1 启动画面；
+截图 `03-after-click.png` 是 dojo 的 XANZO1 启动画面；
 同一屏还能看到 pct 的标题皮肤「第1章 DELTARUNE BUT IT'S PERCENTAGE COLOR」与 `[D] DOJO` 提示共存 ⇒
-**争用修复在真机成立**。复现脚本 `E:\aiwork\out\Neutraled2\nat-dojo2.ps1`（纯 ASCII，`powershell -File … -Chapter 1`，约 75 s）。
+**争用修复在真机成立**。复现脚本（开发期，不随包；纯 ASCII，`powershell -File … -Chapter 1`，约 75 s）。
 
 复验（2026-09-28 00:38，**全 mod 重部署（v7）之后**）：产物级三标记仍在（同一命令，条目 **691 行 / instr 2093**，第 3 行 dj_open();、
 第 638 行 scr_cf_init();、第 682-683 行 global.fps_scale），真机 DOJO_LOGS\dojo.log mtime=**00:38:12** size=2336 开出新会话
 「[1|0] INIT chapter 1 → SESSION START chapter=1 → INTRO start → [1|20] ROOM room_dojo battle=0 → INTRO end」，
 截图同上路径（这次 XANZO1 启动画面带 pct 彩色滤镜 ⇒ dojo 层与 pct 层同时生效）。
 
-> ⚠ 冒烟脚本的坑（2026-09-28 踩到）：nat-dojo2.ps1 的 phase 1 会**连打 26 次 Z**（每次间隔 1.6 s）——
+> ⚠ 冒烟脚本的坑（2026-09-28）：脚本的 phase 1 会**连打 26 次 Z**（每次间隔 1.6 s）——
 > chapter1 载入快，这串 Z 会直接把存档选定、冲进游戏，等按 D 时存档选择（DEVICE）菜单早没了 ⇒ 拍到的 after-click 是章节内游玩画面、
-> dojo.log 没有新会话（**看起来像产物坏了，其实不是**）。改用 E:\aiwork\out\Neutraled2\nat-dojo3.ps1（同一脚本，只把 phase 1 换成「等 18 s 让菜单自己出现」）即稳定复现；
+> dojo.log 没有新会话（**看起来像产物坏了，其实不是**）。改用它的一个变体（同样不随包：只把 phase 1 换成「等 18 s 让菜单自己出现」）即稳定复现；
 > 大章节（ch2-5，data.win 大、载入慢）用旧脚本也能过，因为 Z 被开场阶段吃掉。
 
 `--lint` / `--doctor` 的 `**patch 冲突**：{K} 个 mod 都整脚本覆盖 '{target}'` 告警仍会报（它描述的是「声明了同一个目标」这个事实），
@@ -666,7 +666,7 @@ mods/<层名>/<作者>/<章节>/gml/*.gml    # 文件名 = 脚本名；名为 ma
 
 实测（2026-09-27，60fps 层，每章 12 个 .gml）：部署日志出现
 `mod 脚本: 16 个（入口: main, ntl_ntl_chapter_c3a8e36c4_main）`、`mod patches: 422 覆盖 / 0 局部替换 / 0 跳过`；
-真机（chapter4，机器人 `E:\aiwork\out\Neutraled2\nat-24.ps1`）打开面板后 dr-api.log 留下：
+真机（chapter4，开发期自动化按键脚本，不随包）打开面板后 dr-api.log 留下：
 
 ```
 [mod] load layer.60fps_layer.badartadventure -> main
@@ -675,7 +675,7 @@ mods/<层名>/<作者>/<章节>/gml/*.gml    # 文件名 = 脚本名；名为 ma
 [ui] [面板] 红心精灵解析: spr_heart=3695(16x16) … ⇒ 选用 index=3695 name=spr_heart room_speed=60 fps=60 fps_real=259.88
 ```
 
-截图 `E:\aiwork\out\Neutraled2\nat24-shots\05-fps-row1-ow.png`（`地面 360 度摇杆  关`）与
+截图 `05-fps-row1-ow.png`（`地面 360 度摇杆  关`）与
 `06-fps-row1-toggled.png`（按 Z 后变 `渐进`，底部说明行中文正常）⇒ 开关回到了玩家手上。
 
 两个细节：
@@ -690,7 +690,7 @@ mods/<层名>/<作者>/<章节>/gml/*.gml    # 文件名 = 脚本名；名为 ma
 > ⚠ 探针层的坑（2026-09-27 真机踩到）：用 `--layer-from-base --name <探针>` 做可行性取数时，
 > 产物会**落成一个 enabled 的 mod**（`mods/<探针>/<作者>/<章节>/`）。它带着半截 mod 参与下一次部署
 > （dojo 的 34 个 patch 引用了不存在的 `obj_dojo`）⇒ 真机直接 `Code Error`。
-> **取数完必须删掉探针目录再重新部署**（本次已删 `mods/dojo_merge_probe`、`mods/pct_probe`）。
+> **取数完必须删掉探针目录再重新部署**（已删 `mods/dojo_merge_probe`、`mods/pct_probe`）。
 ### 路线 3：资源包导出 `--export-packs`
 
 ```powershell
@@ -752,7 +752,7 @@ ntl-builder.exe --layer-from-base "Neutraled\mods\blockless_mantle_holder_arena\
 
 生效取证用 `--probe-code`（读的是**已部署产物**，不是 mod 的 ref）：
 `gml_Object_obj_shadow_mantle_bg_Create_0` 指令数 **原版 385 → 层 287 → 已部署 chapter3_windows\data.win 287**；
-同一次部署日志（`E:\aiwork\out\Neutraled2\deploy-ch3-layers.txt`）里 `mod patches: 1842 覆盖`= 60fps 层 1841 + blockless 层 1。
+同一次部署日志里 `mod patches: 1842 覆盖`= 60fps 层 1841 + blockless 层 1。
 
 **② 纯资源改动 → 资源包**（`ice_e_eram_mod`，chapter3）
 
@@ -773,7 +773,7 @@ ntl-builder.exe --export-packs "Neutraled\mods\ice_e_eram_mod\unknown\chapter3\r
 > 要么显式 `--out <目录>`，要么把导出的 `sprites/`/`sounds/`/`fonts/` 搬到目标 mod 的 `mod.json` 旁边。
 #### 往返一致性（导出 → 用真实导入器灌回 → 逐项 + 逐像素比对）
 
-用子代理的临时验证工程（`packtest.exe roundtrip`）实测，**修复后 100% 无损**：
+用临时验证工程（`packtest.exe roundtrip`）实测，**修复后 100% 无损**：
 
 | 指标 | 修复前 | 修复后 |
 |---|---|---|
@@ -807,7 +807,7 @@ ntl-builder.exe --verify-refcopy <源 data.win> <目标 data.win>
 |---|---|
 | 保真 52 / **文本不一致 4** / 失败 4 | 保真 **56** / **不一致 0** / 失败 4 |
 
-#### 这一轮修掉的两个真 bug
+#### 修复记录：两个真 bug
 
 1. **同名条目不替换** —— `RefCopy` 用 `CreateEmptyEntry` 新建条目，导致目标里出现同名重复对象；
    而部署与游戏按 `Code.ByName()` 取**第一个**（旧的、没被改的）→ `references.codes` 的改动**静默失效**。
@@ -874,7 +874,7 @@ ntl-builder.exe --conflicts --chapter chapter5
 | `ntl_font_cjk_o4.png` | Noto Emoji | 50 | emoji 区符号（↩ ↪ ♈ … ⛽ ⛺）、ℹ ✅ ❌ |
 
 - **合计 4974 字形 / 4 页**（2026-09-30 全量重渲：修全角标点错位后重渲，页数 6 → 4）。
-  重渲时 **Noto Sans JP 没有产出字形**（剩余字符已被 SC 主表覆盖），所以本轮没有 JP 页——它不是被删，是没轮到它补字。
+  重渲时 **Noto Sans JP 没有产出字形**（剩余字符已被 SC 主表覆盖），所以没有生成 JP 页——它不是被删，是没轮到它补字。
   对照表与逐页来源（本地 TTF 的 SHA-256、上游 URL、版权行、产物溯源）见 `Neutraled/fonts/OFL-NOTICE.txt` 第二节。
 
 - 包格式：`EmSize=12`、`LineHeight=18`、`Page=""`（**多 sheet 模式**，导入端按每个字形的 `Sheet` 重新拼页，见 `builder/FontImport.cs:42-48`、`:94-131`）。
@@ -891,7 +891,7 @@ ntl-builder.exe --make-cjk-font <输出目录> --ttf <NotoSansSC-VF.ttf> --chars
 
 # 复核
 ntl-builder.exe --font-probe chapter4_windows\data.win   # 字形数与字形表自检（逆序对应应为 0）
-node E:/aiwork/out/Neutraled2/_feat/font-audit.mjs       # 缺字 / 空白格门禁（退出码 1 = 有缺口）
+node <开发期脚本>/font-audit.mjs                        # 缺字 / 空白格门禁（退出码 1 = 有缺口）
 ~~~
 
 ### 关键设计：字形坐标以 JSON 为准，位图只是「画布」
@@ -927,10 +927,10 @@ node E:/aiwork/out/Neutraled2/_feat/font-audit.mjs       # 缺字 / 空白格门
 ### 覆盖率
 
 - 本包按**实际用到的字符集**渲染，所以对当前文案基本不缺；但**没有渲染到的字符在游戏里仍会空白**（不是方框、不是报错）。
-- 判定口径：部署自检的「内容级文本 × 字体」检查（目标「缺 0」）+ `font-audit.mjs` 的空白格门禁。
+- 判定口径：部署自检的「内容级文本 × 字体」检查（目标「缺 0」）+ 开发期字体审计脚本 `font-audit.mjs`（不随包）的空白格门禁。
 - 换字体 / 加语言时**不要只改 JSON**：位图页与坐标表必须成套生成。
 
-### 踩过的坑（都已进 CLAUDE.md）
+### 踩过的坑
 
 1. **重排字形 → 空格指向 (0,0) 撞上汉字格**，出现引号状杂点与字距错乱 → 改为原样搬运。
 2. **源坐标与目标坐标必须分开存**（早期版本读像素时用了目标坐标，整页全空）。
@@ -1210,7 +1210,7 @@ chapter5 的 44.4 s 构成：mod 扫描+外部章节安装 6.8 s / 注入（载�
 2. **写盘改原子改名**（`File.Move` 取代 `File.Copy`）：少一次 229 MB 全量拷贝
 3. **部署缓存**（硬链接复用）：整章 32.9 s → 0.9 s
 
-#### 第二轮优化（2026-09-25 下午）
+#### 并行与确定性优化（2026-09-25）
 
 | 优化 | 前 | 后 | 验证方式 |
 |---|---|---|---|
@@ -1230,7 +1230,7 @@ mod 作者在 `mod.json` 写 `ntl_adapt` 声明自己的适配程度（见 docs/
 **声明与内容不符会被拒绝并警告**；`no_console_input` 需**全部启用 mod** 都声明才触发快速档；
 玩家可用 `--full-deploy` 强制完整档。
 
-#### 第三轮优化（2026-09-28）：瓶颈不是某一阶段，而是**产物个数**
+#### 产物个数优化（2026-09-28）：瓶颈不是某一阶段，而是**产物个数**
 
 起因：用户问「部署怎么这么慢」。先量后改 —— `builder/PhaseTimer.cs` 落地，`Program.cs` 插 9 个粗粒度 mark、
 `Injector.cs` 插 7 + 6 个细粒度 mark（都在 `--deploy` 的输出里，正常部署都能看到）。
