@@ -280,5 +280,11 @@ public static class LangTable_Program
         d["（无 → 全量导出）"] = "(none → full export)";
         d["  [错误] 窗口抢焦点只在 Windows 上可用（当前 {0}）"] = "  [error] stealing window focus is Windows-only (current: {0})";
         d["[重做] {0} 输入未变（签名 {1}），但产物内容对不上（记录 {2} / 当前 {3}）—— 产物被还原或替换过，必须重新部署"] = "[Redo] {0} inputs unchanged (signature {1}) but the output content does not match (recorded {2} / current {3}) -- the output was restored or replaced, a redeploy is required";
+        d["  存档 / B 面（详见 bside/README.txt）:"] = "Saves / B-side (see bside/README.txt):";
+        d["  --import-bside <存档> [--chapter chapterN] [--slot S] [--save-name <名字>] [--all-slots] [--template-only]"] = "--import-bside <save> [--chapter chapterN] [--slot S] [--save-name <name>] [--all-slots] [--template-only]";
+        d["                                  导入一份真实 B 面存档：按**实际章节**改名成 bside/chapterN.sav，"] = "import a real B-side save: renamed to bside/chapterN.sav for the ACTUAL chapter,";
+        d["                                  把玩家名字（≤12 个字母）写进存档第 1 行，直接落到槽位并标记 dr.ini 的 SideB"] = "writes the player name (max 12 letters) into save line 1, fills the slot and marks SideB in dr.ini";
+        d["  --make-bside --chapter N [--slot S|--all-slots]   用模板生成 B 面存档（先用你自己导入的，再用随包默认模板；都没有就标记现有存档）"] = "--make-bside --chapter N [--slot S|--all-slots]   build a B-side save from a template (your import first, then the shipped default; without either, mark an existing save as B-side)";
+        d["                                  模板位置：bside/templates/chapterN.sav 随包分发；bside/chapterN.sav 是你自己导入的（不进发布包）"] = "template locations: bside/templates/chapterN.sav ships with the release; bside/chapterN.sav is your own import (never packaged)";
     }
 }

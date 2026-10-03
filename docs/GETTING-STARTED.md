@@ -35,7 +35,7 @@ ntl-builder.exe --install --game "E:\steam\steamapps\common\DELTARUNE"
 官方发布包只有两个目录，解压后**保持同级**：
 
 ```
-Neutraled-1.0.1/
+Neutraled-1.0.6/
   README.txt
   install/ntl-builder.exe           ← 安装器（单文件自包含，不需要另装 .NET）
   install/Magick.Native-Q8-x64.dll  ← 图像处理原生库，必须与 exe 同目录

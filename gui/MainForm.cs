@@ -39,7 +39,7 @@ public sealed class MainForm : Form
         public string Name = "";
         public string Author = "";
         public string Chapter = "";
-        public string Version = "1.0.1";
+        public string Version = "1.0.0";
         public bool Enabled = true;
     }
 
@@ -887,6 +887,8 @@ public sealed class MainForm : Form
             .Click += async (_, _) => await KristalMergeAsync(dlg);
         Add(Localizer.T("制作 B 面存档"), Localizer.T("任意章节直接开 B 面，不用从第二章重打"))
             .Click += async (_, _) => await MakeBSideAsync(dlg);
+        Add(Localizer.T("导入 B 面存档"), Localizer.T("把一份真实 B 面存档导入并直接加载（名字 ≤12 个字母写进存档第 1 行）"))
+            .Click += async (_, _) => await ImportBSideAsync(dlg);
         Add(Localizer.T("导出资源包"), Localizer.T("data.win → 精灵/声音/字体，可叠加到任意基底"))
             .Click += async (_, _) => await ExportPacksAsync(dlg);
         Add(Localizer.T("检查 mod 冲突"), Localizer.T("只查不部署（退出码 2 = 有冲突），写 conflicts.json"))
@@ -1004,6 +1006,80 @@ public sealed class MainForm : Form
         var args = "--make-bside --chapter chapter" + (int)num.Value + " --slot " + (int)slot.Value + (all.Checked ? " --all-slots" : "");
         var rc = await Program.RunBuilderAsync(args, Log);
         MessageBox.Show(this, rc == 0 ? Localizer.T("B 面存档已创建：进游戏选该章节即可直接开 B 面") : Localizer.T("失败，详见日志"), "Neutraled");
+    }
+
+    /// <summary>导入 B 面存档（m28374）：选文件 → 识别章节/槽位 → 输入名字（≤12 字母）→ 直接写进存档并标记 SideB。
+    ///
+    /// 两条游戏规则决定了这个界面长这样：
+    ///   ① 存档文件**第 1 行就是角色名**（scr_saveprocess 的第一个字段）⇒ 必须输入名字，
+    ///      否则游戏里的存档槽显示不出名字（用户 m28374：玩家需要输入名字，≤12 个字母）；
+    ///   ② 「按实际情况改模板文件名」= 源文件叫什么不重要，模板一律按**实际章节**存成
+    ///      Neutraled/bside/chapterN.sav（你自己导入的；随包默认模板在 bside/templates/chapterN.sav，
+    ///      --make-bside 优先用自己的、其次用随包的），再把存档写成 filech&lt;N&gt;_&lt;slot&gt;（builder/BSide.cs 统一处理）。
+    /// </summary>
+    private async Task ImportBSideAsync(Form owner)
+    {
+        using var ofd = new OpenFileDialog
+        {
+            Filter = Localizer.T("存档文件|filech*;*.sav|所有文件|*.*"),
+            Title = Localizer.T("选择要导入的真实 B 面存档")
+        };
+        if (ofd.ShowDialog(owner) != DialogResult.OK) return;
+
+        // 先按文件名猜章节/槽位（filech2 → 第 2 章槽位 0），猜不出就默认第 2 章（B 面通常从第二章开始）
+        int ch = 2, slot = 0;
+        var m = System.Text.RegularExpressions.Regex.Match(
+            Path.GetFileNameWithoutExtension(ofd.FileName),
+            @"^(?:file)?ch(?:apter)?[_\-\s]*(\d{1,2})(?:[_\-\s]+(\d{1,2}))?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            ch = int.Parse(m.Groups[1].Value);
+            if (m.Groups[2].Success) slot = int.Parse(m.Groups[2].Value);
+        }
+
+        using var dlg = new Form { Text = Localizer.T("导入 B 面存档"), Width = 600, Height = 320, StartPosition = FormStartPosition.CenterParent };
+        dlg.Controls.Add(new Label { Text = Localizer.T("存档: ") + ofd.FileName, Left = 12, Top = 12, Width = 560, AutoEllipsis = true });
+        var lblCh = new Label { Text = Localizer.T("章节（1-5）:"), Left = 12, Top = 52, Width = 120 };
+        var numCh = new NumericUpDown { Left = 140, Top = 48, Width = 60, Minimum = 1, Maximum = 5, Value = Math.Clamp(ch, 1, 5) };
+        var lblSlot = new Label { Text = Localizer.T("槽位（0-2）:"), Left = 12, Top = 88, Width = 120 };
+        var numSlot = new NumericUpDown { Left = 140, Top = 84, Width = 60, Minimum = 0, Maximum = 2, Value = Math.Clamp(slot, 0, 2) };
+        var lblName = new Label { Text = Localizer.T("名字（≤12 字母）:"), Left = 240, Top = 52, Width = 130 };
+        var tbName = new TextBox { Left = 380, Top = 48, Width = 180, MaxLength = 12 };
+        var lblHint = new Label
+        {
+            Text = Localizer.T("存档第 1 行就是角色名：填玩家名字（最多 12 个字母，会自动转大写）"),
+            Left = 12, Top = 122, Width = 560, ForeColor = Color.DimGray
+        };
+        var apply = new CheckBox
+        {
+            Text = Localizer.T("直接写进存档并标记 B 面（取消勾选 = 只导入模板）"),
+            Left = 12, Top = 150, Width = 500, Checked = true
+        };
+        var ok = new Button { Text = Localizer.T("导入"), Left = 380, Top = 210, Width = 90, DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = Localizer.T("取消"), Left = 478, Top = 210, Width = 90, DialogResult = DialogResult.Cancel };
+        dlg.Controls.AddRange(new Control[] { lblCh, numCh, lblSlot, numSlot, lblName, tbName, lblHint, apply, ok, cancel });
+        dlg.AcceptButton = ok; dlg.CancelButton = cancel;
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        var name = tbName.Text.Trim();
+        if (name.Length == 0)
+        {
+            MessageBox.Show(this, Localizer.T("请先输入名字：存档第 1 行就是角色名（最多 12 个字母）"), "Neutraled");
+            return;
+        }
+
+        var args = "--import-bside \"" + ofd.FileName + "\" --chapter chapter" + (int)numCh.Value +
+                   " --slot " + (int)numSlot.Value + " --save-name \"" + name + "\"" +
+                   (apply.Checked ? "" : " --template-only");
+        SetBusy(true, Localizer.T("导入 B 面存档中..."));
+        var rc = await Program.RunBuilderAsync(args, Log);
+        SetBusy(false, rc == 0 ? Localizer.T("完成") : Localizer.T("失败（详见日志）"));
+        MessageBox.Show(this, rc == 0
+            ? (apply.Checked
+                ? Localizer.T("B 面存档已导入并写入槽位：进游戏选该章节即可直接开 B 面")
+                : Localizer.T("B 面模板已导入（只导入模板，没有写进存档）"))
+            : Localizer.T("失败，详见日志"), "Neutraled");
     }
 
     private async Task ExportPacksAsync(Form owner)

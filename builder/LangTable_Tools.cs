@@ -220,5 +220,23 @@ public static class LangTable_Tools
         d["        → 词条加在 api/ntl_i18n_out.gml（zh 原文 + en 译文）；故意中英并排则加标记 {0}"] = "        → add the entry to api/ntl_i18n_out.gml (zh original + en translation); if the pairing is intentional add marker {0}";
         d["词条缺失"] = "missing entry";
         d["引用了不存在的键 '{0}' —— ntl_t 会原样返回键名，界面会显示 \"{0}\""] = "references a key that does not exist: '{0}' — ntl_t returns the key as-is, so the UI shows \"{0}\"";
+        d["名字不能是空的"] = "the name cannot be empty";
+        d["名字里不能有控制字符"] = "the name cannot contain control characters";
+        d["名字太长：最多 {0} 个字母（游戏内命名上限），当前 {1} 个"] = "the name is too long: at most {0} letters (the in-game naming limit), currently {1}";
+        d["  已按文件名识别: 第 {0} 章 / 槽位 {1}"] = "detected from the file name: chapter {0} / slot {1}";
+        d["  [错误] 认不出这是第几章的存档: {0}"] = "[error] cannot tell which chapter this save belongs to: {0}";
+        d["         文件名要像 filech2 / filech3_0，或者显式给出 --chapter chapterN"] = "the file name should look like filech2 / filech3_0, or pass --chapter chapterN explicitly";
+        d["  [错误] 存档是空文件: {0}"] = "[error] the save file is empty: {0}";
+        d["  请输入角色名字（最多 {0} 个字母，直接回车取消）: "] = "Enter the character name (up to {0} letters, press Enter to cancel):";
+        d["  已取消：存档第 1 行就是角色名，没有名字就不导入"] = "cancelled: line 1 of a save is the character name, so nothing was imported without one";
+        d["  [错误] 没有名字。用 --save-name <名字> 指定（最多 {0} 个字母）："] = "[error] no name. Pass one with --save-name <NAME> (up to {0} letters):";
+        d["         游戏里存档第 1 行就是角色名，名字为空的话存档槽会显示不出来"] = "in-game, line 1 of a save is the character name; an empty name leaves the save slot blank";
+        d["  名字（存档第 1 行）: {0}（原来是 \"{1}\"）"] = "name (line 1 of the save): {0} (was \"{1}\")";
+        d["  名字（存档第 1 行）: {0}"] = "name (line 1 of the save): {0}";
+        d["  --template-only：没写进游戏存档，也没标记 SideB（之后可用 --make-bside 落槽位）"] = "--template-only: nothing was written into the in-game saves and SideB was not marked (use --make-bside later to fill a slot)";
+        d["  已标记 dr.ini: 第 {0} 章 槽位 {1} → SideB=1 / Name=\"{2}\""] = "dr.ini marked: chapter {0} slot {1} -> SideB=1 / Name=\"{2}\"";        d["  B 面模板: {0}{1}"] = "B-side template: {0}{1}";
+        d["（随包默认）"] = " (shipped default)";
+        d["（你自己导入的）"] = " (imported by you)";
+        d["  这是你自己的模板（脚本/打包只认 bside/templates/ 里的随包模板，这份不会进发布包）"] = "this is YOUR template (scripts/packaging only ship bside/templates/, so this file never enters a release package)";
     }
 }

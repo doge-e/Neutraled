@@ -366,7 +366,7 @@ Back                           ← 原版第 7 行，顺移到第 8 行
 * **分工**：Neutraled 只负责**字体/字形层面的支持**（能显示、不缺字、不缺标点）；
   具体文本的**翻译**由人工本地化组维护，随包分发的 `lang\lang_*.json` 只是参考译法
   （见 [THEMES-LANGS.md](THEMES-LANGS.md) 与 `--lang-coverage`）。
-* **许可**：内置字体包的字形由 **OFL 1.1** 开源字体（Noto Sans SC / JP / KR / Symbols 2 / Emoji）离屏渲染；随包分发 `fonts/OFL-NOTICE.txt`（逐张页的来源/版本/SHA-256/版权行）与 `fonts/ofl/` 下的 5 份 OFL 全文。
+* **许可**：内置字体包的字形由 **OFL 1.1** 开源字体（Noto Sans SC / JP / KR / Symbols 2 / Emoji，以及非中文字形用的 Ark Pixel 12px）离屏渲染；随包分发 `fonts/OFL-NOTICE.txt`（逐张页的来源/版本/SHA-256/版权行）与 `fonts/ofl/` 下的 6 份 OFL 全文。
 * 实现：`builder/FontMerge.cs`（补字）、`builder/ContentCheck.cs`（算出需要哪些字符，与部署自检共用一份口径）、
   `builder/FontImport.cs`（写字体页与字形表）、`builder/CjkFont.cs`（生成内置包 `--make-cjk-font`）。
 ### 11.3 字距（CJK 排字步进）

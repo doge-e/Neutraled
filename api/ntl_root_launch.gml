@@ -9,6 +9,9 @@ if (ds_map_find_value(_m, "enabled") != 1)
 {
     // 修复 2026-09-29：以前只写日志，屏幕上毫无反应（玩家以为按键坏了）。
     //   复用章节选择器自己的短暂提示（绘制见 ntl_root_draw.gml:113-120）。
+    // ★ 用户主诉修复（2026-10-03 m28517）：确认键本身**不再发声音**（见 api/ntl_root_step.gml 的确认块）
+    //   —— 所以「没真的启动」必须在这里补一声，否则玩家按下去毫无反馈。
+    ntl_ui_sfx("confirm");
     global.ntl_root_toast = ntl_t("menu.ch_none");
     global.ntl_root_toast_frames = 90;
     ntl_log("root", "[toast] lang=" + string(global.ntl_lang) + " key=menu.ch_none text=" + string(global.ntl_root_toast));

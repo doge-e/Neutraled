@@ -159,6 +159,25 @@ public static class Localizer
         ["全部 3 个槽位"] = "All 3 slots",
         ["取消"] = "Cancel",
         ["B 面存档已创建：进游戏选该章节即可直接开 B 面"] = "B-side save created: pick that chapter in-game to start on the B-side",
+        ["导入 B 面存档"] = "Import B-side Save",
+        ["把一份真实 B 面存档导入并直接加载（名字 ≤12 个字母写进存档第 1 行）"] =
+            "Import a real B-side save and load it right away (name of up to 12 letters goes into save line 1)",
+        ["存档文件|filech*;*.sav|所有文件|*.*"] = "Save files|filech*;*.sav|All files|*.*",
+        ["选择要导入的真实 B 面存档"] = "Select the real B-side save to import",
+        ["存档: "] = "Save: ",
+        ["名字（≤12 字母）:"] = "Name (max 12 letters):",
+        ["存档第 1 行就是角色名：填玩家名字（最多 12 个字母，会自动转大写）"] =
+            "Line 1 of the save is the character name: enter the player name (max 12 letters, uppercased automatically)",
+        ["直接写进存档并标记 B 面（取消勾选 = 只导入模板）"] =
+            "Write into the save and mark B-side (unchecked = import the template only)",
+        ["导入"] = "Import",
+        ["导入 B 面存档中..."] = "Importing the B-side save...",
+        ["请先输入名字：存档第 1 行就是角色名（最多 12 个字母）"] =
+            "Enter a name first: line 1 of the save is the character name (max 12 letters)",
+        ["B 面存档已导入并写入槽位：进游戏选该章节即可直接开 B 面"] =
+            "B-side save imported into the slot: pick that chapter in-game to start on the B-side",
+        ["B 面模板已导入（只导入模板，没有写进存档）"] =
+            "B-side template imported (template only; nothing was written into the save)",
         ["失败，详见日志"] = "Failed; see log",
         ["选择要导出资源的 data.win"] = "Select the data.win to export assets from",
         ["导出资源包中（大文件可能几分钟）..."] = "Exporting asset packs (large files may take minutes)...",

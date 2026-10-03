@@ -19,7 +19,8 @@ namespace Neutraled.Builder;
 ///      见 FontImport.UpsertFont 的注释）。
 /// 教训（2026-09-27 真机）：把 2048x2048 的旧页整页贴在 (0,0)、新字形排到 y>=2048 的 2048x4096
 /// 长页上时，中文**画得出来但取样是错的**（字形来自图集别处）⇒ 字体页不要超过 2048 见方。
-/// 调试开关：NTL_FONTMERGE_MAXSIDE（默认 2048，可设 4096）、NTL_FONTMERGE_SCALED（默认 1）。
+/// 调试开关：NTL_FONTMERGE_MAXSIDE（默认 2048，可设 4096）、NTL_FONTMERGE_SCALED（默认 1）、
+/// NTL_FONTMERGE_FITBOX（默认 1：补进来的字形不许超过目标字体原有字形盒高，见 Complete 里的「限高」注释）。
 /// 触发条件是"真的缺"：纯 ASCII 产物的目标字体一个字形都不用补 ⇒ 产物与以前完全一致。
 /// </summary>
 public static class FontMerge
@@ -92,6 +93,20 @@ public static class FontMerge
             if (ratio < 0.5) ratio = 0.5;
             if (ratio > 2.5) ratio = 2.5;
 
+            // ★ 限高（1.0.6）：补进来的字形**不许比目标字体原有的字形更高**。
+            //   运行期的行距/定位按「字体的最大字形高」算 —— 我们的 ntl_root_draw.gml 用 string_height 推导条高，
+            //   游戏本体 obj_savemenu_Draw_0.gml 也用 (string_height(...) / 4) 定光标；而 string_height 的高度是
+            //   **字体级**的（哪怕字符串全是 ASCII）。内置字体包里几个超高字形（U+23F3 ⏳ 22、U+2714/U+2717/U+2718
+            //   ✔✗✘ 22、U+AD6D/U+C5B4/U+D55C 국어한 19）会把 fnt_main 的行盒从原版 16 撑到 22
+            //   （fnt_mainbig 32->44、fnt_small 7->11）⇒ 真机上就是「行距变大 / 正文压住下一栏 / 光标错位」。
+            //   这里把超高字形按同一比例缩进 boxH（w/Shift/Offset 一起缩，保持外观比例）。
+            //   汉字本体只有 14 高（< 16）⇒ 完全不受影响，中文渲染与 1.0.5 逐像素相同。
+            //   NTL_FONTMERGE_FITBOX=0 关掉（回到 1.0.5 行为）。
+            int boxH = 0;
+            foreach (var g0 in font.Glyphs) if (g0.SourceHeight > boxH) boxH = (int)g0.SourceHeight;
+            bool fitBox = EnvUInt("NTL_FONTMERGE_FITBOX", 1) != 0;
+            int clamped = 0;
+
             using var oldPage = oldImage.GetMagickImage();
             int oldW = (int)oldPage.Width, oldH = (int)oldPage.Height;
             if (oldW <= 0 || oldH <= 0) { Paths.Log(L("    字体补全 {0}: 原纹理页尺寸异常，跳过", name)); continue; }
@@ -120,12 +135,19 @@ public static class FontMerge
             bx1 = Math.Min(oldW, bx1); by1 = Math.Min(oldH, by1);
             int cropW = Math.Max(1, bx1 - bx0), cropH = Math.Max(1, by1 - by0);
 
-            var items = new List<(UndertaleFont.Glyph g, int w, int h)>();
+            var items = new List<(UndertaleFont.Glyph g, int w, int h, double k)>();
             foreach (var g in miss)
             {
-                int w = Math.Max(1, (int)Math.Round(g.SourceWidth * ratio));
-                int h = Math.Max(1, (int)Math.Round(g.SourceHeight * ratio));
-                items.Add((g, w, h));
+                double k = ratio;
+                if (fitBox && boxH > 0 && g.SourceHeight * ratio > boxH)
+                {
+                    k = ratio * boxH / (g.SourceHeight * ratio);   // 缩到盒高，保持外观比例
+                    clamped++;
+                }
+                int w = Math.Max(1, (int)Math.Round(g.SourceWidth * k));
+                int h = Math.Max(1, (int)Math.Round(g.SourceHeight * k));
+                if (boxH > 0 && h > boxH) h = boxH;                // 取整兜底：绝不越过盒高
+                items.Add((g, w, h, k));
             }
             items.Sort((a, b) => b.h.CompareTo(a.h));       // 高的排前面，货架更满
 
@@ -137,18 +159,18 @@ public static class FontMerge
             if (maxSide < 512) maxSide = 512;
             int pageW = NextPow2(Math.Max(cropW, 1024));
             int pageH = NextPow2(Math.Max(cropH, 1024));
-            List<(UndertaleFont.Glyph g, int x, int y, int w, int h)> placed = new();
+            List<(UndertaleFont.Glyph g, int x, int y, int w, int h, double k)> placed = new();
             int skipped = 0;
             for (int attempt = 0; attempt < 8; attempt++)
             {
                 placed.Clear();
                 skipped = 0;
                 int cx = 0, cy = cropH, rowH = 0;
-                foreach (var (g, w, h) in items)
+                foreach (var (g, w, h, k) in items)
                 {
                     if (cx + w > pageW) { cx = 0; cy += rowH + 1; rowH = 0; }
                     if (cy + h > pageH) { skipped++; continue; }
-                    placed.Add((g, cx, cy, w, h));
+                    placed.Add((g, cx, cy, w, h, k));
                     cx += w + 1;
                     if (h > rowH) rowH = h;
                 }
@@ -173,10 +195,10 @@ public static class FontMerge
                 int ny = oy + g.SourceY - by0; if (ny < 0) ny = 0;
                 g.SourceX = (ushort)nx; g.SourceY = (ushort)ny;
             }
-            foreach (var (g, x, y, w, h) in placed)
+            foreach (var (g, x, y, w, h, k) in placed)
             {
                 using var crop = srcPage.CloneArea(g.SourceX, g.SourceY, g.SourceWidth, g.SourceHeight);
-                if (Math.Abs(ratio - 1.0) > 0.001)
+                if (Math.Abs(k - 1.0) > 0.001)
                 {
                     crop.FilterType = FilterType.Point;      // 像素字体：点采样，别糊
                     crop.Resize(new MagickGeometry((uint)w, (uint)h) { IgnoreAspectRatio = true });
@@ -211,7 +233,7 @@ public static class FontMerge
             data.TexturePageItems.Add(tpi);
             font.Texture = tpi;
 
-            foreach (var (g, x, y, w, h) in placed)
+            foreach (var (g, x, y, w, h, k) in placed)
             {
                 font.Glyphs.Add(new UndertaleFont.Glyph
                 {
@@ -220,8 +242,8 @@ public static class FontMerge
                     SourceY = (ushort)y,
                     SourceWidth = (ushort)w,
                     SourceHeight = (ushort)h,
-                    Shift = (short)Math.Max(0, Math.Round(g.Shift * ratio)),
-                    Offset = (short)Math.Round(g.Offset * ratio)
+                    Shift = (short)Math.Max(0, Math.Round(g.Shift * k)),
+                    Offset = (short)Math.Round(g.Offset * k)
                 });
             }
             // ★ 字形表必须按 Character 升序（GMS2 运行期二分查找）
@@ -234,6 +256,8 @@ public static class FontMerge
             Paths.Log(L("    字体补全 {0}: +{1} 字形（{2} -> {3}；旧页 {4}x{5} 裁到 {6}x{7} -> 新页 {8}x{9}，缩放 {10:0.##}x{11}）",
                 name, placed.Count, have.Count, have.Count + placed.Count, oldW, oldH, cropW, cropH, pageW, pageH, ratio,
                 skipped > 0 ? L("，另有 {0} 个放不下", skipped) : ""));
+            if (fitBox && clamped > 0)
+                Paths.Log(L("      限高 {0}px：{1} 个超高字形已缩进盒内（原版字形盒高，行距不变）", boxH, clamped));
         }
         if (totalAdded == 0) Paths.Log(L("    字体补全: 无需补（目标字体已覆盖所需字符）"));
         return totalAdded;

@@ -878,7 +878,7 @@ ntl-builder.exe --conflicts --chapter chapter5
   对照表与逐页来源（本地 TTF 的 SHA-256、上游 URL、版权行、产物溯源）见 `Neutraled/fonts/OFL-NOTICE.txt` 第二节。
 
 - 包格式：`EmSize=12`、`LineHeight=18`、`Page=""`（**多 sheet 模式**，导入端按每个字形的 `Sheet` 重新拼页，见 `builder/FontImport.cs:42-48`、`:94-131`）。
-- **许可**：每张页的源字体版本 / 上游文件 / SHA-256 / 版权行，以及随包分发的 **5 份 OFL 全文**（`fonts/ofl/`），
+- **许可**：每张页的源字体版本 / 上游文件 / SHA-256 / 版权行，以及随包分发的 **6 份 OFL 全文**（`fonts/ofl/`），
   见 `Neutraled/fonts/OFL-NOTICE.txt`。**发布包必须带上这两样**（换字体＝换许可义务）。
 - 历史（已废弃）：早先用的是「从汉化 mod 的 `fnt_main` 原样搬运 3580 字形」的**专有来源**方案；
   该路径已由 OFL 渲染取代，旧的 `ntl_font_ja/ko/latin/scripts/sym/wave_sheet0.png` 已删除。

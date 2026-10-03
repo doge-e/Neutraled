@@ -701,13 +701,15 @@ if (global.ntl_quit_pending > 0)
 //   :170-262）→ Enter/Z 不会再被抢走，普通章节和外部章节都可以直接按 Enter/Z
 if (ntl_key_fire(13, 0, 0) == 1 || ntl_key_fire(90, 0, 0) == 1)
 {
-    // ★ 确认音自己播（api/ntl_ui_sfx.gml）：必须**先响再启动** —— 外部章节会立刻 park
-    //   （静音 + 隐藏窗口），放在 ntl_root_launch 之后就听不到了。
+    // ★★★ 用户主诉修复（2026-10-03 m28517）：**选章确认音不再播放** —— 选择章节之后不该有任何音效。
+    //   以前这里先播 ntl_ui_sfx("confirm")（当时的理由：外部章节会立刻 park 静音 + 隐藏窗口，
+    //   放在 ntl_root_launch 之后就听不到），现在整声去掉，确认键只负责启动。
+    //   只有「没有真的启动」的情况才发一声提示音：章节无内容见 api/ntl_root_launch.gml 的未启用分支。
+    //   上下移动/翻页的 ntl_ui_sfx("move")（本文件 :548/:582/:614/:620）不受影响。
     // ★★★ 用户主诉修复（2026-10-03 m27417）：从这一刻起选择器不再响应任何操作，
     //   直到回到选择器（park 退出）或本次启动被取消（见文件顶部自愈 + :86-95 / :38-46）。
     global.ntl_launch_locked = 1;
     global.ntl_launch_locked_n = 0;
-    ntl_ui_sfx("confirm");
     ntl_root_launch(global.ntl_ch_sel);
     // ★ 用户主诉修复（2026-10-03）：启动后立刻清掉 Enter/Z 的按下沿与按下状态。
     //   实测事故：外部章节请求写出后窗口被守候进程隐藏，GM 在窗口隐藏时会暂停 ⇒ 这次按下

@@ -10,7 +10,7 @@ global.ntl_log_path = "Neutraled/dr-api.log";
 //   整场游戏一个字都不写（实测踩过：%LOCALAPPDATA%\DELTARUNE\Neutraled\ 被清掉后，
 //   游戏跑得好好的却完全没有日志，排查了很久）。这里先确保目录存在。
 ntl_ensure_dir(global.ntl_log_path);
-global.ntl_version = "1.0.5";
+global.ntl_version = "1.0.6";
 global.ntl_live_api = "1.2.0";
 
 // 运行时脚本解释器的各个函数都是独立同名脚本资源（UTMT 编译器要求），无需预加载。

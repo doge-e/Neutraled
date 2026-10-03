@@ -199,6 +199,9 @@ public static class Program
             string? saveTarget = null;
             int bsideSlot = 0;
             bool bsideAllSlots = false;
+            bool slotExplicit = false;         // --slot 是否显式给出（--import-bside 用它区分「自动识别槽位」）
+            string bsideName = "";             // --import-bside: 玩家名字（写进存档第 1 行，≤12 个字母）
+            bool bsideTemplateOnly = false;    // --import-bside: 只导入模板，不落槽位、不标 SideB
             bool sendF2 = false;
             bool keepProc = false;
             string? sendText = null;
@@ -300,6 +303,8 @@ public static class Program
                     case "--listrooms": cmd = "listrooms"; break;
                     case "--gameinfo": cmd = "gameinfo"; break;
                     case "--import-bside" when i + 1 < args.Length: cmd = "import-bside"; importPath = args[++i]; break;
+                    case "--save-name" when i + 1 < args.Length: bsideName = args[++i]; break;   // ★ 不能用 --name：那个被 mod 名占用了
+                    case "--template-only": bsideTemplateOnly = true; break;
                 case "--import-kristal-map" when i + 1 < args.Length: cmd = "import-kristal-map"; importPath = args[++i]; break;
                 case "--map-id" when i + 1 < args.Length: mapId = args[++i]; break;
                 case "--install": cmd = "install"; break;
@@ -386,7 +391,7 @@ public static class Program
                 case "--cache-max" when i + 1 < args.Length: cacheMaxMb = args[++i]; break;
                 case "--map-out" when i + 1 < args.Length: mapOut = args[++i]; break;
                     case "--make-bside": cmd = "make-bside"; break;
-                    case "--slot" when i + 1 < args.Length: bsideSlot = chapSlot = int.Parse(args[++i]); break;
+                    case "--slot" when i + 1 < args.Length: bsideSlot = chapSlot = int.Parse(args[++i]); slotExplicit = true; break;
                     case "--all-slots": bsideAllSlots = true; break;
                     case "--dumpall" when i + 1 < args.Length: cmd = "dumpall"; importPath = args[++i]; break;
                     case "--no-save-rename": DisableSaveRename = true; break;
@@ -420,7 +425,15 @@ public static class Program
                 "listobjs" => ListObjects(gameRoot, chapter, objFilter!),
                 "listrooms" => ListRooms(gameRoot, chapter, "*"),
                 "gameinfo" => GameInfo(gameRoot, chapter),
-                "import-bside" => BSide.ImportTemplate(gameRoot, importPath!, ChapterNum(chapter)),
+                "import-bside" => BSide.Import(gameRoot, new BSide.ImportOptions
+                {
+                    Source = importPath!,
+                    Chapter = chapterExplicit ? ChapterNum(chapter) : 0,   // 没显式 --chapter 就从文件名识别（filech2 → 2）
+                    Slot = slotExplicit ? bsideSlot : -1,
+                    Name = string.IsNullOrWhiteSpace(bsideName) ? null : bsideName,
+                    Apply = !bsideTemplateOnly,
+                    AllSlots = bsideAllSlots,
+                }),
                 "make-bside" => BSide.MakeBSideSave(gameRoot, ChapterNum(chapter), bsideSlot, bsideAllSlots),
                 "dumpall" => DumpAll(gameRoot, chapter, importPath!),
                 "link-saves" => LinkSaves(gameRoot, saveTarget!),
@@ -581,6 +594,13 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         Console.WriteLine(L("  --selftest [--no-launch]        端到端自测"));
         Console.WriteLine(L("  --probe-timeline-runtime        只读预检：时间线产物的运行时文件章节（按 data.win 血统解析）+ 语言档覆盖守卫，不写盘"));
         Console.WriteLine(L("  --repair-saves                  只修「存档联接悬空」（补建空目录；不部署、不启动游戏）"));
+        Console.WriteLine();
+        Console.WriteLine(L("  存档 / B 面（详见 bside/README.txt）:"));
+        Console.WriteLine(L("  --import-bside <存档> [--chapter chapterN] [--slot S] [--save-name <名字>] [--all-slots] [--template-only]"));
+        Console.WriteLine(L("                                  导入一份真实 B 面存档：按**实际章节**改名成 bside/chapterN.sav，"));
+        Console.WriteLine(L("                                  把玩家名字（≤12 个字母）写进存档第 1 行，直接落到槽位并标记 dr.ini 的 SideB"));
+        Console.WriteLine(L("  --make-bside --chapter N [--slot S|--all-slots]   用模板生成 B 面存档（先用你自己导入的，再用随包默认模板；都没有就标记现有存档）"));
+        Console.WriteLine(L("                                  模板位置：bside/templates/chapterN.sav 随包分发；bside/chapterN.sav 是你自己导入的（不进发布包）"));
         Console.WriteLine();
         Console.WriteLine(L("  外部章节（Kristal / 冰封帷幕这类成品）:"));
         Console.WriteLine(L("  --add-external <exe> [名字]     注册成外部章节（章节选择器里可选）"));
