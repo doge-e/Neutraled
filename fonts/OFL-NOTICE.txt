@@ -10,8 +10,10 @@ Neutraled 字体包 —— 来源与许可声明（OFL NOTICE）
            ntl_native_sources.json（部署期字形来源声明：只有码位区间与来源种类，**不含任何位图**，见第七节）
            本目录的 README.txt（逐文件来源/许可速查表）
            ofl\OFL-notosans{sc,jp,kr}.txt / ofl\OFL-notosanssymbols2.txt / ofl\OFL-notoemoji.txt / ofl\OFL-arkpixel.txt（许可全文）
-写入依据 : 实读 Neutraled/fonts/ 下的 JSON 与 PNG、E:/aiwork/out/Neutraled2/_feat/ 下的渲染产物与 TTF 元数据
-           （尺寸/字节/SHA-256/版权行都是实测值；上游路径来自 Google Fonts 仓库 ofl/ 目录清单，2026-09-29 通过代理实测可访问；2026-09-30 重渲的「页 → 来源 pass → 字节」见 E:/aiwork/out/Neutraled2/_feat/rerender-ofl-report.json）
+写入依据 : 实读 Neutraled/fonts/ 下的 JSON 与 PNG、构建机上的渲染产物与 TTF 元数据
+           （尺寸/字节/SHA-256/版权行都是实测值；上游路径来自 Google Fonts 仓库 ofl/ 目录清单，2026-09-29 通过代理实测可访问；2026-09-30 重渲的「页 → 来源 pass → 字节」见 <构建机>/rerender-ofl-report.json）
+术语     : 下文 `<构建机>` = 出包机器上的一次性重渲工作目录（未随仓库分发）；`<构建机>/…` 只用于说明
+           产物怎么来的，发布包内不含该目录。
 
 
 一、一句话
@@ -37,37 +39,37 @@ OFL 要求的版权与许可随附、保留字体名、不得单独售卖等条�
 │  字体版本 : Version 2.04;241114210130;non-release
 │  版权行   : Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
 │  渲染命令 : ntl-builder.exe --make-cjk-font <输出目录> --ttf NotoSansSC-VF.ttf --charset list --chars <字符表> --font-name ntl_rr_sc
-│  产物溯源 : E:/aiwork/out/Neutraled2/_feat/rerender-1-sc/ntl_rr_sc_sheet0.png（与随包 PNG **字节完全相同**）
+│  产物溯源 : <构建机>/rerender-1-sc/ntl_rr_sc_sheet0.png（与随包 PNG **字节完全相同**）
 │  说明     : 拉丁/希腊/西里尔扩展、标点、汉字与全角符号等主表字形
 │
 ├─ ntl_font_cjk_o2.png ｜ 64x32 ｜ 704 B ｜ 3 字形
 │  源字体   : Noto Sans KR
-│  本地 TTF : NotoSansKR.ttf（10414588 B，E:/aiwork/out/Neutraled2/_feat/fonts-open/）
+│  本地 TTF : NotoSansKR.ttf（10414588 B，<构建机>/fonts-open/）
 │             sha256 = 194018e6b2b293a7964f037b25c0249ce1418bc9ab3c971060a03aa57861e252
 │  上游文件 : https://raw.githubusercontent.com/google/fonts/main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf
 │  字体版本 : Version 2.004-H2;hotconv 1.0.118;makeotfexe 2.5.65603
 │  版权行   : (c) 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
-│  产物溯源 : _feat/rerender-4-kr/ntl_rr_kr_sheet0.png（字节完全相同）
+│  产物溯源 : <构建机>/rerender-4-kr/ntl_rr_kr_sheet0.png（字节完全相同）
 │  3 个字   : 어 한 ️ （U+C5B4, U+D55C, U+FE0F —— 用于语言名「한국어」）
 │
 ├─ ntl_font_cjk_o3.png ｜ 4096x32 ｜ 21729 B ｜ 232 字形
 │  源字体   : Noto Sans Symbols 2
-│  本地 TTF : NotoSansSymbols2-Regular.ttf（1233128 B，_feat/fonts-open/）
+│  本地 TTF : NotoSansSymbols2-Regular.ttf（1233128 B，<构建机>/fonts-open/）
 │             sha256 = 7d5fb73b7ca67a6798101741f5d280a3d016a56a197afcd4199dbb57b4b82a21
 │  上游文件 : https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssymbols2/NotoSansSymbols2-Regular.ttf
 │  字体版本 : Version 2.008; ttfautohint (v1.8.4.7-5d5b)
 │  版权行   : Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-│  产物溯源 : _feat/rerender-5-sym/ntl_rr_sym_sheet0.png（字节完全相同）
+│  产物溯源 : <构建机>/rerender-5-sym/ntl_rr_sym_sheet0.png（字节完全相同）
 │  内容     : 拉丁扩展-A/B、希腊、西里尔、箭头、方框绘制、几何图形与杂项符号
 │
 └─ ntl_font_cjk_o4.png ｜ 1024x32 ｜ 11040 B ｜ 50 字形
    源字体   : Noto Emoji
-   本地 TTF : NotoEmoji-VF.ttf（1982596 B，_feat/fonts-open/）
+   本地 TTF : NotoEmoji-VF.ttf（1982596 B，<构建机>/fonts-open/）
               sha256 = de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551
    上游文件 : https://raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf
    字体版本 : Version 3.002
    版权行   : Copyright 2013 Google LLC
-   产物溯源 : _feat/rerender-6-emo/ntl_rr_emo_sheet0.png（字节完全相同）
+   产物溯源 : <构建机>/rerender-6-emo/ntl_rr_emo_sheet0.png（字节完全相同）
    内容     : 本轮新增的 48 个 emoji 区符号（↩ ↪ ♈ … ⛽ ⛺）+ ℹ ✅ ❌ 等原有图标，共 50 个字形
 
 未产出位图页的字体：
@@ -87,7 +89,7 @@ OFL 要求的版权与许可随附、保留字体名、不得单独售卖等条�
 - 与旧包相比：**新增 48 个字形**（emoji 区符号 U+21A9 ↪ ↪ ♈…⛽，以及 U+3000 全角空格）；**丢弃 10 个 Unicode 未分配码位**
   （U+3040 / U+3097 / U+FF00 / U+FFA0 / U+FFC8 / U+FFD0 / U+FFD8 / U+FFDD / U+FFDE / U+FFE7）——
   它们在源字体里本来就是空白格，旧包把空白格当字形留着；丢弃属正确清理。
-- 机器可读的记录：`E:/aiwork/out/Neutraled2/_feat/rerender-ofl-report.json`（页 → 来源 pass → 字节 + 未覆盖字符）；渲染日志 `_feat/rerender-ofl.log`。
+- 机器可读的记录：`<构建机>/rerender-ofl-report.json`（页 → 来源 pass → 字节 + 未覆盖字符）；渲染日志 `<构建机>/rerender-ofl.log`。
 - 旧版的 7 张专有页（`_page`、`_ja_sheet0`、`_latin_sheet0`、`_scripts_sheet0`、`_sym_sheet0`、`_wave_sheet0`、`_ko_sheet0`）在本目录中已不存在。
 
 
@@ -133,11 +135,11 @@ https://raw.githubusercontent.com/google/fonts/main/ofl/<家族目录>/OFL.txt
   #    - Page 置空 → 多 sheet 模式；每张 sheet 拷到 fonts\ 下并改名 ntl_font_cjk_oN.png
   #    - 合并语义：后并入的包可顶替前面包生成的字形，**已有的汉字/ASCII 基底字形永不覆盖**（只增不改）
   #    - 注意：合并用的是一次性脚本（未随包保留）；可直接参考骨架
-  #      E:/aiwork/out/Neutraled2/_feat/rerender-ofl.mjs（2026-09-30 全量重渲：pass 顺序 SC → SC 补 → JP → KR → Symbols 2 → Emoji，含墨迹门禁与合并去重）、
+  #      <构建机>/rerender-ofl.mjs（2026-09-30 全量重渲：pass 顺序 SC → SC 补 → JP → KR → Symbols 2 → Emoji，含墨迹门禁与合并去重）、
   #      merge-supp.mjs（补字合并）与 merge-fonts.mjs（多包合并，旧管线）
 
   # 4) 复核
-  node E:/aiwork/out/Neutraled2/_feat/font-audit.mjs        # 缺字 / 空白格门禁（退出码 1 = 有缺口）
+  node <构建机>/font-audit.mjs        # 缺字 / 空白格门禁（退出码 1 = 有缺口）
   ntl-builder.exe --font-probe chapter4_windows\data.win   # 字形数与字形表自检（逆序对应应为 0）
 
 
@@ -177,7 +179,7 @@ OFL Noto 位图后，UI 文字观感与游戏明显不同（用户真机反馈�
   DELTARUNE / Toby Fox；汉字位图属用户所装汉化包的作者）。Neutraled **不重新分发**这些位图，
   只在用户本机做与游戏同源的本地渲染，因此**不改变发布包的 OFL-clean 结论**。
   用户未安装汉化包时，汉字区自动回落到 OFL Noto（第二、三节），行为与旧版一致。
-* **复核方式（逐像素断言）**：node E:/aiwork/out/Neutraled2/_feat/_t26/verify-csharp.mjs
+* **复核方式（逐像素断言）**：node <构建机>/_t26/verify-csharp.mjs
   —— 新包 ASCII 0x20-0x7E / CJK 与游戏 fnt_main 逐像素一致；同时反证仓库 fonts\ 里没有任何本机页、
   没有字体二进制、OFL 字形与游戏不同源。完整报告：release-docs/FONT-PIXEL-REPORT.md。
 
@@ -200,7 +202,7 @@ OFL Noto 位图后，UI 文字观感与游戏明显不同（用户真机反馈�
        许可     : SIL Open Font License 1.1 —— 全文随包放 ofl\OFL-arkpixel.txt
 渲染命令: ntl-builder.exe --game <游戏根> --make-cjk-font <输出目录> --ttf ark12-zh_hans.ttf --font-name ntl_ark12 --size 12
           （默认大 UI 字集共渲出 21453 个字形，本次只取上述非中文码位里的 953 个）
-合并脚本: E:/aiwork/out/Neutraled2/_feat/_t40/（一次性手工合并；新旧包与对比图留在该目录可复现）
+合并脚本: <构建机>/_t40/（一次性手工合并；新旧包与对比图留在该目录可复现）
 合规说明: Ark Pixel 为 OFL-1.1 授权，允许再分发与嵌入；我们同样**只分发位图页**，不分发 .ttf；
           未改字体名、随包附许可全文、不单独售卖 —— 与第三、四节口径一致。
 备注     : 部署期的本机字形覆盖逻辑不变（第七节）：游戏 / 汉化包能提供的字形仍会顶掉本包位图；

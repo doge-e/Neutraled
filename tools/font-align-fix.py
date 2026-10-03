@@ -13,12 +13,14 @@
 import json, os, shutil, statistics, sys, collections
 from PIL import Image
 
-FONTS = r"E:\steam\steamapps\common\DELTARUNE\Neutraled\fonts"
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+FONTS = os.environ.get("NTL_FONTS", os.path.join(ROOT, "fonts"))
 PACK = os.path.join(FONTS, "ntl_font_cjk.json")
 ARK = "ntl_font_cjk_ark12.png"
-NAT_JSON = r"E:\steam\steamapps\common\DELTARUNE\Neutraled\.tmp\font-native-src\root\game\ntl_native_game.json"
-NAT_PNG = r"E:\steam\steamapps\common\DELTARUNE\Neutraled\.tmp\font-native-src\root\game\ntl_native_game_page.png"
-BACKUP = r"E:\aiwork\out\Neutraled2\_feat\_t40\pack-backup-align"
+NATIVE = os.environ.get("NTL_NATIVE_DIR", os.path.join(ROOT, ".tmp", "font-native-src", "root", "game"))
+NAT_JSON = os.path.join(NATIVE, "ntl_native_game.json")
+NAT_PNG = os.path.join(NATIVE, "ntl_native_game_page.png")
+BACKUP = os.environ.get("NTL_ALIGN_BACKUP", os.path.join(ROOT, ".tmp", "pack-backup-align"))
 SHEET_W, SHEET_H = 4096, 2048
 APPLY = "--apply" in sys.argv
 

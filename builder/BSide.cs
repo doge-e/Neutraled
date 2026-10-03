@@ -102,7 +102,7 @@ public static class BSide
     /// <summary>导入选项。</summary>
     public sealed class ImportOptions
     {
-        /// <summary>源存档路径（例如 E:\aiwork\in\filech2）。</summary>
+        /// <summary>源存档路径（例如 <导出目录>\filech2）。</summary>
         public string Source = "";
         /// <summary>目标章节；0 = 从文件名自动识别。</summary>
         public int Chapter;
