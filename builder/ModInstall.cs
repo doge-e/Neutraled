@@ -167,7 +167,7 @@ public static class ModInstall
 
             Console.WriteLine();
             Console.WriteLine(L("  ✅ 安装完成"));
-            Console.WriteLine(L("  下一步: 关闭游戏后运行 launch.ps1 部署并启动"));
+            Console.WriteLine(L("  下一步: 运行 launch.ps1 部署并启动（默认 root；-Chapter chapter1 指定章节）"));
             return 0;
         }
         finally
@@ -230,16 +230,22 @@ public static class ModInstall
 
     public static void ListInstalled(string gameRoot)
     {
-        var ntlRoot = Paths.NeutraledRoot(gameRoot);
-        var list = FindInstalled(ntlRoot);
-        Console.WriteLine(L("===== 已安装的 mod ====="));
+        // C4 P1-13：「已安装的 mod」必须和**部署扫描**是同一份结果。
+        // 旧实现递归找所有 mod.json（Directory.GetFiles(..., AllDirectories)），会把
+        // mods/kanacole/unknown/chapter1/kristal/mod.json 这种嵌套子目录也算一个 mod（72 个），
+        // 而部署扫描只认叶子规则（root / chapterN，71 个）—— 同一台机器两个数字对不上，
+        // 用户会以为「列表里有的 mod 没被部署」。现在统一走 ModScanner（规则唯一实现在那里）。
+        var modsRoot = Path.Combine(Paths.NeutraledRoot(gameRoot), "mods");
+        var list = ModScanner.ReadAll(modsRoot);
+        Console.WriteLine(L("===== 已安装的 mod（与部署扫描同源）====="));
         if (list.Count == 0) { Console.WriteLine(L("  （无）")); return; }
-        foreach (var m in list.OrderBy(x => x.Name))
+        foreach (var m in list)
         {
-            Console.WriteLine($"  {m.Name,-24} v{m.Version,-10} {m.Author,-14} {m.Source}");
+            var flag = m.Enabled ? " " : L("禁用");
+            Console.WriteLine($"  {m.Name,-24} v{m.Version,-10} {m.Author,-14} {m.Chapter,-10} {flag}");
         }
         Console.WriteLine();
-        Console.WriteLine(L("  共 {0} 个", list.Count));
+        Console.WriteLine(L("  共 {0} 个（启用 {1} 个）", list.Count, list.Count(x => x.Enabled)));
     }
 
     // ---------- 辅助 ----------

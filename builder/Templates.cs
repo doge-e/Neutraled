@@ -73,7 +73,7 @@ public static class Templates
         Console.WriteLine(L("  模板: ") + tpl.Name);
         Console.WriteLine(L("  目录: ") + modDir);
         Console.WriteLine();
-        Console.WriteLine(L("  下一步: 编辑 main.lua -> 关游戏 -> 运行 Neutraled\\launch.ps1"));
+        Console.WriteLine(L("  下一步: 编辑 main.lua -> 运行 Neutraled\\launch.ps1"));
         Console.WriteLine(L("  可用模板: ") + string.Join(", ", All.Select(t => t.Id)));
         return 0;
     }
@@ -186,8 +186,9 @@ public static class Templates
         L.Add("");
         L.Add("## 运行");
         L.Add("");
-        L.Add("    Get-Process DELTARUNE -EA 0 | Stop-Process -Force");
-        L.Add("    E:\\steam\\steamapps\\common\\DELTARUNE\\Neutraled\\launch.ps1");
+        L.Add("    cd <DELTARUNE 的 Neutraled 目录>");
+        L.Add("    .\\launch.ps1                 # 默认 root；-Chapter chapter1 指定章节；-NoCache 先清缓存");
+        L.Add("    （游戏运行中 --launch 会报占用错误；请先自己关掉游戏）");
         L.Add("");
         L.Add("## 调试（游戏内按 F2）");
         L.Add("");

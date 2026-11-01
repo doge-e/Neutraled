@@ -31,6 +31,17 @@ public sealed class MainForm : Form
     private readonly Button _btnPerm = new();
     private readonly Button _btnKristal = new();
     private bool _busy;
+    private bool _refreshingMods;
+    /// <summary>写 mod.json 的 JSON 选项：**必须**放宽转义（CLAUDE.md 硬坑 15：GML 的 json_parse
+    /// 吃不下 \uXXXX 转义，description 里一个中文被转义成 \u6E90 就会整份解析失败、mod 被静默跳过）。
+    /// 默认 Encoder 会把非 ASCII 全部转义 —— 2026-10-31 真机复现：[live] mod.json 解析失败。</summary>
+    private static readonly JsonSerializerOptions ModJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+    /// <summary>「退出后自动还原」等待任务的取消源（C4 P0-3）。重新部署/手动还原时要能取消上一次的等待。</summary>
+    private CancellationTokenSource? _autoRestoreCts;
 
     private sealed class ModRow
     {
@@ -45,6 +56,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
+        Localizer.MigrateLegacy(Program.NeutraledRoot);   // C4 P1-5：旧 gui_lang.txt 并入 config.json.lang 后归档
         Localizer.Load(Program.NeutraledRoot);
         DeployOptions.Load(Program.NeutraledRoot);   // 部署加速档（Neutraled/gui_deploy.txt）
 
@@ -56,10 +68,11 @@ public sealed class MainForm : Form
         _lblChapter.Text = Localizer.T("章节:"); _lblChapter.Left = 8; _lblChapter.Top = 14; _lblChapter.Width = 50; _lblChapter.AutoSize = false;
         _chapterCombo.Left = 60; _chapterCombo.Top = 10; _chapterCombo.Width = 150;
         _chapterCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-        _chapterCombo.Items.AddRange(new object[] { "chapter1", "chapter2", "chapter3", "chapter4", "chapter5", "root", "all" });
-        _chapterCombo.SelectedIndex = 3;
+        // C4 P0-2：默认目标改为 root（以前默认 chapter4，裸点【部署】会莫名部署第 4 章，见 A3 F01）。
+        _chapterCombo.Items.AddRange(new object[] { "root", "chapter1", "chapter2", "chapter3", "chapter4", "chapter5", "all" });   // ntl:chapter4-ok 显式章节列表
+        _chapterCombo.SelectedIndex = 0;
         _btnRefresh.Text = Localizer.T("刷新"); _btnRefresh.Left = 222; _btnRefresh.Top = 9; _btnRefresh.Width = 70;
-        _btnRefresh.Click += (_, _) => RefreshMods();
+        _btnRefresh.Click += async (_, _) => await RefreshModsAsync();
 
         _langCombo.Left = 306; _langCombo.Top = 10; _langCombo.Width = 100;
         _langCombo.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -68,8 +81,7 @@ public sealed class MainForm : Form
         _langCombo.SelectedIndexChanged += (_, _) =>
         {
             Localizer.Current = _langCombo.SelectedIndex == 1 ? "en" : "zh";
-            Localizer.Save(Program.NeutraledRoot);
-            SaveConfigLang(Localizer.Current);   // 同步 config.json 的 lang：游戏内语言与 GUI 用同一个开关
+            SaveConfigLang(Localizer.Current);   // config.json.lang = 语言唯一真源（游戏内语言与 GUI 用同一个开关）
             ApplyLocalizedTexts();
         };
         _chapterCombo.SelectedIndexChanged += (_, _) => UpdateDeployState();
@@ -80,7 +92,7 @@ public sealed class MainForm : Form
         _btnEnhance.Text = Localizer.T("增强选项"); _btnEnhance.Left = 624; _btnEnhance.Top = 9; _btnEnhance.Width = 110;
         _btnDiag.Text = Localizer.T("诊断"); _btnDiag.Left = 742; _btnDiag.Top = 9; _btnDiag.Width = 70;
         _btnInterop.Text = Localizer.T("联动"); _btnInterop.Left = 818; _btnInterop.Top = 9; _btnInterop.Width = 60;
-        _btnInterop.Click += (_, _) => ShowInteropDialog();
+        _btnInterop.Click += async (_, _) => await ShowInteropDialogAsync();
         topPanel.Controls.Add(_btnInterop);
         _btnPerm.Text = Localizer.T("权限"); _btnPerm.Left = 884; _btnPerm.Top = 9; _btnPerm.Width = 60;
         _btnPerm.Click += (_, _) => ShowPermissionsDialog();
@@ -107,7 +119,17 @@ public sealed class MainForm : Form
         _modList.Columns.Add(Localizer.T("状态"), 80);
         _modList.ItemChecked += (_, e) =>
         {
-            if (!_busy && e.Item.Tag is ModRow row) row.Enabled = e.Item.Checked;
+            // 勾选/取消勾选立刻写回该 mod.json 的 enabled（以前的写法只在点「部署/部署并启动」时才
+            // 由 ApplyCheckedState 落盘 → 用户勾完直接用 Steam、启动 bat 或游戏内「重新部署并重启」
+            // 启动时，勾选根本没有写进文件，builder 扫描（只收 enabled != false）直接跳过该 mod，
+            // 表现就是"明明启用了却没生效"）。
+            if (_busy || _refreshingMods || e.Item.Tag is not ModRow row) return;
+            if (row.Enabled == e.Item.Checked) return;
+            if (SaveModEnabled(row, e.Item.Checked))
+            {
+                e.Item.SubItems[4].Text = row.Enabled ? Localizer.T("启用") : Localizer.T("禁用");
+                _status.Text = Localizer.T("启用状态已保存；点【部署】或【部署并启动】后生效");
+            }
             NotifyConfigChanged();   // 配置变更时提示"重启游戏后生效"
         };
 
@@ -167,7 +189,7 @@ public sealed class MainForm : Form
             await ImportPathsAsync(files);
         };
 
-        Load += (_, _) =>
+        Load += async (_, _) =>
         {
             ApplyLocalizedTexts();
             Log(Localizer.T("游戏根: {0}", Program.GameRoot));
@@ -194,7 +216,9 @@ public sealed class MainForm : Form
                 catch { }
             });
 
-            RefreshMods();
+            await RefreshModsAsync();
+            CheckDeploySessionBanner();
+            RefreshAlerts();   // C4 P1-12：首次运行只建基线，不把历史错误当新告警
         };
     }
 
@@ -279,6 +303,21 @@ public sealed class MainForm : Form
         _logBox.AppendText(s + Environment.NewLine);
     }
 
+    /// <summary>增量告警（C4 P1-12）：读游戏日志自上次以来新增的 ERROR 行；偏移记在 Neutraled/gui-alerts.json。
+    /// 首次运行没有状态文件 ⇒ 只建基线（静默），所以老错误不会每次启动都弹出来。</summary>
+    private void RefreshAlerts()
+    {
+        try
+        {
+            var alerts = UiLogic.NewAlerts(UiLogic.DefaultGameLogPath(), UiLogic.AlertsStatePath(Program.NeutraledRoot));
+            if (alerts.Count == 0) return;
+            Log(Localizer.T("[告警] 检测到 {0} 条新的游戏日志错误（详见日志）", alerts.Count));
+            foreach (var line in alerts.Take(5)) Log("  " + line);
+            _status.Text = Localizer.T("有 {0} 条新的游戏日志错误", alerts.Count);
+        }
+        catch { }
+    }
+
     private void SetBusy(bool busy, string? status = null)
     {
         _busy = busy;
@@ -289,78 +328,50 @@ public sealed class MainForm : Form
         Application.DoEvents();
     }
 
-    private void RefreshMods()
+    /// <summary>刷新 mod 列表（C4 P1-13：数据源 = ntl-builder --mod-list --json，与部署共用同一套叶子
+    /// 扫描规则 ModScanner；GUI 不再自己写第三套扫描，避免"GUI 里看得到、部署却扫不到"）。</summary>
+    private async Task RefreshModsAsync()
+    {
+        // 刷新时会把每行 Checked 设成 disk 上的值，ItemChecked 会跟着触发；
+        // 用 _refreshingMods 挡住「刷新→回写」的假变更（否则每次刷新都可能重写一遍 mod.json）。
+        _refreshingMods = true;
+        try { await RefreshModsCoreAsync(); }
+        finally { _refreshingMods = false; }
+    }
+
+    private async Task RefreshModsCoreAsync()
     {
         _modList.Items.Clear();
-        var modsRoot = Program.ModsRoot;
-        if (!Directory.Exists(modsRoot)) { Log(Localizer.T("[错误] mods 目录不存在: {0}", modsRoot)); return; }
-
-        var candidates = new List<(string dir, string chapter, string modName, string author)>();
-        foreach (var modDir in Directory.GetDirectories(modsRoot))
+        var (installed, error) = await ModInstallBridge.LoadAsync(Program.NeutraledRoot);
+        if (error.Length > 0)
         {
-            var modName = Path.GetFileName(modDir);
-            if (IsChapterFolder(modName))
-            {
-                foreach (var sub in Directory.GetDirectories(modDir))
-                    candidates.Add((sub, modName, Path.GetFileName(sub), ""));
-                continue;
-            }
-            bool matchedNew = false;
-            foreach (var authorDir in Directory.GetDirectories(modDir))
-            {
-                var author = Path.GetFileName(authorDir);
-                foreach (var chDir in Directory.GetDirectories(authorDir))
-                {
-                    var chName = Path.GetFileName(chDir);
-                    if (!IsChapterFolder(chName)) continue;
-                    candidates.Add((chDir, chName, modName, author));
-                    matchedNew = true;
-                }
-            }
-            if (!matchedNew && File.Exists(Path.Combine(modDir, "mod.json")))
-                candidates.Add((modDir, "", modName, ""));
+            Log(Localizer.T("[错误] 读取 mod 列表失败（--mod-list --json）: {0}", error));
+            _status.Text = Localizer.T("mod 列表读取失败");
+            return;
         }
 
         int count = 0;
-        foreach (var (dir, dch, modName, author) in candidates)
+        foreach (var m in installed)
         {
-            var mj = Path.Combine(dir, "mod.json");
-            if (!File.Exists(mj)) continue;
-            try
+            var row = new ModRow
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(mj),
-                    new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
-                var root = doc.RootElement;
-                var row = new ModRow
-                {
-                    Path = mj,
-                    Id = GetStr(root, "id"),
-                    Name = GetStr(root, "name"),
-                    Author = GetStr(root, "author"),
-                    Chapter = dch != "" ? dch : GetStr(root, "chapter"),
-                    Version = GetStr(root, "version"),
-                    Enabled = !root.TryGetProperty("enabled", out var en) || en.ValueKind != JsonValueKind.False
-                };
-                if (string.IsNullOrEmpty(row.Name)) row.Name = modName;
-                if (string.IsNullOrEmpty(row.Author)) row.Author = author;
-                var item = new ListViewItem(new[] { row.Name, row.Id, row.Author, row.Chapter, row.Enabled ? Localizer.T("启用") : Localizer.T("禁用") })
-                { Tag = row, Checked = row.Enabled };
-                _modList.Items.Add(item);
-                count++;
-            }
-            catch (Exception ex) { Log(Localizer.T("[警告] 解析失败 {0}: {1}", mj, ex.Message)); }
+                Path = m.Path,
+                Id = m.Id,
+                Name = m.Name,
+                Author = m.Author,
+                Chapter = m.Chapter,
+                Version = m.Version,
+                Enabled = m.Enabled
+            };
+            var item = new ListViewItem(new[] { row.Name, row.Id, row.Author, row.Chapter, row.Enabled ? Localizer.T("启用") : Localizer.T("禁用") })
+            { Tag = row, Checked = row.Enabled };
+            _modList.Items.Add(item);
+            count++;
         }
-        Log(Localizer.T("已加载 {0} 个 mod（目录: {1}）", count, modsRoot));
+        Log(Localizer.T("已加载 {0} 个 mod（与部署同源，目录: {1}）", count, Program.ModsRoot));
         _status.Text = Localizer.T("共 {0} 个 mod", count);
         UpdateDeployState();
     }
-
-    private static bool IsChapterFolder(string n) =>
-        n.Equals("root", StringComparison.OrdinalIgnoreCase) ||
-        (n.StartsWith("chapter", StringComparison.OrdinalIgnoreCase) && n.Length > 7);
-
-    private static string GetStr(JsonElement e, string p) =>
-        e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
     private int ApplyCheckedState()
     {
@@ -373,7 +384,7 @@ public sealed class MainForm : Form
                 var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(row.Path), null,
                     new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip })!.AsObject();
                 node["enabled"] = item.Checked;
-                File.WriteAllText(row.Path, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                File.WriteAllText(row.Path, node.ToJsonString(ModJsonOptions));
                 row.Enabled = item.Checked;
                 changed++;
                 Log(Localizer.T("  启用状态: {0} -> {1}", row.Name, item.Checked ? "on" : "off"));
@@ -383,31 +394,72 @@ public sealed class MainForm : Form
         return changed;
     }
 
-    /// <summary>增强选项落盘：9 个增强键就地合并进 config.json（对话框按钮与 headless 自检共用这一条路径）。
-    /// 只覆盖这 9 个键，文件里 lang / base_mod / cache_max_mb 等其它键由 MergeConfig 原样保住；
-    /// 坏 JSON 时按旧 ShowEnhanceDialog 的行为整份覆写（不弹错、不崩）。</summary>
-    private static void SaveEnhanceConfig(string path, bool skipSelector, int autoChapter, bool skipLegend,
-        bool skipLogo, int introDelay, bool debugLive)
+    /// <summary>单个 mod 的启用状态立即落盘（GUI 勾选/取消勾选时调用）。
+    /// builder 侧 Mods.ScanMods 用的是 ModEntry.Enabled（缺省 true，JSON 的 enabled=false 才关闭），
+    /// 所以勾选必须立刻写回 mod.json，不能拖到「部署」时才写 —— 用户很可能勾完直接用 Steam /
+    /// 启动 bat / 游戏内「重新部署并重启」，那些路径都不会经过 ApplyCheckedState。</summary>
+    private bool SaveModEnabled(ModRow row, bool enabled)
+    {
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(row.Path), null,
+                new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip })!.AsObject();
+            node["enabled"] = enabled;
+            File.WriteAllText(row.Path, node.ToJsonString(ModJsonOptions));
+            row.Enabled = enabled;
+            Log(Localizer.T("  启用状态: {0} -> {1}", row.Name, enabled ? "on" : "off"));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log(Localizer.T("[警告] 写入失败 {0}: {1}", row.Path, ex.Message));
+            return false;
+        }
+    }
+
+    /// <summary>增强选项落盘：只写**规范键**（C4 P1-8：auto_skip / auto_chapter / skip_intro / debug_live /
+    /// restore_on_exit + 两个高级键 auto_skip_delay / intro_delay，另加 schema_version=2）。
+    /// 旧键（auto_skip_selector / skip_legend / skip_logo / auto_skip_intro）不再写入 —— 游戏侧
+    /// ntl_config_load 会把规范键展开成旧键，向下兼容读；其它键（lang / base_mod / cache_max_mb…）由
+    /// MergeConfig 原样保住；坏 JSON 时整份覆写（不弹错、不崩）。</summary>
+    private static void SaveEnhanceConfig(string path, bool skipSelector, int autoChapter, bool skipIntro,
+        int introDelay, bool debugLive, bool restoreOnExit)
     {
         MergeConfig(path, obj =>
         {
             obj["_comment"] = "Neutraled 增强开关（全部可选，默认关闭；改完重启游戏生效）";
-            obj["auto_skip_selector"] = skipSelector;
+            obj["schema_version"] = 2;
+            obj["auto_skip"] = skipSelector;
             obj["auto_chapter"] = autoChapter;
             obj["auto_chapter_id"] = "";
             obj["auto_skip_delay"] = 90;
-            obj["skip_legend"] = skipLegend;
-            obj["skip_logo"] = skipLogo;
+            obj["skip_intro"] = skipIntro;
             obj["intro_delay"] = introDelay;
             obj["debug_live"] = debugLive;
+            // C4 P0-3：默认 false —— 以前 GUI 无条件在游戏退出后还原（A3 F09），想留着部署结果的玩家被强制还原。
+            obj["restore_on_exit"] = restoreOnExit;
         }, overwriteOnBroken: true);
+    }
+
+    /// <summary>读取 config.json 里的 restore_on_exit（缺失/坏文件一律按 false = 不自动还原）。</summary>
+    private static bool ReadRestoreOnExit()
+    {
+        try
+        {
+            var p = Path.Combine(Program.NeutraledRoot, "config.json");
+            if (!File.Exists(p)) return false;
+            using var doc = JsonDocument.Parse(File.ReadAllText(p),
+                new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+            return doc.RootElement.TryGetProperty("restore_on_exit", out var v) && v.ValueKind == JsonValueKind.True;
+        }
+        catch { return false; }
     }
 
     /// <summary>增强选项对话框（读写 Neutraled/config.json；全部可选，默认关闭）。</summary>
     private void ShowEnhanceDialog()
     {
         var cfgPath = Path.Combine(Program.NeutraledRoot, "config.json");
-        bool skipSelector = false, skipLegend = false, skipLogo = false, debugLive = false;
+        bool skipSelector = false, skipIntro = false, debugLive = false, restoreOnExit = false;
         int autoChapter = 0, introDelay = 45;
 
         try
@@ -419,10 +471,12 @@ public sealed class MainForm : Form
                 var r = doc.RootElement;
                 bool B(string n) => r.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.True;
                 int I(string n) => r.TryGetProperty(n, out var v) && v.TryGetInt32(out var i) ? i : 0;
-                skipSelector = B("auto_skip_selector");
-                skipLegend = B("skip_legend");
-                skipLogo = B("skip_logo");
+                // C4 P1-8：优先读规范键；旧键（auto_skip_selector / skip_legend / skip_logo / auto_skip_intro）只读兜底，
+                // 免得玩家升级前写下的开关看起来被悄悄重置。
+                skipSelector = B("auto_skip") || B("auto_skip_selector");
+                skipIntro = B("skip_intro") || B("auto_skip_intro") || B("skip_legend") || B("skip_logo");
                 debugLive = B("debug_live");
+                restoreOnExit = B("restore_on_exit");
                 autoChapter = I("auto_chapter");
                 introDelay = I("intro_delay");
                 if (introDelay <= 0) introDelay = 45;
@@ -433,17 +487,23 @@ public sealed class MainForm : Form
         using var dlg = new Form
         {
             Text = Localizer.T("Neutraled 增强选项（全部可选）"),
-            Width = 460, Height = 380, StartPosition = FormStartPosition.CenterParent,
+            Width = 460, Height = 424, StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false
         };
         var cbSelector = new CheckBox { Text = Localizer.T("跳过章节选择器（直接进入指定章节）"), Left = 16, Top = 16, Width = 410, Checked = skipSelector };
         var lblCh = new Label { Text = Localizer.T("自动进入章节:"), Left = 36, Top = 46, Width = 100 };
         var numCh = new NumericUpDown { Left = 140, Top = 43, Width = 70, Minimum = 0, Maximum = 20, Value = autoChapter };
-        var cbLegend = new CheckBox { Text = Localizer.T("跳过章节内“传说”画面"), Left = 16, Top = 82, Width = 410, Checked = skipLegend };
-        var cbLogo = new CheckBox { Text = Localizer.T("跳过“DELTARUNE”报幕"), Left = 16, Top = 110, Width = 410, Checked = skipLogo };
-        var lblDelay = new Label { Text = Localizer.T("跳过前等待帧数:"), Left = 36, Top = 142, Width = 120 };
-        var numDelay = new NumericUpDown { Left = 160, Top = 139, Width = 70, Minimum = 0, Maximum = 600, Value = introDelay };
-        var cbDebug = new CheckBox { Text = Localizer.T("live 脚本调试日志（debug_on）"), Left = 16, Top = 172, Width = 410, Checked = debugLive };
+        // C4 P1-8：原来「跳过传说」「跳过报幕」两个勾选在游戏侧是同一个开关（skip_intro），合成一个更直白；
+        // 两个旧键仍会被读取（OR），不会因为合并而丢失玩家原来的选择。
+        var cbIntro = new CheckBox { Text = Localizer.T("跳过章节内开场演出（“传说”+“DELTARUNE”报幕）"), Left = 16, Top = 82, Width = 410, Checked = skipIntro };
+        var lblDelay = new Label { Text = Localizer.T("跳过前等待帧数:"), Left = 36, Top = 112, Width = 120 };
+        var numDelay = new NumericUpDown { Left = 160, Top = 109, Width = 70, Minimum = 0, Maximum = 600, Value = introDelay };
+        var cbDebug = new CheckBox { Text = Localizer.T("live 脚本调试日志（debug_on）"), Left = 16, Top = 142, Width = 410, Checked = debugLive };
+        var cbRestore = new CheckBox
+        {
+            Text = Localizer.T("退出游戏后自动还原原版（只还原上次部署会话；默认关）"),
+            Left = 16, Top = 172, Width = 420, Checked = restoreOnExit
+        };
         var lblNote = new Label
         {
             Text = Localizer.T("提示：修改后需重启游戏生效；全部默认关闭，不影响原版体验。"),
@@ -451,15 +511,17 @@ public sealed class MainForm : Form
         };
         var btnSave = new Button { Text = Localizer.T("保存"), Left = 230, Top = 280, Width = 95, DialogResult = DialogResult.OK };
         var btnCancel = new Button { Text = Localizer.T("关闭"), Left = 335, Top = 280, Width = 95, DialogResult = DialogResult.Cancel };
-        dlg.Controls.AddRange(new Control[] { cbSelector, lblCh, numCh, cbLegend, cbLogo, lblDelay, numDelay, cbDebug, lblNote, btnSave, btnCancel });
+        dlg.Controls.AddRange(new Control[] { cbSelector, lblCh, numCh, cbIntro, lblDelay, numDelay, cbDebug, cbRestore, lblNote, btnSave, btnCancel });
         dlg.AcceptButton = btnSave; dlg.CancelButton = btnCancel;
+        // 行数变少：表单高度跟着收，避免底部留一大片空白
+        dlg.Height = 384;
 
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
         try
         {
-            SaveEnhanceConfig(cfgPath, cbSelector.Checked, (int)numCh.Value, cbLegend.Checked,
-                cbLogo.Checked, (int)numDelay.Value, cbDebug.Checked);
+            SaveEnhanceConfig(cfgPath, cbSelector.Checked, (int)numCh.Value, cbIntro.Checked,
+                (int)numDelay.Value, cbDebug.Checked, cbRestore.Checked);
             Log(Localizer.T("增强选项已保存: ") + cfgPath);
             _status.Text = Localizer.T("增强选项已保存（重启游戏生效）");
         }
@@ -492,36 +554,80 @@ public sealed class MainForm : Form
         _modDetail.Text = sb.ToString();
     }
 
-    /// <summary>显示所选章节的部署状态（与原版备份对比）。</summary>
-    private void UpdateDeployState()
+    /// <summary>显示所选章节的部署状态。判定交给 builder --deploy-state（**按内容哈希**，
+    /// 不再用文件长度：整包重写后只差几百字节也会被误判成「与原版一致」，见 A3 审计 F08）。
+    /// 连续切换章节时用序号丢弃过期结果，避免慢查询把新章节的标签覆盖掉。</summary>
+    private int _deployStateSeq;
+
+    /// <summary>下拉框当前选中的部署目标（下拉框是 DropDownList，理论上恒有值；兜底取 root）。</summary>
+    private string SelectedChapter() => _chapterCombo.SelectedItem?.ToString() ?? "root";
+
+    /// <summary>需要「具体某一章」的功能：下拉选 all 时**不能**静默当成第 4 章（A3 F01），改成提示。
+    /// 只有真正依赖单章上下文的功能才用它（导入/导出/冲突检查/差异层/在线下载）。</summary>
+    private bool RequireSingleChapter(string chapter, string feature)
     {
+        // C4 P1-12：判定统一在 UiLogic（headless plan 用同一套规则），不静默把 all 当第 4 章。
+        if (UiLogic.ChapterAllowed(chapter, UiLogic.ActionKind.Other).Length > 0) return true;
+        MessageBox.Show(Localizer.T("{0}需要选择具体章节（不能选 all）。", feature), "Neutraled");
+        return false;
+    }
+
+    private async void UpdateDeployState()
+    {
+        var chapter = SelectedChapter();
+        if (chapter == "all") { _deployStateSeq++; _deployState.Text = ""; return; }
+        var seq = ++_deployStateSeq;
         try
         {
-            var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
-            if (chapter == "all") { _deployState.Text = ""; return; }
-            var gameRoot = Program.GameRoot;
+            _deployState.ForeColor = Color.DimGray;
+            _deployState.Text = Localizer.T("查询部署状态…");
 
-            string win, bak;
-            if (chapter == "root")
+            var sb = new System.Text.StringBuilder();
+            var rc = await Program.RunBuilderAsync(
+                "--deploy-state --chapter " + chapter + " --json",
+                l => sb.AppendLine(l));
+            if (seq != _deployStateSeq) return;   // 已切到别的章节，丢弃过期结果
+
+            if (rc != 0) { _deployState.Text = chapter + ": " + Localizer.T("状态未知"); _deployState.ForeColor = Color.DarkOrange; return; }
+
+            // builder 在 JSON 之前还会打印「游戏根: …」；只取最后一行以 { 开头的 JSON。
+            string? json = null;
+            foreach (var line in sb.ToString().Split('\n'))
             {
-                win = Path.Combine(gameRoot, "data.win");
-                bak = Path.Combine(gameRoot, "backup", "data.win");
-                if (!File.Exists(bak)) bak = Path.Combine(gameRoot, "backup", "root", "data.win");
+                var t = line.Trim();
+                if (t.StartsWith("{") && t.EndsWith("}")) json = t;
             }
-            else
+            if (json == null) { _deployState.Text = chapter + ": " + Localizer.T("状态未知"); _deployState.ForeColor = Color.DarkOrange; return; }
+
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var slot = doc.RootElement.GetProperty("slots")[0];
+            var state = slot.GetProperty("state").GetString() ?? "unknown";
+            var reason = slot.TryGetProperty("reason", out var rEl) ? rEl.GetString() ?? "" : "";
+            var color = state switch
             {
-                win = Path.Combine(gameRoot, chapter + "_windows", "data.win");
-                bak = Path.Combine(gameRoot, "backup", chapter + "_windows", "data.win");
-                if (!File.Exists(bak)) bak = Path.Combine(gameRoot, "backup", chapter, "data.win");
-            }
-
-            if (!File.Exists(win)) { _deployState.Text = Localizer.T("{0}: （缺失）", chapter); _deployState.ForeColor = Color.Firebrick; return; }
-
-            var same = File.Exists(bak) && new FileInfo(win).Length == new FileInfo(bak).Length;
-            _deployState.Text = chapter + ": " + (same ? Localizer.T("未部署（原版）") : Localizer.T("已部署"));
-            _deployState.ForeColor = same ? Color.DimGray : Color.SeaGreen;
+                "baseline" => Color.DimGray,
+                "deployed" => Color.SeaGreen,
+                "missing" => Color.Firebrick,
+                _ => Color.DarkOrange,
+            };
+            var label = state switch
+            {
+                "baseline" => Localizer.T("未部署（原版）"),
+                "deployed" => Localizer.T("已部署"),
+                "missing" => Localizer.T("（缺失）"),
+                _ => Localizer.T("状态未知"),
+            };
+            _deployState.Text = chapter + ": " + label;
+            _deployState.ForeColor = color;
+            // 悬停看原因：未知/异常状态时最有用（例如「基线未登记」）
+            _deployState.Tag = reason;
+            var tip = new ToolTip();
+            tip.SetToolTip(_deployState, reason);
         }
-        catch { _deployState.Text = ""; }
+        catch
+        {
+            if (seq == _deployStateSeq) { _deployState.Text = chapter + ": " + Localizer.T("状态未知"); _deployState.ForeColor = Color.DarkOrange; }
+        }
     }
 
     /// <summary>跑 builder，并把拼好的完整命令行打进日志（便于核对参数确实带上了）。</summary>
@@ -612,9 +718,10 @@ public sealed class MainForm : Form
         if (!await ConfirmUpdatesAsync(Localizer.T("部署全部章节"))) return;
         SetBusy(true, Localizer.T("部署全部章节中..."));
         ApplyCheckedState();
-        var rc = await RunBuilderCmdAsync(DeployOptions.AppendFastDeploy("--deploy --chapter all"));
+        var rc = await RunBuilderCmdAsync(DeployOptions.AppendFastDeploy(UiLogic.BuildArgs(UiLogic.ActionKind.Deploy, "all")));
         SetBusy(false, rc == 0 ? Localizer.T("部署完成") : Localizer.T("部署失败 (exit={0})", rc));
         UpdateDeployState();
+        if (rc == 0) RefreshAlerts();
     }
 
     private void ExportLog()
@@ -653,21 +760,22 @@ public sealed class MainForm : Form
 
     private async Task RunImportAsync(string input, string modName, string author)
     {
-        var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
-        if (chapter == "all") chapter = "chapter4";
+        var chapter = SelectedChapter();
+        if (!RequireSingleChapter(chapter, Localizer.T("该功能"))) return;
         SetBusy(true, Localizer.T("转换中..."));
         Log($"===== {input} -> {modName} =====");
         // 用 --import-mod（自动识别 6 种包形态：Modding.xml / Deltamod / mod_config.json /
         // 裸 xdelta / 裸 data.win / Kristal / 原生 mod）—— 以前写死 --import-delta，只能吃单项 xdelta。
         var rc = await Program.RunBuilderAsync(
-            $"--import-mod \"{input}\" --chapter {chapter} --name \"{modName}\" --author \"{author}\"", Log);
+            UiLogic.BuildArgs(UiLogic.ActionKind.ImportMod, chapter, input, modName, author), Log);
         SetBusy(false, rc == 0 ? Localizer.T("转换完成") : Localizer.T("转换失败（详见日志）"));
-        if (rc == 0) RefreshMods();
+        if (rc == 0) await RefreshModsAsync();
     }
 
     private async Task DeployAsync(bool launch)
     {
-        var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
+        CancelAutoRestore();   // 重新部署/启动时取消上一次「退出后自动还原」的等待，避免还原刚部署好的产物
+        var chapter = SelectedChapter();
         if (!await ConfirmUpdatesAsync(launch ? Localizer.T("启动") : Localizer.T("部署"))) return;
         SetBusy(true, launch ? Localizer.T("准备启动（查缓存）...") : Localizer.T("部署中..."));
         Log($"===== {chapter} =====");
@@ -678,22 +786,24 @@ public sealed class MainForm : Form
         if (launch)
         {
             // 走缓存路径：命中则硬链接复用（秒开），未命中则部署 + 存缓存，最后由 Steam 拉起
-            rc = await RunBuilderCmdAsync(DeployOptions.AppendFastDeploy($"--launch {chapter}"));
+            rc = await RunBuilderCmdAsync(DeployOptions.AppendFastDeploy(UiLogic.BuildArgs(UiLogic.ActionKind.Launch, chapter)));
             // 起后台守候：游戏里进 Kristal 章节 → 游戏写请求并退出 → 守候进程拉起 Kristal
             if (rc == 0) Program.StartExternalWatcher();
             sw.Stop();
             var el = $"{sw.Elapsed.TotalSeconds:F1}s";
             SetBusy(false, rc == 0 ? $"{Localizer.T("已启动游戏（通过 Steam）")} ({el})" : Localizer.T("启动失败 (exit={0})", rc));
             if (rc == 0) WatchAndRestore(chapter);
+            if (rc == 0) RefreshAlerts();
             // 记录当前生效的配置签名，用于"配置已变更"提示
             _launchedSignature = await QuerySignatureAsync(chapter);
         }
         else
         {
-            rc = await RunBuilderCmdAsync(DeployOptions.AppendFastDeploy($"--deploy --chapter {chapter}"));
+            rc = await RunBuilderCmdAsync(DeployOptions.AppendFastDeploy(UiLogic.BuildArgs(UiLogic.ActionKind.Deploy, chapter)));
             sw.Stop();
             var elapsed = $"{sw.Elapsed.TotalSeconds:F1}s";
             SetBusy(false, rc == 0 ? $"{Localizer.T("部署完成")} ({elapsed})" : Localizer.T("部署失败 (exit={0})", rc));
+            if (rc == 0) RefreshAlerts();
         }
     }
 
@@ -741,7 +851,7 @@ public sealed class MainForm : Form
         };
         btnSetMax.Click += async (_, _) =>
         {
-            var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
+            var chapter = SelectedChapter();
             await Program.RunBuilderAsync($"--launch {chapter} --cache-max {txtMax.Text}", Log);
             await ReloadAsync();
         };
@@ -774,39 +884,119 @@ public sealed class MainForm : Form
     private async void NotifyConfigChanged()
     {
         if (string.IsNullOrEmpty(_launchedSignature)) return;
-        var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
+        var chapter = SelectedChapter();
         var now = await QuerySignatureAsync(chapter);
         if (!string.IsNullOrEmpty(now) && now != _launchedSignature)
             _status.Text = Localizer.T("配置已变更，重启游戏后生效");
     }
 
-    /// <summary>游戏退出后自动恢复原版（单章部署；all 不恢复）。</summary>
+    /// <summary>取消上一次「退出后自动还原」的等待（重新部署/手动还原时调用）。</summary>
+    private void CancelAutoRestore()
+    {
+        try { _autoRestoreCts?.Cancel(); } catch { }
+        _autoRestoreCts = null;
+    }
+
+    /// <summary>在 UI 线程上写日志（后台任务里用）。</summary>
+    private void LogLine(string msg)
+    {
+        if (InvokeRequired)
+        {
+            try { BeginInvoke(() => Log(msg)); } catch { }
+        }
+        else Log(msg);
+    }
+
+    /// <summary>退出游戏后按**部署会话**还原（C4 P0-3）。
+    /// 旧实现（A3 F09）：无开关、无条件等候、只还原下拉框那一个章节、all 直接不还原。
+    /// 现在：只有 config.json 的 restore_on_exit=true 才等；游戏退出后跑 --restore-session，
+    /// 会话由 --launch 在启动前写下（root + 本次章节，或 all 的全部章节）；可取消。</summary>
     private void WatchAndRestore(string chapter)
     {
-        if (chapter == "all") return;
+        if (!ReadRestoreOnExit())
+        {
+            _status.Text = Localizer.T("已启动游戏（退出后不自动还原；可在增强选项开启）");
+            return;
+        }
+        CancelAutoRestore();
+        var cts = new CancellationTokenSource();
+        _autoRestoreCts = cts;
+        var token = cts.Token;
         Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(20000);
-                for (int i = 0; i < 3600; i++)   // 最多等 3 小时
+                await Task.Delay(20000, token);
+                for (int i = 0; i < 3600 && !token.IsCancellationRequested; i++)   // 最多等 3 小时
                 {
                     if (Process.GetProcessesByName("DELTARUNE").Length == 0) break;
-                    await Task.Delay(3000);
+                    await Task.Delay(3000, token);
                 }
-                await Task.Delay(2000);
-                if (InvokeRequired) BeginInvoke(() => Log(Localizer.T("游戏退出，正在恢复原版...")));
-                else Log(Localizer.T("游戏退出，正在恢复原版..."));
-                await Program.RunBuilderAsync($"--restore-chapter {chapter}", Log);
-                if (InvokeRequired) BeginInvoke(() => _status.Text = Localizer.T("已自动恢复原版"));
+                await Task.Delay(2000, token);
+                LogLine(Localizer.T("游戏退出，正在按部署会话还原原版..."));
+                var rc = await Program.RunBuilderAsync("--restore-session", Log);
+                var msg = rc == 0 ? Localizer.T("已自动恢复原版") : Localizer.T("自动还原失败（详见日志）");
+                LogLine(msg);
+                if (InvokeRequired) BeginInvoke(() => _status.Text = msg);
+                else _status.Text = msg;
             }
-            catch (Exception ex) { Log("[auto-restore] " + ex.Message); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { LogLine("[auto-restore] " + ex.Message); }
+            finally { if (ReferenceEquals(_autoRestoreCts, cts)) _autoRestoreCts = null; }
         });
+    }
+
+    /// <summary>启动时检测上次 --launch 留下的部署会话（说明游戏文件仍是产物、没还原）。</summary>
+    private void CheckDeploySessionBanner()
+    {
+        try
+        {
+            var p = Path.Combine(Program.NeutraledRoot, "deploy-session.json");
+            if (!File.Exists(p)) return;
+            var summary = ReadSessionSummary(p);
+            Log(Localizer.T("[提示] 检测到上次部署会话：{0}（游戏文件仍是 mod 产物；点【恢复原版】或运行 --restore-session 还原）", summary));
+            _status.Text = Localizer.T("上次部署未还原：{0}", summary);
+        }
+        catch (Exception ex) { Log("[session] " + ex.Message); }
+    }
+
+    /// <summary>读部署会话的 Chapters（builder 用 PascalCase 序列化）拼成摘要文本。</summary>
+    private static string ReadSessionSummary(string path)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path),
+                new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+            if (doc.RootElement.TryGetProperty("Chapters", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                var list = new System.Collections.Generic.List<string>();
+                foreach (var it in arr.EnumerateArray())
+                    if (it.ValueKind == JsonValueKind.String) list.Add(it.GetString() ?? "");
+                list.RemoveAll(s => s.Length == 0);
+                if (list.Count > 0) return string.Join("/", list);
+            }
+        }
+        catch { }
+        return Localizer.T("未知");
     }
 
     private async Task RestoreAsync()
     {
-        var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
+        CancelAutoRestore();
+        var sessionPath = Path.Combine(Program.NeutraledRoot, "deploy-session.json");
+        if (File.Exists(sessionPath))
+        {
+            // 有部署会话时优先按会话还原（可能包含 root + 本次章节；旧实现只能勉强还原一章还会漏 root）
+            var summary = ReadSessionSummary(sessionPath);
+            if (MessageBox.Show(Localizer.T("检测到上次部署会话（{0}），要按会话还原这些目标吗？", summary),
+                    "Neutraled", MessageBoxButtons.OKCancel) != DialogResult.OK) return;
+            SetBusy(true, Localizer.T("恢复中..."));
+            var rcSession = await Program.RunBuilderAsync("--restore-session", Log);
+            SetBusy(false, rcSession == 0 ? Localizer.T("已恢复原版") : Localizer.T("恢复失败"));
+            UpdateDeployState();
+            return;
+        }
+        var chapter = SelectedChapter();
         if (chapter == "all")
         {
             MessageBox.Show(Localizer.T("all 不支持一键恢复，请分别选择单章恢复。"), "Neutraled");
@@ -816,6 +1006,7 @@ public sealed class MainForm : Form
         SetBusy(true, Localizer.T("恢复中..."));
         var rc = await Program.RunBuilderAsync($"--restore-chapter {chapter}", Log);
         SetBusy(false, rc == 0 ? Localizer.T("已恢复原版") : Localizer.T("恢复失败"));
+        UpdateDeployState();
     }
 
     private async Task ImportAsync()
@@ -895,6 +1086,14 @@ public sealed class MainForm : Form
             .Click += async (_, _) => await ConflictsCheckAsync(dlg);
         Add(Localizer.T("源码级差异层"), Localizer.T("整包 mod → 可叠加 patch 层（反编译真实改动，绕过索引问题）"))
             .Click += async (_, _) => await LayerFromBaseAsync(dlg);
+        // C4 P1-13：配置档原来只有 CLI / Web 有入口，GUI 里完全找不到（A3 审计「文档说有 GUI 入口」不符）。
+        // 这里给一个**只读**入口：数据与 CLI 同源（--profile-list --json），避免 GUI 自写一套扫描规则。
+        Add(Localizer.T("配置档（只读）"), Localizer.T("看有哪些配置档、各开了几个 mod。只读：套用请用 CLI --profile-use 或 Web 界面"))
+            .Click += async (_, _) =>
+            {
+                var (rows, err) = await ProfilesDialog.LoadAsync();
+                ProfilesDialog.Show(dlg, rows, err);
+            };
         // ---- 守候进程（Kristal 等"外部章节"的接管者）----
         //   游戏内没有启动进程的内置函数：选中外部章节时游戏只能写一个 launch-request.json，
         //   等外部进程去把它拉起来（见 builder/WatchAutostart.cs）。守候没在跑 → 只能给提示。
@@ -921,7 +1120,7 @@ public sealed class MainForm : Form
             Text = Localizer.T("开启后部署会附加 --fast-deploy：跳过「输入函数重定向」，部署更快。") + Environment.NewLine +
                    Localizer.T("代价：章节内「控制台输入屏蔽」失效 —— 控制台仍能打开，但游戏自身的 keyboard_check_direct 仍会读到按键。") + Environment.NewLine +
                    Localizer.T("chapter5 实测约省 20 秒（命中输入扫描缓存后约省 1 秒）。默认关闭，随时可改回。") + Environment.NewLine +
-                   Localizer.T("注意：部署缓存签名不含这个开关，切换后会提示清空缓存，否则可能直接复用上一次的产物。"),
+                   Localizer.T("缓存签名已包含这个开关（Cache.cs 的 fast 位）：切换后下一次部署会自动重做，不需要清缓存。"),
             Left = 30, Top = y + 30, Width = 586, AutoSize = false, ForeColor = Color.DimGray
         };
         cbFast.CheckedChanged += async (_, _) =>
@@ -931,18 +1130,9 @@ public sealed class MainForm : Form
             Log(cbFast.Checked
                 ? Localizer.T("部署加速档：已开启（之后部署会附加 --fast-deploy，控制台输入屏蔽失效）")
                 : Localizer.T("部署加速档：已关闭（之后部署会做完整的输入函数重定向）"));
-            // 实测：部署缓存的签名（builder/Cache.cs 的 Signature）只算 api 指纹/游戏版本/章节/mod 列表，
-            // 不含 --fast-deploy。不清缓存的话下一次「部署并启动」可能直接复用上一次的产物，
-            // 开关看起来"没生效"（关掉开关时更糟：输入屏蔽仍然是坏的）。
-            if (MessageBox.Show(dlg,
-                    Localizer.T("部署缓存的签名不包含这个开关，旧缓存会在下次部署时被直接复用。\n\n现在清空部署缓存，确保新设置下次真正生效？"),
-                    Localizer.T("部署加速档"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
-            {
-                await Program.RunBuilderAsync("--cache-clear", Log);
-                Log(Localizer.T("部署缓存已清空，下次部署会按当前设置重建。"));
-            }
-            else
-                Log(Localizer.T("[警告] 未清空缓存：若下次部署命中了旧缓存，这个开关可能看起来不生效（缓存管理里可随时清空）。"));
+            // C4 P1-10：缓存签名已包含 fast 位（builder/Cache.cs 的 SignatureRaw），切换挡位后下一次部署
+            // 自然 miss 并重建 —— 旧版本「自动清空缓存 / 弹窗让你手清」的补丁分支已删除（它会误伤其它章节缓存）。
+            Log(Localizer.T("部署加速档：已保存；下一次部署会按新挡位重建（缓存签名包含该开关，无需手动清缓存）"));
         };
         dlg.Controls.AddRange(new Control[] { cbFast, lblFastCost });
 
@@ -987,7 +1177,7 @@ public sealed class MainForm : Form
         SetBusy(true, Localizer.T("合并转换中..."));
         var rc = await Program.RunBuilderAsync(args.ToString(), Log);
         SetBusy(false, rc == 0 ? Localizer.T("完成") : Localizer.T("失败（详见日志）"));
-        if (rc == 0) RefreshMods();
+        if (rc == 0) await RefreshModsAsync();
     }
 
     private async Task MakeBSideAsync(Form owner)
@@ -1086,32 +1276,48 @@ public sealed class MainForm : Form
     {
         using var ofd = new OpenFileDialog { Filter = Localizer.T("data.win|*.win|所有文件|*.*"), Title = Localizer.T("选择要导出资源的 data.win") };
         if (ofd.ShowDialog(owner) != DialogResult.OK) return;
-        var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
-        if (chapter == "all") chapter = "chapter4";
+        var chapter = SelectedChapter();
+        if (!RequireSingleChapter(chapter, Localizer.T("该功能"))) return;
         SetBusy(true, Localizer.T("导出资源包中（大文件可能几分钟）..."));
-        var rc = await Program.RunBuilderAsync("--export-packs \"" + ofd.FileName + "\" --chapter " + chapter, Log);
+        var rc = await Program.RunBuilderAsync(UiLogic.BuildArgs(UiLogic.ActionKind.Packs, chapter, outPath: ofd.FileName), Log);
         SetBusy(false, rc == 0 ? Localizer.T("导出完成") : Localizer.T("失败（详见日志）"));
     }
 
     private async Task ConflictsCheckAsync(Form owner)
     {
-        var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
-        if (chapter == "all") chapter = "chapter4";
-        var rc = await Program.RunBuilderAsync("--conflicts --chapter " + chapter, Log);
-        MessageBox.Show(this, rc == 0 ? Localizer.T("未发现冲突") : Localizer.T("发现冲突：详见日志与 conflicts.json"), "Neutraled");
+        var chapter = SelectedChapter();
+        if (!RequireSingleChapter(chapter, Localizer.T("该功能"))) return;
+        var rc = await Program.RunBuilderAsync(UiLogic.BuildArgs(UiLogic.ActionKind.Conflicts, chapter), Log);
+        var conflictsPath = Path.Combine(Program.NeutraledRoot, "conflicts.json");
+        var ackPath = Path.Combine(Program.NeutraledRoot, "gui-conflicts-ack.txt");
+        if (rc == 0)
+        {
+            UiLogic.AckConflicts(conflictsPath, ackPath);
+            MessageBox.Show(this, Localizer.T("未发现冲突"), "Neutraled");
+        }
+        else if (UiLogic.ConflictsIsNew(conflictsPath, ackPath))
+        {
+            // 内容哈希变了才算新冲突；ack 之后同样的报告不再重复弹窗
+            UiLogic.AckConflicts(conflictsPath, ackPath);
+            MessageBox.Show(this, Localizer.T("发现冲突：详见日志与 conflicts.json"), "Neutraled");
+        }
+        else
+        {
+            Log(Localizer.T("冲突未变（上次已确认，本次不重复提示）"));
+        }
     }
 
     private async Task LayerFromBaseAsync(Form owner)
     {
         using var ofd = new OpenFileDialog { Filter = Localizer.T("data.win|*.win|所有文件|*.*"), Title = Localizer.T("选择整包 mod 的 ref/data.win") };
         if (ofd.ShowDialog(owner) != DialogResult.OK) return;
-        var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
-        if (chapter == "all") chapter = "chapter4";
+        var chapter = SelectedChapter();
+        if (!RequireSingleChapter(chapter, Localizer.T("该功能"))) return;
         var name = Path.GetFileName(Path.GetDirectoryName(ofd.FileName) ?? "layer");
         SetBusy(true, Localizer.T("反编译提取差异层中..."));
-        var rc = await Program.RunBuilderAsync("--layer-from-base \"" + ofd.FileName + "\" --chapter " + chapter + " --name \"" + name + "\" --author unknown", Log);
+        var rc = await Program.RunBuilderAsync(UiLogic.BuildArgs(UiLogic.ActionKind.LayerFromBase, chapter, name: name, author: "unknown", winPath: ofd.FileName), Log);
         SetBusy(false, rc == 0 ? Localizer.T("完成") : Localizer.T("失败（详见日志）"));
-        if (rc == 0) RefreshMods();
+        if (rc == 0) await RefreshModsAsync();
     }
 
     private async Task OnlineAsync()
@@ -1149,12 +1355,12 @@ public sealed class MainForm : Form
         btnFetch.Click += async (_, _) =>
         {
             if (list.SelectedIndex < 0 || list.SelectedIndex >= results.Count) return;
-            var chapter = _chapterCombo.SelectedItem?.ToString() ?? "chapter4";
-            if (chapter == "all") chapter = "chapter4";
+            var chapter = SelectedChapter();
+            if (!RequireSingleChapter(chapter, Localizer.T("该功能"))) return;
             btnFetch.Enabled = false;
-            var rc = await Program.RunBuilderAsync($"--fetch {results[list.SelectedIndex]} --chapter {chapter}", Log);
+            var rc = await Program.RunBuilderAsync(UiLogic.BuildArgs(UiLogic.ActionKind.Fetch, chapter, results[list.SelectedIndex].ToString()), Log);
             btnFetch.Text = rc == 0 ? Localizer.T("完成 ✓") : Localizer.T("失败");
-            if (rc == 0) RefreshMods();
+            if (rc == 0) await RefreshModsAsync();
         };
         q.ShowDialog(this);
     }
@@ -1260,7 +1466,7 @@ public sealed class MainForm : Form
             if (exe != null) { RunBuilder(exe, "--install"); Log(Localizer.T("已建立原版存档备份（BASELINE）")); }
         }
         catch (Exception ex) { Log(Localizer.T("首启初始化失败: {0}", ex.Message)); }
-        RefreshMods();
+        _ = RefreshModsAsync();   // 首启向导是同步方法：列表刷新放后台，不阻塞对话框关闭
     }
 
     private bool CheckCrashLastSession(out string info)
@@ -1391,7 +1597,7 @@ public sealed class MainForm : Form
     // ==================== 新功能整合 ====================
 
     /// <summary>mod 联动关系对话框（谁导出了什么、谁依赖谁）</summary>
-    private void ShowInteropDialog()
+    private async Task ShowInteropDialogAsync()
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine(Localizer.T("========== mod 联动关系 =========="));
@@ -1400,7 +1606,8 @@ public sealed class MainForm : Form
         try
         {
             var modsRoot = Path.Combine(Program.NeutraledRoot, "mods");
-            var installed = ModInstallBridge.List(Program.NeutraledRoot);
+            var (installed, loadError) = await ModInstallBridge.LoadAsync(Program.NeutraledRoot);
+            if (loadError.Length > 0) sb.AppendLine(Localizer.T("读取失败: {0}", loadError));
             sb.AppendLine(Localizer.T("已安装 mod: {0} 个", installed.Count));
             sb.AppendLine();
 

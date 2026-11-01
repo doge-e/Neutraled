@@ -19,6 +19,7 @@ namespace Neutraled.Builder;
 ///   5. 部署目标一致性（root 与 chapterN 的时间戳差异）
 ///   6. mod 加载验证（脚本能否被发现）
 ///   7. 空 catch 块（异常被静默吞掉）
+///   8. 原版备份（backup）卫生（基线账本 / 规范+镜像是否被产物污染）
 /// </summary>
 public static class Doctor
 {
@@ -60,43 +61,48 @@ public static class Doctor
 
         // ---------- 1. 宿主函数完整性 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[1/8] 宿主函数完整性..."));
+        Console.WriteLine(L("[1/9] 宿主函数完整性..."));
         CheckHostFunctions(api, rep);
 
         // ---------- 2. 脚本编译完整性 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[2/8] 脚本完整性..."));
+        Console.WriteLine(L("[2/9] 脚本完整性..."));
         CheckScripts(api, rep);
 
         // ---------- 3. 不可达代码 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[3/8] 不可达代码..."));
+        Console.WriteLine(L("[3/9] 不可达代码..."));
         CheckUnreachable(api, rep);
 
         // ---------- 4. 未定义变量 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[4/8] 变量定义..."));
+        Console.WriteLine(L("[4/9] 变量定义..."));
         CheckVariables(api, rep);
 
         // ---------- 5. 部署目标一致性 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[5/8] 部署目标一致性..."));
+        Console.WriteLine(L("[5/9] 部署目标一致性..."));
         CheckDeployTargets(gameRoot, rep);
 
         // ---------- 6. config.json 完整性 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[6/8] config.json 完整性..."));
+        Console.WriteLine(L("[6/9] config.json 完整性..."));
         CheckConfigJson(gameRoot, rep);
 
         // ---------- 7. mod 加载验证 ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[7/8] mod 加载..."));
+        Console.WriteLine(L("[7/9] mod 加载..."));
         CheckMods(ntl, rep);
 
         // ---------- 7. 空 catch ----------
         rep.ChecksRun++;
-        Console.WriteLine(L("[8/8] 异常处理..."));
+        Console.WriteLine(L("[8/9] 异常处理..."));
         CheckEmptyCatch(api, rep);
+
+        // ---------- 9. 原版备份（backup）卫生 ----------
+        rep.ChecksRun++;
+        Console.WriteLine(L("[9/9] 原版备份卫生..."));
+        CheckBackupBaseline(gameRoot, rep);
 
         // ---------- 报告 ----------
         Console.WriteLine();
@@ -407,6 +413,75 @@ public static class Doctor
     }
 
     // ============ 7. 空 catch ============
+    // ============ 9. 原版备份（backup）卫生 ============
+    // 不变量：两处备份（<游戏根>\backup、Neutraled\backup）都必须是「已登记/可验证的原版」；
+    // 它们被产物覆盖过一次（2026-10-31 backup\chapter2_windows），而那会让还原与下一轮部署把 mod 固化成原版。
+    private static void CheckBackupBaseline(string gameRoot, Report rep)
+    {
+        try
+        {
+            foreach (var chapter in Baseline.SlotsOf(gameRoot))
+            {
+                var bv = Baseline.Evaluate(gameRoot, chapter);
+                switch (bv.State)
+                {
+                    case Baseline.SlotState.Ok:
+                        break;   // 唯一健康状态
+                    case Baseline.SlotState.EstablishAgreement:
+                    case Baseline.SlotState.EstablishPrimary:
+                    case Baseline.SlotState.EstablishMirror:
+                        rep.Add("info", L("原版备份"), L("{0}: 尚未登记基线（{1}）", chapter, bv.Detail),
+                                L("下次 --deploy 会自动登记；也可先跑 --verify-backup"));
+                        break;
+                    case Baseline.SlotState.AutoHeal:
+                        rep.Add("warn", L("原版备份"), L("{0}: 与基线不一致，但可无损修复 —— {1}", chapter, bv.Detail),
+                                L("--repair-backup --yes"));
+                        break;
+                    case Baseline.SlotState.Unreadable:
+                        rep.Add("error", L("原版备份"), L("{0}: {1}", chapter, bv.Detail),
+                                L("检查或删除 Neutraled/baseline.json 后重跑 --deploy 重建"));
+                        break;
+                    default:
+                        rep.Add("error", L("原版备份"), L("{0}: {1}", chapter, bv.Detail),
+                                L("--verify-backup 查看全部槽位；--repair-backup --from mirror|live|file:<原版 data.win> --yes"));
+                        break;
+                }
+            }
+
+            // 备份目录卫生：旁支文件 = 备份曾被当成可写文档的痕迹（A2 审计：2026-10-31 chapter2 污染入口）
+            var stray = Baseline.StrayBackupFiles(gameRoot);
+            if (stray.Count > 0)
+                rep.Add("warn", L("原版备份"),
+                        L("备份目录里有 {0} 个非原版旁支文件（编辑器/旧部署残留）", stray.Count),
+                        L("移走或删掉这些文件；若某槽位内容已被改，用 --repair-backup --from file:<原版 data.win> --yes 修。示例: {0}", string.Join(" | ", stray.Take(3))));
+
+            // 只读保护：挡住编辑器/脚本把原版备份当文档原地重写
+            int unprotected = 0;
+            foreach (var chapter in Baseline.SlotsOf(gameRoot))
+            {
+                var bv2 = Baseline.Evaluate(gameRoot, chapter);
+                if (bv2.State != Baseline.SlotState.Ok) continue;
+                foreach (var p in new[] { bv2.PrimaryPath, bv2.MirrorPath })
+                    try { if (File.Exists(p) && (File.GetAttributes(p) & FileAttributes.ReadOnly) == 0) unprotected++; }
+                    catch { }
+            }
+            if (unprotected > 0)
+                rep.Add("info", L("原版备份"),
+                        L("{0} 个备份文件尚未设只读保护（下次 --deploy 或 --repair-backup 会自动加）", unprotected),
+                        L("只读能让「把 backup 当文档保存」直接失败（2026-10-31 污染形态）"));
+
+            // 兼容旧安装：没有 baseline.json 但两处备份都在 → 只提示，不报错
+            if (!File.Exists(Baseline.LedgerPath(gameRoot)))
+                rep.Add("info", L("原版备份"),
+                        L("还没有基线账本（Neutraled/baseline.json）；下次 --deploy 会按「两处备份一致」自动登记"),
+                        L("想立刻建立：--deploy --chapter root（或 --repair-backup --yes）"));
+        }
+        catch (Exception ex)
+        {
+            rep.Add("warn", L("原版备份"), L("检查抛异常: {0}", ex.Message), L("报告 bug"));
+        }
+    }
+
     private static void CheckEmptyCatch(string apiDir, Report rep)
     {
         if (!Directory.Exists(apiDir)) return;   // 没有 api/ 由 Run 统一报一次错，这里静默跳过

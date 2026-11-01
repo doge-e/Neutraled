@@ -1,8 +1,11 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Neutraled.Gui;
 
-/// <summary>GUI 双语（中/英）。语言选择保存在 Neutraled/gui_lang.txt。</summary>
+/// <summary>GUI 双语（中/英）。语言唯一真源 = Neutraled/config.json 的 lang（C4 P1-5；
+/// 旧 gui_lang.txt 由 <see cref="MigrateLegacy"/> 一次性并入后归档，不再读写）。</summary>
 public static class Localizer
 {
     public static string Current { get; set; } = "zh";
@@ -24,6 +27,7 @@ public static class Localizer
         ["自动进入章节:"] = "Auto chapter:",
         ["跳过章节内“传说”画面"] = "Skip in-chapter 'Legend' scene",
         ["跳过“DELTARUNE”报幕"] = "Skip 'DELTARUNE' logo intro",
+        ["跳过章节内开场演出（“传说”+“DELTARUNE”报幕）"] = "Skip in-chapter intro (Legend scene + DELTARUNE logo)",
         ["跳过前等待帧数:"] = "Delay frames before skip:",
         ["live 脚本调试日志（debug_on）"] = "Live-script debug log (debug_on)",
         ["提示：修改后需重启游戏生效；全部默认关闭，不影响原版体验。"] =
@@ -34,12 +38,15 @@ public static class Localizer
         ["导出日志"] = "Export Log",
         ["未部署（原版）"] = "not deployed (vanilla)",
         ["已部署"] = "deployed",
+        ["状态未知"] = "unknown state",
+        ["查询部署状态…"] = "Checking deploy state...",
         ["部署全部章节中..."] = "Deploying all chapters...",
         ["日志已导出: {0}"] = "Log exported: {0}",
         ["拖入 mod 文件"] = "Drop mod files",
         ["就绪"] = "Ready",
         ["共 {0} 个 mod"] = "{0} mod(s)",
         ["启用"] = "on",
+        ["启用状态已保存；点【部署】或【部署并启动】后生效"] = "Enable state saved; click Deploy (or Deploy & Launch) to apply",
         ["禁用"] = "off",
         ["状态"] = "Status",
         ["Mod"] = "Mod",
@@ -81,12 +88,39 @@ public static class Localizer
         ["搜索"] = "Search",
         ["下载并转换"] = "Download & Convert",
         ["关闭"] = "Close",
+        // C4 P1-13：配置档只读弹窗
+        ["配置档（只读）"] = "Profiles (read-only)",
+        ["看有哪些配置档、各开了几个 mod。只读：套用请用 CLI --profile-use 或 Web 界面"] = "See which profiles exist and how many mods each enables. Read-only: apply via CLI --profile-use or the Web UI",
+        ["只读：这里只显示配置档内容。套用请用 CLI --profile-use 或 Web 界面（会修改各 mod 的启用态）。"] = "Read-only: this only shows profile contents. To apply, use CLI --profile-use or the Web UI (it rewrites each mod's enabled flag).",
+        ["活动"] = "Active",
+        ["ID"] = "ID",
+        ["名称"] = "Name",
+        ["启用 mod 数"] = "Mods enabled",
+        ["更新时间"] = "Updated",
+        ["mods 根"] = "Mods root",
+        ["说明: "] = "Description: ",
+        ["启用: "] = "Enabled: ",
+        ["共 {0} 个配置档"] = "{0} profile(s)",
+        ["加载配置档失败：{0}"] = "Failed to load profiles: {0}",
+        ["还没有配置档（用 --profile-new <id> 新建）。"] = "No profiles yet (create one with --profile-new <id>).",
         ["下载中..."] = "Downloading...",
         ["完成 ✓"] = "Done ✓",
         ["失败"] = "Failed",
         ["启动游戏失败: {0}"] = "Failed to launch game: {0}",
         ["游戏退出，正在恢复原版..."] = "Game exited, restoring vanilla...",
+        ["游戏退出，正在按部署会话还原原版..."] = "Game exited, restoring vanilla from the deploy session...",
         ["已自动恢复原版"] = "Auto-restored to vanilla",
+        ["自动还原失败（详见日志）"] = "Auto-restore failed (see the log)",
+        ["退出游戏后自动还原原版（只还原上次部署会话；默认关）"] =
+            "Restore vanilla after the game exits (only the last deploy session; off by default)",
+        ["已启动游戏（退出后不自动还原；可在增强选项开启）"] =
+            "Game launched (no auto-restore on exit; enable it in Enhance options)",
+        ["[提示] 检测到上次部署会话：{0}（游戏文件仍是 mod 产物；点【恢复原版】或运行 --restore-session 还原）"] =
+            "[Info] Found a deploy session from last time: {0} (game files are still modded; click Restore or run --restore-session)",
+        ["上次部署未还原：{0}"] = "Last deploy not restored: {0}",
+        ["检测到上次部署会话（{0}），要按会话还原这些目标吗？"] =
+            "Found a deploy session ({0}). Restore these targets now?",
+        ["未知"] = "unknown",
         ["工具箱"] = "Toolbox",
         ["部署加速档（跳过输入重定向）"] = "Fast deploy (skip input redirection)",
         ["开启后部署会附加 --fast-deploy：跳过「输入函数重定向」，部署更快。"] =
@@ -100,7 +134,11 @@ public static class Localizer
         ["部署加速档：已关闭（之后部署会做完整的输入函数重定向）"] =
             "Fast deploy: OFF (later deploys run the full input-redirection pass)",
         ["部署加速档: {0}（工具箱里可改）"] = "Fast deploy: {0} (change it in Toolbox)",
-        ["注意：部署缓存签名不含这个开关，切换后会提示清空缓存，否则可能直接复用上一次的产物。"] =
+        ["缓存签名已包含这个开关（Cache.cs 的 fast 位）：切换后下一次部署会自动重做，不需要清缓存。"] =
+            "The cache signature already includes this switch (the 'fast' bit in Cache.cs): switching re-deploys automatically, no manual cache clear needed.",
+        ["部署加速档：已保存；下一次部署会按新挡位重建（缓存签名包含该开关，无需手动清缓存）"] =
+            "Fast deploy: saved; the next deploy rebuilds with the new setting (the cache signature includes this switch, no manual cache clear needed),",
+        ["部署缓存签名不含这个开关，切换后会提示清空缓存，否则可能直接复用上一次的产物。"] =
             "Note: the deploy-cache signature does not include this switch, so switching prompts to clear the cache; otherwise the previous artifact may be reused as-is.",
         ["部署缓存的签名不包含这个开关，旧缓存会在下次部署时被直接复用。\n\n现在清空部署缓存，确保新设置下次真正生效？"] =
             "The deploy-cache signature does not include this switch, so an old cached artifact would be reused on the next deploy.\n\nClear the deploy cache now so the new setting really takes effect?",
@@ -268,8 +306,29 @@ public static class Localizer
         ["{0}: （缺失）"] = "{0}: (missing)",
         ["日志 (*.txt)|*.txt"] = "Log (*.txt)|*.txt",
 
+        // ==================== C4 P1-12：headless / 告警增量 / 冲突 ack ====================
+        ["该功能"] = "This feature",
+        ["还原"] = "restore",
+        ["在线下载"] = "online download",
+        ["{0}需要选择具体章节（不能选 all）。"] = "{0} needs a specific chapter (not \"all\").",
+        ["原版基线校验未通过：先运行 --verify-backup 查看，或运行 --repair-backup --yes 修复"] =
+            "Vanilla baseline check failed: run --verify-backup to inspect, or fix it with --repair-backup --yes",
+        ["[告警] 检测到 {0} 条新的游戏日志错误（详见日志）"] =
+            "[Alert] {0} new game-log error(s) detected (see the log)",
+        ["有 {0} 条新的游戏日志错误"] = "{0} new game-log error(s)",
+        ["冲突未变（上次已确认，本次不重复提示）"] =
+            "Conflicts unchanged (already acknowledged; not shown again)",
+
         // ==================== 任务 B：裸中文接线（Program.cs）====================
         ["[错误] 找不到 ntl-builder.exe: {0}"] = "[Error] ntl-builder.exe not found: {0}",
+
+        // ==================== C4 P1-13：mod 列表改读 --mod-list --json ====================
+        ["--mod-list --json 没有输出 JSON（退出码 {0}）"] = "--mod-list --json printed no JSON (exit code {0})",
+        ["解析 --mod-list --json 失败: {0}"] = "Failed to parse --mod-list --json: {0}",
+        ["--mod-list --json 退出码 {0}"] = "--mod-list --json exit code {0}",
+        ["[错误] 读取 mod 列表失败（--mod-list --json）: {0}"] = "[Error] Failed to read the mod list (--mod-list --json): {0}",
+        ["mod 列表读取失败"] = "Failed to read the mod list",
+        ["已加载 {0} 个 mod（与部署同源，目录: {1}）"] = "Loaded {0} mod(s) (same scan as deploy, dir: {1})",
 
         // ==================== 游戏更新检测（2026-10，docs/UPDATE.md）====================
         ["更新检测失败（退出码 {0}），详见日志。\n\n仍要继续{1}吗？"] = "Update check failed (exit code {0}); see the log.\n\nContinue {1} anyway?",
@@ -282,22 +341,12 @@ public static class Localizer
         ["检测到游戏更新 / 新章节 / 整包基底漂移（详见下方报告）。\n\n① 采纳新基线并继续：把当前原版采纳为新基线，旧备份移进 backup/history/<buildid>/（不删）；新章节同时登记为已确认，然后继续本次{0}。\n② 直接继续：不做采纳，本次{0}可能被检测拦下（拦下时不会改动游戏目录，日志里有处置步骤）。"] = "A game update / new chapter / whole-pack base drift was detected (see the report below).\n\n① Adopt new baseline & continue: adopt the current vanilla as the new baseline and move the old backups into backup/history/<buildid>/ (never deleted); new chapters are also marked confirmed, then this {0} continues.\n② Continue anyway: no adoption; this {0} may be blocked by the check (when blocked the game folder is not modified and the log lists the next steps)."
     };
 
-    /// <summary>载入界面语言。优先 Neutraled/gui_lang.txt；该文件不存在时回退读
-    /// Neutraled/config.json 的 lang 字段（en → en；zh/auto/缺省/其它 → zh），
-    /// 让「游戏内语言」与「GUI 语言」共用同一个开关。读失败不影响启动。</summary>
+    /// <summary>载入界面语言：唯一真源 = Neutraled/config.json 的 lang（与 builder、游戏内文字同一个键）。
+    /// en → en；zh / auto / 缺省 / 其它 → zh。旧 gui_lang.txt 不再参与解析（见 <see cref="MigrateLegacy"/>）。</summary>
     public static void Load(string neutraledRoot)
     {
         try
         {
-            var f = Path.Combine(neutraledRoot, "gui_lang.txt");
-            if (File.Exists(f))
-            {
-                var v = File.ReadAllText(f).Trim();
-                if (v == "en" || v == "zh") Current = v;
-                return;
-            }
-
-            // 回退：游戏侧的语言开关（builder/游戏读的是同一个 config.json 的 lang）
             var cfg = Path.Combine(neutraledRoot, "config.json");
             if (!File.Exists(cfg)) return;
             using var doc = JsonDocument.Parse(File.ReadAllText(cfg),
@@ -312,9 +361,37 @@ public static class Localizer
         catch { }
     }
 
-    public static void Save(string neutraledRoot)
+    /// <summary>一次性迁移旧 gui_lang.txt（C4 P1-5）：config.json 没写 lang 时把旧值并进去，
+    /// 随后把旧文件改名 .migrated 归档（不再被任何代码读取）。失败不抛：语言真源始终以 config 为准。</summary>
+    public static void MigrateLegacy(string neutraledRoot)
     {
-        try { File.WriteAllText(Path.Combine(neutraledRoot, "gui_lang.txt"), Current); } catch { }
+        try
+        {
+            var f = Path.Combine(neutraledRoot, "gui_lang.txt");
+            if (!File.Exists(f)) return;
+            var v = File.ReadAllText(f).Trim().ToLowerInvariant();
+            var cfg = Path.Combine(neutraledRoot, "config.json");
+            var obj = new JsonObject();
+            var hasLang = false;
+            if (File.Exists(cfg))
+            {
+                var node = JsonNode.Parse(File.ReadAllText(cfg),
+                    documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+                if (node is JsonObject o) obj = o;
+                hasLang = obj["lang"] is JsonValue lv && lv.TryGetValue<string>(out var s) && s.Trim().Length > 0;
+            }
+            if (!hasLang && v is "zh" or "en")
+            {
+                obj["lang"] = v;
+                File.WriteAllText(cfg, obj.ToJsonString(new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                }));
+            }
+            File.Move(f, f + ".migrated", overwrite: true);
+        }
+        catch { /* 迁移失败不影响启动；语言继续以 config.json 为准 */ }
     }
 
     public static string T(string zh, params object[] args)

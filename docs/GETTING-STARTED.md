@@ -292,14 +292,15 @@ return nil    -- nil = 不拦截，继续执行原函数
 **99% 的原因是没重启游戏。** Lua 脚本在游戏启动时读取。
 
 ```powershell
-Get-Process DELTARUNE -EA 0 | Stop-Process -Force
-.\launch.ps1
+.\launch.ps1            # 默认 root；-Chapter chapter1 指定章节；-NoCache 先清缓存
 ```
 
 #### ❓ 部署失败 / 改动没生效
 
 **游戏还开着。** `data.win` 被占用时写盘会**静默失败**（显示成功但文件没变）。
-`launch.ps1` 会自动帮你关游戏。
+新版 `launch.ps1` 只是 `ntl-builder --launch` 的薄转发，**不会替你杀进程**：
+`--launch` 检测到游戏在跑会直接报占用错误（退出码非 0），请先自己关掉游戏再运行。
+这也是刻意的——自动杀游戏会丢未保存进度。
 
 #### ❓ 日志里报错了
 

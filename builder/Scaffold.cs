@@ -94,10 +94,10 @@ public static class Scaffold
                      "| `patches/` | （可选）要替换的游戏函数 |\n\n" +
                      "## 怎么跑\n\n" +
                      "```powershell\n" +
-                     "# 关掉游戏（重要！否则部署会静默失败）\n" +
-                     "Get-Process DELTARUNE -EA 0 | Stop-Process -Force\n\n" +
-                     "# 部署并启动\n" +
-                     "E:\\steam\\steamapps\\common\\DELTARUNE\\Neutraled\\launch.ps1\n" +
+                     "# 先自己关掉游戏（--launch 检测到占用会报错，不会替你杀进程）\n" +
+                     "（先自己关掉游戏）\n\n" +
+                     "# 在 Neutraled 目录部署并启动（默认 root；-Chapter chapter1 指定章节）\n" +
+                     ".\\launch.ps1\n" +
                      "```\n\n" +
                      "## 怎么改\n\n" +
                      "**改 Lua 脚本不需要重新部署** —— 直接改 `main.lua`，重启游戏就生效。\n\n" +
@@ -127,7 +127,7 @@ public static class Scaffold
         Console.WriteLine();
         Console.WriteLine(L("  下一步:"));
         Console.WriteLine(L("    1) 编辑 main.lua（随便改一行 print）"));
-        Console.WriteLine(L("    2) 关闭游戏后运行 Neutraled\\launch.ps1"));
+        Console.WriteLine(L("    2) 运行 Neutraled\\launch.ps1（默认 root；-Chapter chapter1 指定章节）"));
         Console.WriteLine(L("    3) 看日志里的 [") + safe + L("] 输出"));
         Console.WriteLine();
         return 0;

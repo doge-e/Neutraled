@@ -134,11 +134,41 @@ public static class DeploySelfCheck
                         : string.Join(L("；"), hits) + L(" —— GML 侧 json_parse 会失败（中文名被转义写出了）"));
             }
 
+            // ---------- (i) 原版备份（backup）卫生（与产物无关，任何分支都要跑） ----------
+            // 抓「产物全绿、但原版兜底已被产物覆盖」：那会让 --restore-chapter 与下一轮部署把 mod 固化进基线
+            // （2026-10-31 实测事故：backup\chapter2_windows\data.win 被部署产物覆盖）。
+            void CheckBaseline()
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(winOverride) || chapter.IndexOf('\\') >= 0 || chapter.IndexOf('/') >= 0)
+                    {
+                        Check("(i)", L("原版备份（backup）卫生"), true, L("跳过：时间线/沙箱产物不写 backup"));
+                        return;
+                    }
+                    var bv = Baseline.Evaluate(gameRoot, chapter);
+                    bool ok = bv.State is Baseline.SlotState.Ok or Baseline.SlotState.EstablishAgreement;
+                    string detail = bv.State switch
+                    {
+                        Baseline.SlotState.Ok => L("OK（") + bv.PrimaryFp + L("，规范/镜像/基线三方一致）"),
+                        Baseline.SlotState.EstablishAgreement => L("未登记基线，但两处副本一致（") + bv.PrimaryFp + L("）"),
+                        _ => bv.Detail,
+                    };
+                    if (!ok) detail += L(" —— 修复：--verify-backup / --repair-backup --yes");
+                    Check("(i)", L("原版备份（backup）卫生"), ok, detail);
+                }
+                catch (Exception bex)
+                {
+                    Check("(i)", L("原版备份（backup）卫生"), false, L("检查抛异常 —— ") + Describe(bex));
+                }
+            }
+
             if (!File.Exists(win))
             {
                 Console.WriteLine(L("  [失败] (a) 重新打开产物 data.win —— 产物不存在（") + win + L("），自检无法继续"));
                 CheckRegistryJson();
                 CheckProductJsonEscapes();
+                CheckBaseline();
                 Console.WriteLine(L("结果: 发现严重问题（失败 1 项 + 未能执行 b/c/d，用时 ") + total.ElapsedMilliseconds + L(" ms）"));
                 return 1;
             }
@@ -313,6 +343,7 @@ public static class DeploySelfCheck
 
             CheckRegistryJson();
             CheckProductJsonEscapes();
+            CheckBaseline();
         }
         catch (Exception ex)
         {

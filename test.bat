@@ -1,89 +1,58 @@
 @echo off
-chcp 65001 >nul
-rem Neutraled 一键测试 —— 双击即可运行
-rem 参数: --full (含游戏内测试)  --deploy (含部署)
-
+rem ===========================================================================
+rem  Neutraled ONE-CLICK TEST - thin forwarder (C4 P1-11 / plan section 5)
+rem
+rem  Static stages only (no game launch):
+rem    - SkipPackage / -OutDir / -ImportDir are passed straight through
+rem
+rem  Game tests are separate (they DO launch the game):
+rem    powershell -ExecutionPolicy Bypass -File _test\fulltest-game.ps1
+rem    powershell -ExecutionPolicy Bypass -File _test\fulltest-external.ps1
+rem
+rem  Usage:
+rem    test.bat                 full static suite
+rem    test.bat -SkipPackage    skip the packaging stage (faster)
+rem    test.bat --help          show this help
+rem ===========================================================================
 setlocal
-set ROOT=%~dp0
-set EXE=%ROOT%builder\bin\Release\net9.0\ntl-builder.exe
+chcp 65001 >nul
 
-if not exist "%EXE%" (
-  echo [错误] 找不到 ntl-builder.exe
-  echo        请先编译: dotnet build builder\Neutraled.Builder.csproj -c Release
+if /i "%~1"=="--help" goto :usage
+if /i "%~1"=="-h" goto :usage
+
+if not exist "%~dp0_test\fulltest-static.ps1" (
+  echo [ERROR] _test\fulltest-static.ps1 not found next to test.bat
   pause
   exit /b 1
 )
 
 echo.
-echo ========================================
-echo   Neutraled 测试套件
-echo ========================================
-
+echo ============================================================
+echo   Neutraled static regression ^(no game launch^)
+echo ============================================================
 echo.
-echo ---- 1. 静态检查 (lint) ----
-"%EXE%" --lint
-
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0_test\fulltest-static.ps1" %*
+set RC=%ERRORLEVEL%
 echo.
-echo ---- 2. 自检 (doctor) ----
-"%EXE%" --doctor
-
-echo.
-echo ---- 3. API 冒烟 (smoke) ----
-"%EXE%" --smoke
-
-if /i "%1"=="--deploy" goto :deploy
-if /i "%1"=="--full" goto :full
-goto :extras
-
-:deploy
-echo.
-echo ---- 4. 部署 ----
-taskkill /f /im DELTARUNE.exe >nul 2>&1
-timeout /t 3 /nobreak >nul
-"%EXE%" --deploy --chapter root
-"%EXE%" --deploy --chapter chapter4
-goto :extras
-
-:full
-echo.
-echo ---- 4. 部署 + 游戏内测试 ----
-taskkill /f /im DELTARUNE.exe >nul 2>&1
-timeout /t 3 /nobreak >nul
-"%EXE%" --deploy --chapter root
-timeout /t 2 /nobreak >nul
-del /q "%LOCALAPPDATA%\DELTARUNE\Neutraled\dr-api.log" >nul 2>&1
-start "" "E:\DELTARUNE.url"
-echo   等待游戏启动^(50 秒^)...
-timeout /t 50 /nobreak >nul
-echo.
-echo   === mod 联动验收 ===
-findstr /c:"InteropB] [" "%LOCALAPPDATA%\DELTARUNE\Neutraled\dr-api.log"
-goto :extras
-
-:extras
-echo.
-echo ---- 5. mod 列表 ----
-"%EXE%" --mod-list
-
-echo.
-echo ---- 6. 存档快照 ----
-"%EXE%" --save-list
-
-echo.
-echo ---- 7. Kristal 脚本验证 ----
-if exist "E:\steam\steamapps\common\DELTARUNE\Kristal-main\mods\chapter5wr_windows" (
-  "%EXE%" --validate-kristal "E:\steam\steamapps\common\DELTARUNE\Kristal-main\mods\chapter5wr_windows"
+if not "%RC%"=="0" (
+  echo Result: FAILED ^(exit %RC%^) - see the log under E:\aiwork\out\Neutraled2\fulltest
 ) else (
-  echo   SKIP^(找不到 Kristal mod^)
+  echo Result: all static checks passed
 )
-
-echo.
-echo ---- 8. API 文档生成 ----
-"%EXE%" --api-doc
-
-echo.
-echo ========================================
-echo   测试完成
-echo ========================================
-echo.
 pause
+exit /b %RC%
+
+:usage
+echo Neutraled test entry
+echo.
+echo   test.bat                 run _test\fulltest-static.ps1 ^(static, no game^)
+echo   test.bat -SkipPackage    same, skip packaging (faster)
+echo.
+echo Game-dependent suites ^(launch DELTARUNE; run them yourself, not from CI^):
+echo   _test\fulltest-game.ps1
+echo   _test\fulltest-external.ps1
+echo.
+echo Rationale: this file used to inline lint/doctor/smoke and to deploy chapter4 +
+echo launch the game. That duplicated the PS suites and silently picked a chapter;
+echo it is now a thin forwarder only.
+exit /b 0

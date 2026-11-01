@@ -706,15 +706,55 @@ public static class Profiles
 
     // ———————————————————————————— 人可读输出 ————————————————————————————
 
-    /// <summary>列出所有配置档（每行以 [配置档] 开头，活动档带 *）。</summary>
-    public static void PrintList(string gameRoot)
+    /// <summary>--profile-list --json 的数据源（GUI 的「配置档（只读）」弹窗读它，保证与 CLI 同源）。</summary>
+    public static JsonObject BuildListJson(string gameRoot)
     {
+        var all = List(gameRoot);
+        var active = ActiveId(gameRoot);
+        var arr = new JsonArray();
+        foreach (var p in all)
+        {
+            arr.Add(new JsonObject
+            {
+                ["id"] = p.Id,
+                ["name"] = p.Name,
+                ["description"] = p.Description,
+                ["created"] = p.Created,
+                ["updated"] = p.Updated,
+                ["enabled"] = new JsonArray(p.Enabled.Select(x => (JsonNode)JsonValue.Create(x)!).ToArray()),
+                ["enabledCount"] = p.Enabled.Count,
+                ["settingsCount"] = p.Settings.Count,
+                ["chapters"] = new JsonArray(p.Chapters.Select(x => (JsonNode)JsonValue.Create(x)!).ToArray()),
+                ["modsRoot"] = p.ModsRoot,
+                ["active"] = string.Equals(p.Id, active, StringComparison.OrdinalIgnoreCase)
+            });
+        }
+        return new JsonObject
+        {
+            ["schemaVersion"] = 1,
+            ["gameRoot"] = gameRoot,
+            ["profilesRoot"] = Root(gameRoot),
+            ["activeId"] = active,
+            ["count"] = all.Count,
+            ["profiles"] = arr
+        };
+    }
+
+    /// <summary>列出所有配置档（每行以 [配置档] 开头，活动档带 *）。json=true 时只输出一段 JSON（供 GUI/自动化读）。</summary>
+    public static int PrintList(string gameRoot, bool json = false)
+    {
+        if (json)
+        {
+            var opts = new JsonSerializerOptions(Paths.Json) { WriteIndented = true };
+            Console.WriteLine(BuildListJson(gameRoot).ToJsonString(opts));
+            return 0;
+        }
         var all = List(gameRoot);
         var active = ActiveId(gameRoot);
         if (all.Count == 0)
         {
             Paths.Log(L("[配置档] 还没有配置档（用 --profile-new <id> 新建）"));
-            return;
+            return 0;
         }
         Paths.Log(L("[配置档] 配置档目录：{0}", Root(gameRoot)));
         foreach (var p in all)
@@ -725,6 +765,7 @@ public static class Profiles
                 p.Enabled.Count, string.IsNullOrWhiteSpace(p.Updated) ? "-" : p.Updated));
         }
         Paths.Log(L("[配置档] 共 {0} 个配置档（活动：{1}）", all.Count, active));
+        return 0;
     }
 
     /// <summary>显示一个配置档的详情（id 省略时显示活动档）。</summary>

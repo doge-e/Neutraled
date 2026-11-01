@@ -145,34 +145,23 @@ public static class Installer
         }
 
         // 1) 备份原版 data.win（只备份一次）
-        //    写**两处**：Neutraled\backup（随项目走，Steam 重装后仍可能幸存）
-        //             <游戏根>\backup（工具链的规范位置，Paths.BackupDataWin 优先读这里）
-        var backupDir = Path.Combine(ntlRoot, "backup");
-        var canonicalBackupDir = Path.Combine(gameRoot, "backup");
-        Directory.CreateDirectory(backupDir);
+        //    C2 起备份**只走 Baseline 单一写者**：两处备份（<游戏根>\backup 与 Neutraled\backup）
+        //    + baseline.json 账本 + 只读保护。旧实现「凭存在性信任 live」会把已部署产物当原版备份
+        //    （A2 审计认定的 2026-10-31 污染形态），这里不再自己 File.Copy。
+        Directory.CreateDirectory(Paths.NeutraledRoot(gameRoot));
         int backed = 0;
-        var backupRels = new List<string> { "data.win" };                       // 章节目录后缀随平台（windows/linux/unix/macos）
         // 章节数不硬编码 5：游戏更新/DLC 可能带来新章节（chapter6_windows…）。备份是「只增不改」的
         // 安全网，少备份一个 = 那个章节以后永远还原不回原版（宁可在列表里多写几个不存在的路径）。
         int slotMax = 5;
         try { slotMax = Math.Max(slotMax, GameUpdate.DiscoveredSlotCount(gameRoot)); } catch { }
-        for (int ci = 1; ci <= slotMax; ci++) backupRels.Add("chapter" + ci + "_" + Paths.ChapterSuffix(gameRoot) + "/data.win");
-        foreach (var rel in backupRels)
+        var backupSlots = new List<string> { "root" };
+        for (int ci = 1; ci <= slotMax; ci++) backupSlots.Add("chapter" + ci);
+        foreach (var slot in backupSlots)
         {
-            var src = Path.Combine(gameRoot, rel.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(src)) continue;
-            var any = false;
-            foreach (var root in new[] { canonicalBackupDir, backupDir })
-            {
-                var dst = Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar));
-                if (File.Exists(dst)) continue;                 // 已备份过，不覆盖
-                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
-                File.Copy(src, dst);
-                any = true;
-            }
-            if (any) backed++;
+            if (!File.Exists(Paths.ChapterDataWin(gameRoot, slot))) continue;
+            if (Baseline.PrepareForDeploy(gameRoot, slot)) backed++;
         }
-        Console.WriteLine(L("  原版备份: {0} 个 data.win → {1}（同时在 {2} 留一份）", backed, canonicalBackupDir, backupDir));
+        Console.WriteLine(L("  原版备份: {0} 个槽位已确认（两处备份 + 只读保护，基线账本已同步）", backed));
 
         // 2) 复制 Neutraled 运行所需内容（api / live / mods / docs / builder / gui）
         // 保护：开发环境下"源目录 == 目标目录"，此时跳过复制（否则是自己拷自己，会锁文件）

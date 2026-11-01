@@ -62,7 +62,7 @@ public static class WebUi
         "GET /api/plugins",
         "GET /api/themes", "POST /api/theme/use",
         "GET /api/lang", "POST /api/lang/use", "GET /api/lang/coverage",
-        "POST /api/deploy", "POST /api/shutdown"
+        "POST /api/deploy", "GET /api/capabilities", "POST /api/shutdown"
     };
 
     // ================================================================= 生命周期
@@ -275,6 +275,11 @@ public static class WebUi
                 case "POST /api/shutdown":
                     Json(ctx, 200, new JsonObject { ["ok"] = true, ["message"] = L("正在关闭") });
                     StopEvent.Set();
+                    return;
+
+                case "GET /api/capabilities":
+                    // C4 P1-11：与 CLI --frontend-matrix --json 同源（同一份 BuildJson），便于逐字段比对。
+                    Json(ctx, 200, FrontendMatrix.BuildJson());
                     return;
 
                 case "GET /api/status":

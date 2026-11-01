@@ -11,8 +11,17 @@ Write-Host '===== verify packaged release =====' -ForegroundColor Cyan
 if (Test-Path -LiteralPath $Sandbox) { Remove-Item $Sandbox -Recurse -Force }
 New-Item -ItemType Directory -Force -Path (Join-Path $Sandbox 'chapter1_windows') | Out-Null
 Copy-Item (Join-Path $Game 'DELTARUNE.exe') (Join-Path $Sandbox 'DELTARUNE.exe') -Force
-Copy-Item (Join-Path $Game 'data.win') (Join-Path $Sandbox 'data.win') -Force
-Copy-Item (Join-Path $Game 'chapter1_windows\data.win') (Join-Path $Sandbox 'chapter1_windows\data.win') -Force
+# C4/P1: the sandbox must simulate a FRESH install -> its live data.win must be VANILLA.
+# The real game root's live data.win is usually already a Neutraled product (deployed), and a
+# product has injection markers -> the installer would (correctly) refuse to adopt it as the
+# vanilla baseline and never create Neutraled/backup, so the uninstall round-trip would fail.
+# Source the vanilla files from <Game>\backup instead of the live tree.
+$vanRoot = Join-Path $Game 'backup\data.win'
+$vanCh1  = Join-Path $Game 'backup\chapter1_windows\data.win'
+if (Test-Path -LiteralPath $vanRoot) { Copy-Item $vanRoot (Join-Path $Sandbox 'data.win') -Force }
+else { Copy-Item (Join-Path $Game 'data.win') (Join-Path $Sandbox 'data.win') -Force }
+if (Test-Path -LiteralPath $vanCh1) { Copy-Item $vanCh1 (Join-Path $Sandbox 'chapter1_windows\data.win') -Force }
+else { Copy-Item (Join-Path $Game 'chapter1_windows\data.win') (Join-Path $Sandbox 'chapter1_windows\data.win') -Force }
 $before = (Get-FileHash (Join-Path $Sandbox 'data.win') -Algorithm SHA256).Hash
 $beforeCh1 = (Get-FileHash (Join-Path $Sandbox 'chapter1_windows\data.win') -Algorithm SHA256).Hash
 Write-Host '  sandbox ready (DELTARUNE.exe + data.win + chapter1_windows/data.win)'
@@ -54,7 +63,12 @@ Write-Host ''; Write-Host '--- 1) --version ---'
 
 Write-Host ''; Write-Host '--- 2) --install ---'
 & $exe --install --game $Sandbox @srcArgs 2>&1 | Select-Object -First 22
-Write-Host ('  exit=' + $LASTEXITCODE)
+$installExit = $LASTEXITCODE
+Write-Host ('  exit=' + $installExit)
+if ($installExit -ne 0) {
+    Write-Host '  [ERROR] --install failed; the uninstall round-trip would be meaningless. Fix the install step first.' -ForegroundColor Red
+    exit 1
+}
 
 Write-Host ''; Write-Host '--- 3) install result ---'
 $ntl = Join-Path $Sandbox 'Neutraled'

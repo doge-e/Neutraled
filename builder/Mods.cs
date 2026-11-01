@@ -382,37 +382,9 @@ public static List<ModEntry> ScanMods(string modsRoot, string chapter, bool incl
             catch (Exception ex) { Paths.Log(L("  [警告] 解包失败 {0}: {1}", f, ex.Message)); }
         }
 
-        foreach (var modDir in Directory.GetDirectories(modsRoot))
-        {
-            var modName = Path.GetFileName(modDir);
-            if (IsChapterFolder(modName))
-            {
-                // 旧格式 A: mods/<chapter>/<mod>/
-                foreach (var sub in Directory.GetDirectories(modDir))
-                    candidates.Add((sub, modName, Path.GetFileName(sub), ""));
-                continue;
-            }
-
-            // 新格式: mods/<mod_name>/<author>/<chapter>/
-            var subdirs = Directory.GetDirectories(modDir);
-            bool matchedNew = false;
-            foreach (var authorDir in subdirs)
-            {
-                var author = Path.GetFileName(authorDir);
-                foreach (var chDir in Directory.GetDirectories(authorDir))
-                {
-                    var chName = Path.GetFileName(chDir);
-                    if (!IsChapterFolder(chName)) continue;
-                    candidates.Add((chDir, chName, modName, author));
-                    matchedNew = true;
-                }
-            }
-            if (matchedNew) continue;
-
-            // 旧格式 B: mods/<mod>/
-            if (File.Exists(Path.Combine(modDir, "mod.json")))
-                candidates.Add((modDir, "", modName, ""));
-        }
+        // 叶子发现规则只有一份：ModScanner.DiscoverLeaves（C4 P1-13，GUI/CLI/部署共用同一判据）。
+        foreach (var leaf in ModScanner.DiscoverLeaves(modsRoot))
+            candidates.Add((leaf.Dir, leaf.Chapter, leaf.ModName, leaf.Author));
 
         foreach (var (dir, dirChapter, modName, author) in candidates)
         {
@@ -536,14 +508,9 @@ public static List<ModEntry> ScanMods(string modsRoot, string chapter, bool incl
         return order;
     }
 
-    public static bool IsChapterFolder(string name) =>
-        name.Equals("root", StringComparison.OrdinalIgnoreCase) ||
-        (name.StartsWith("chapter", StringComparison.OrdinalIgnoreCase) && name.Length > 7);
+    /// <summary>规则唯一实现在 <see cref="ModScanner.IsChapterFolder"/>（章节叶子：root 或 chapterN，N≥1）。</summary>
+    public static bool IsChapterFolder(string name) => ModScanner.IsChapterFolder(name);
 
-    public static string Sanitize(string s)
-    {
-        var sb = new System.Text.StringBuilder();
-        foreach (var c in s) sb.Append(char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '_');
-        return sb.ToString().Trim('_');
-    }
+    /// <summary>id 兜底生成用的清洗，唯一实现在 <see cref="ModScanner.Sanitize"/>。</summary>
+    public static string Sanitize(string s) => ModScanner.Sanitize(s);
 }

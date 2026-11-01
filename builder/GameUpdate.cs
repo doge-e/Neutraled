@@ -589,52 +589,31 @@ public static class GameUpdate
 
     // ==================== 基线 / 采纳 ====================
 
-    /// <summary>建立基线（首跑）：只记录事实 + 把缺备份的原版槽位补一份备份。返回是否有写入。</summary>
+    /// <summary>建立基线（首跑）：只记录事实 + 把缺备份的原版槽位补一份备份。返回是否有写入。
+    /// C2 起不再自己写 backup：备份的建立/登记/只读保护统一走 Baseline（单一写者，见 PrepareForDeploy）。</summary>
     public static bool EstablishBaseline(string gameRoot, UpdateReport rep)
     {
-        bool wrote = false;
         foreach (var s in rep.Slots)
         {
-            if (s.Kind != SlotKind.Vanilla || !s.LiveExists || s.BackupExists) continue;
+            if (s.Kind != SlotKind.Vanilla || !s.LiveExists) continue;
             try
             {
-                CopyToBackupRoots(gameRoot, s.Rel, s.LivePath, archive: false, label: "");
-                s.BackupExists = true;
-                s.BackupPath = Paths.BackupDataWin(gameRoot, s.Slot);
-                s.BackupFp = s.LiveFp;
-                s.NeedsBaseline = false;
-                wrote = true;
+                if (!Baseline.PrepareForDeploy(gameRoot, s.Slot))
+                {
+                    Console.WriteLine(L("  [警告] {0}: 原版基线校验未通过，跳过建立备份", s.Slot));
+                    continue;
+                }
+                var b = Baseline.Evaluate(gameRoot, s.Slot);
+                s.BackupExists = b.PrimaryExists || b.MirrorExists;
+                s.BackupPath = b.PrimaryExists ? b.PrimaryPath : b.MirrorPath;
+                s.BackupFp = b.PrimaryFp.Length > 0 ? b.PrimaryFp : b.MirrorFp;
+                s.NeedsBaseline = !b.IsHealthy;
                 Console.WriteLine(L("  [基线] 已为 {0} 补一份原版备份: {1}", s.Slot, Short(s.BackupPath)));
             }
             catch (Exception ex) { Console.WriteLine(L("  [警告] 备份 {0} 失败: {1}", s.Slot, ex.Message)); }
         }
         RecordState(gameRoot, rep, baseModUsed: true);
         return true;
-    }
-
-    /// <summary>把活跃文件复制到两个 backup 根（&lt;gameRoot&gt;/backup 与 Neutraled/backup）。</summary>
-    static void CopyToBackupRoots(string gameRoot, string rel, string src, bool archive, string label)
-    {
-        foreach (var root in new[] { Path.Combine(gameRoot, "backup"), Path.Combine(Paths.NeutraledRoot(gameRoot), "backup") })
-        {
-            var dst = Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar));
-            if (SamePath(dst, src)) continue;
-            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
-            if (archive && File.Exists(dst) && !SamePath(dst, src))
-            {
-                // 两个备份根的区分**必须**全等比较：曾经写成 root.StartsWith(gameRoot)，
-                // 而 Neutraled/backup 也以 gameRoot 开头 ⇒ 两根都被算成 game ⇒ 第二份（Neutraled/backup
-                // 里的旧备份）撞名后走 File.Delete 被删掉，违反「旧备份全留」纪律。
-                // 沙箱 S2 实测：history/<buildid>/neutraled/ 是空的、旧备份凭空消失。
-                var isCanonical = SamePath(root, Path.Combine(gameRoot, "backup"));
-                var hid = Path.Combine(Paths.NeutraledRoot(gameRoot), "backup", HistoryDirName, label,
-                                       (isCanonical ? "game" : "neutraled"),
-                                       rel.Replace('/', Path.DirectorySeparatorChar));
-                Directory.CreateDirectory(Path.GetDirectoryName(hid)!);
-                if (!File.Exists(hid)) File.Move(dst, hid); else File.Delete(dst);
-            }
-            File.Copy(src, dst, true);
-        }
     }
 
     /// <summary>把当前活跃的原版采纳为新的基线：旧备份移动进 backup/history/（不删），活跃原版复制成新备份。</summary>
@@ -678,7 +657,8 @@ public static class GameUpdate
             if (!s.VanillaChanged && !s.NeedsBaseline) continue;
             try
             {
-                CopyToBackupRoots(gameRoot, s.Rel, s.LivePath, archive: true, label: label);
+                // 单一写者：旧备份归档 / 新备份 / ledger / 只读保护 全在 Baseline 里完成（C2）
+                if (!Baseline.AdoptLiveAsBaseline(gameRoot, s.Slot, label)) return 1;
                 if (s.VanillaChanged) archived++;
                 adopted++;
                 Console.WriteLine(L("  [采纳] {0}: 新原版 {1}（旧备份已存入 backup/{2}/{3}/）", s.Slot, s.LiveFp, HistoryDirName, label));
@@ -719,6 +699,10 @@ public static class GameUpdate
             if (s.Kind == SlotKind.Product) rec.ProductFp = s.LiveFp;
             else if (s.Kind == SlotKind.Vanilla) { rec.ProductFp = ""; rec.VanillaFp = s.LiveFp; }
             if (s.BackupExists && s.Kind != SlotKind.Vanilla) rec.VanillaFp = s.BackupFp;
+            // 基线账本（Neutraled/baseline.json）是「原版是谁」的唯一事实来源：
+            // 这里宁可相信它，也不相信「backup 目录里当前躺着的那个文件」——后者被产物覆盖过（2026-10-31）。
+            var knownFp = Baseline.TryGetFp(gameRoot, s.Slot);
+            if (!string.IsNullOrEmpty(knownFp)) rec.VanillaFp = knownFp;
         }
         if (baseModUsed && rep.BaseModFp.Length > 0)
         {
@@ -729,6 +713,24 @@ public static class GameUpdate
         st.History.Add("adopt/buildid=" + rep.Steam.BuildId + " @" + Now());
         if (st.History.Count > 40) st.History.RemoveRange(0, st.History.Count - 40);
         Save(gameRoot, st);
+    }
+
+    /// <summary>把某槽位的原版指纹同步进 deploy-state.json（Baseline 登记/修复/自愈后调用）。
+    /// 只改 VanillaFp，不碰产物指纹与 Steam 事实。</summary>
+    public static void SyncVanillaFp(string gameRoot, string chapter, string fp)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(chapter) || string.IsNullOrWhiteSpace(fp)) return;
+            var st = Load(gameRoot);
+            var rec = st.Slots.FirstOrDefault(x => x.Slot == chapter);
+            if (rec == null) { rec = new StateSlot { Slot = chapter }; st.Slots.Add(rec); }
+            rec.Rel = RelDataWin(gameRoot, chapter);
+            rec.VanillaFp = fp;
+            rec.SeenAt = Now();
+            Save(gameRoot, st);
+        }
+        catch (Exception ex) { Console.WriteLine(L("  [警告] 同步原版指纹失败: {0}", ex.Message)); }
     }
 
     /// <summary>某个槽位部署成功后调用：记下产物指纹与当前原版指纹（含整包基底配对，用于漂移判定）。</summary>
@@ -746,6 +748,9 @@ public static class GameUpdate
             rec.Rel = RelDataWin(gameRoot, chapter);
             rec.ProductFp = FileFp(live);
             if (bkReal) rec.VanillaFp = FileFp(bk);
+            // 同上：有基线账本就以账本为准，避免把「被产物覆盖的 backup」固化成原版指纹
+            var knownFp = Baseline.TryGetFp(gameRoot, chapter);
+            if (!string.IsNullOrEmpty(knownFp)) rec.VanillaFp = knownFp;
             rec.SeenAt = Now();
 
             var steam = ReadSteam(gameRoot);

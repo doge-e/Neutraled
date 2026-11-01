@@ -7,6 +7,8 @@
 ///   auto_skip_intro    : 尝试跳过章节内的开场演出（实验性）
 ///   debug_live         : 打开 live 脚本调试日志
 ///   skip_legend / skip_logo / intro_delay / lang
+///   ★ C4 P1-8 规范键：auto_skip / skip_intro（旧键 auto_skip_selector / auto_skip_intro / skip_legend /
+///     skip_logo 仍在读；下面会把规范键展开成旧键，所以旧读取点不改也生效）
 /// ★ 2026-09-27：候选路径见 ntl_config_paths()（存档区 + 游戏根，root 产物受 GM 文件沙箱遮蔽）。
 ///   规则：**两处都读**，后读的（游戏根那份）覆盖先读的（存档区那份）；读完把游戏根那份原文
 ///   镜像回存档区 ⇒ 章节内改的语言/CLI 改的配置都能传到下一次启动的章节选择器。
@@ -23,6 +25,10 @@ ds_map_add(global.ntl_cfg, "intro_delay", 45);     // 跳过前等待帧数
 ds_map_add(global.ntl_cfg, "debug_live", 0);
 ds_map_add(global.ntl_cfg, "lang", "auto");     // zh / en / auto —— 只影响 Neutraled 新增的界面文字
 ds_map_add(global.ntl_cfg, "audio_sniff", 0);   // ★ 音频诊断开关（默认关；见 api/ntl_audio_report.gml）
+// ★ C4 P1-8 规范键（单一事实源；旧键只是它们的展开视图）
+ds_map_add(global.ntl_cfg, "auto_skip", 0);      // = 旧 auto_skip_selector
+ds_map_add(global.ntl_cfg, "skip_intro", 0);     // = 旧 auto_skip_intro / skip_legend / skip_logo
+ds_map_add(global.ntl_cfg, "schema_version", 2); // 配置文件结构版本（builder --config-migrate 写）
 
 var _paths = ntl_config_paths();
 var _pList = "";
@@ -91,10 +97,14 @@ for (var _gi = 0; _gi < _n; _gi += 1)
 
 var _keys = [
     ["auto_skip_selector", 1], ["auto_skip_intro", 1], ["debug_live", 1], ["audio_sniff", 1],
-    ["skip_legend", 1], ["skip_logo", 1], ["auto_chapter", 0],
-    ["auto_skip_delay", 0], ["intro_delay", 0], ["auto_chapter_id", 2],
-    ["lang", 2]
+    ["skip_legend", 1], ["skip_logo", 1], ["auto_skip", 1], ["skip_intro", 1],
+    ["auto_chapter", 0], ["auto_skip_delay", 0], ["intro_delay", 0], ["schema_version", 0],
+    ["auto_chapter_id", 2], ["lang", 2]
 ];
+// 记录规范键是否真的出现在文件里（默认值不算）；只有文件里写了规范键才把它展开到旧键，
+// 否则会把「只写了旧键」的配置误伤成默认关。
+var _sawAutoSkip = 0;
+var _sawSkipIntro = 0;
 for (var _si = 0; _si < _n; _si += 1)
 {
     // 后一份（游戏根）覆盖前一份（存档区）
@@ -107,6 +117,8 @@ for (var _si = 0; _si < _n; _si += 1)
         var _kind = _keys[_ki][1];
         var _v = variable_struct_get(_j, _key);
         if (_v == undefined) continue;
+        if (_key == "auto_skip") _sawAutoSkip = 1;
+        if (_key == "skip_intro") _sawSkipIntro = 1;
 
         if (_kind == 1)
         {
@@ -128,6 +140,25 @@ for (var _si = 0; _si < _n; _si += 1)
         }
     }
     ntl_log("cfg", "解析字段[" + string(_si + 1) + "/" + string(_n) + " " + string(_srcs[_si]) + "]: " + _diag);
+}
+
+// ★ C4 P1-8：规范键 → 旧键 的单向展开（旧读取点 ntl_autoskip / ntl_skip_intro / Step_1 全部不用改）。
+//   只在文件里写了规范键时才展开；旧键自己写了什么仍然生效，不反向覆盖规范键。
+if (_sawAutoSkip == 1)
+{
+    var _rvAuto = ds_map_find_value(global.ntl_cfg, "auto_skip");
+    var _bAuto = (_rvAuto == 1 || _rvAuto == true) ? 1 : 0;
+    ds_map_replace(global.ntl_cfg, "auto_skip_selector", _bAuto);
+    ntl_log("cfg", "[配置] auto_skip=" + string(_bAuto) + " → 展开到旧键 auto_skip_selector");
+}
+if (_sawSkipIntro == 1)
+{
+    var _rvIntro = ds_map_find_value(global.ntl_cfg, "skip_intro");
+    var _bIntro = (_rvIntro == 1 || _rvIntro == true) ? 1 : 0;
+    ds_map_replace(global.ntl_cfg, "auto_skip_intro", _bIntro);
+    ds_map_replace(global.ntl_cfg, "skip_legend", _bIntro);
+    ds_map_replace(global.ntl_cfg, "skip_logo", _bIntro);
+    ntl_log("cfg", "[配置] skip_intro=" + string(_bIntro) + " → 展开到旧键 auto_skip_intro/skip_legend/skip_logo");
 }
 
 // 镜像：让两份内容收敛（存档区缺失/不同 ⇒ 用游戏根那份覆盖；游戏根缺失 ⇒ 用存档区那份补写）

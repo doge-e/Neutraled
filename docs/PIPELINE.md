@@ -118,8 +118,12 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win>
 #### 一条龙：直接从 GameBanana 下载并转换
 
 ```powershell
-ntl-builder.exe --fetch-mod <gamebananaId> [--model Mod|Wip] [--dry-run]
+ntl-builder.exe --install-id <gamebananaId> [--file N] [--as KIND] [--dry-run] [--json]
+ntl-builder.exe --install-url <url> [--as KIND] [--dry-run]
+# 旧名（仍可用，会打印 [deprecated]）: --fetch <id> / --fetch-mod <id> / --gb-install <id>
 ```
+
+> 包型现在由 `builder/PackageRouter.cs` 统一探测（xdelta / data.win / .ntlmod / Kristal / GM3P / 外部引擎），`--as` 可强制；`--route-probe` 可在不下载的情况下先看会被路由到哪里。
 
 ```
 ===== 下载并导入 GameBanana mod 578012 =====

@@ -35,14 +35,15 @@ public static class LangTable_Program
         d["  --add-external <exe> [名字]     注册成外部章节（章节选择器里可选）"] = "  --add-external <exe> [name]     Register as an external chapter (selectable in the chapter selector)";
         d["  --api-doc                       生成 API 文档"] = "  --api-doc                       Generate the API docs";
         d["  --conflicts                     只查 mod 冲突不部署（0=无冲突 / 2=有冲突，CI 友好）"] = "  --conflicts                     Only check mod conflicts, no deploy (0=no conflicts / 2=conflicts, CI friendly)";
-        d["  --deploy --chapter chapter4     部署核心+mods 到章节"] = "  --deploy --chapter chapter4     Deploy core + mods to a chapter";
+        d["  --deploy                         部署 root（写命令默认 root；显式 --chapter chapterN 会连带 root）"] = "  --deploy                         deploy root (write commands default to root; --chapter chapterN also deploys root)";
+        d["  --deploy --chapter chapter1     部署 root + 第 1 章（加 --no-root 只部署该章）"] = "  --deploy --chapter chapter1     deploy root + chapter 1 (add --no-root to deploy only that chapter)";
         d["  --export-packs <data.win>       导出资源包（精灵/声音/字体）→ 可叠加到任意基底"] = "  --export-packs <data.win>       Export asset packs (sprites / sounds / fonts) → can be overlaid on any base";
         d["  --extract-diff <data.win|目录>  把整包 mod 提取成**可叠加的差异层**（让多个整包 mod 共存）"] = "  --extract-diff <data.win|dir>   Extract a full-package mod into an **overlayable diff layer** (so several full-package mods can coexist)";
         d["  --fetch-mod <gamebananaId>      下载 + 自动识别格式转换（含 Kristal）"] = "  --fetch-mod <gamebananaId>      Download + auto-detect and convert the format (Kristal included)";
         d["  --focus-test <exe> [--send-f2] [--keep]   焦点抢占自检（后台进程能否抢到前台 + F2 是否打开控制台）"] = "  --focus-test <exe> [--send-f2] [--keep]   Focus-grab self-test (can a background process take the foreground + does F2 open the console)";
         d["  --import-delta <xdelta>         单项 xdelta / 修改版 data.win 转换"] = "  --import-delta <xdelta>         Single xdelta / modified data.win conversion";
         d["  --import-mod <包|目录>          传统 mod 自动转 ntl 格式（modding.xml / meta.toml / xdelta / zip / 原生 mod）"] = "  --import-mod <pkg|dir>          Auto-convert a classic mod to ntl format (modding.xml / meta.toml / xdelta / zip / native mod)";
-        d["  --info   --chapter chapter4     显示 data.win 概要"] = "  --info   --chapter chapter4     Show a data.win summary";
+        d["  --info   --chapter chapter1     显示 data.win 概要（只读命令默认 chapter1）"] = "  --info   --chapter chapter1     show data.win summary (read-only commands default to chapter1)";
         d["  --kristal-console [exe]         给**没有源码的融合版 Kristal exe** 注入 Neutraled 控制台"] = "  --kristal-console [exe]         Inject the Neutraled console into a **fused Kristal exe with no source code**";
         d["  --kristal-console-restore [exe] 从 .orig 还原（撤销注入）"] = "  --kristal-console-restore [exe] Restore from .orig (undo the injection)";
         d["  --kristal-merge <项目> --with <插件>...   Kristal 宿主合并导入（插件型 mod 缺宿主）"] = "  --kristal-merge <project> --with <plugin>...   Kristal host merge import (for plugin-type mods with no host)";
@@ -50,11 +51,11 @@ public static class LangTable_Program
         d["  --layer-from-base <data.win>    **源码级**差异层：反编译真实改动对象 → GML patch（不再受索引移植限制）"] = "  --layer-from-base <data.win>    **Source-level** diff layer: decompile the really-changed objects → GML patch (no longer limited by index porting)";
         d["  --lint / --doctor / --smoke     静态检查 / 自检 / API 冒烟"] = "  --lint / --doctor / --smoke     Static check / self-test / API smoke";
         d["  --mod-install <包>              安装原生 Neutraled/Kristal mod 包"] = "  --mod-install <pkg>             Install a native Neutraled/Kristal mod package";
-        d["  --mod-list                      列出已安装 mod"] = "  --mod-list                      List installed mods";
+        d["  --mod-list [--json]             列出已安装 mod（--json：GUI/脚本读的稳定结构，与部署扫描同源）"] = "  --mod-list [--json]             List installed mods (--json: stable structure for GUI/scripts, same scan as deploy)";
         d["  --new-chapter <名字>            生成一个**能进、能走、能看**的自定义章节（默认独立章节）"] = "  --new-chapter <name>            Generate a custom chapter that **loads, walks and renders** (standalone chapter by default)";
         d["  --probe-code <data.win> <对象名>   指令级取证（字段真实类型 + 解析目标）"] = "  --probe-code <data.win> <obj>   Instruction-level forensics (real field types + resolved targets)";
         d["  --selftest [--no-launch]        端到端自测"] = "  --selftest [--no-launch]        End-to-end self-test";
-        d["  --verify --chapter chapter4     校验注入结果"] = "  --verify --chapter chapter4     Verify the injection result";
+        d["  --verify --chapter chapter1     校验注入结果（只读命令默认 chapter1）"] = "  --verify --chapter chapter1     verify injection result (read-only commands default to chapter1)";
         d["  --verify-refcopy <源> <目标>      用反编译器当预言机，验证跨资源池复制是否保真"] = "  --verify-refcopy <src> <dst>    Use the decompiler as an oracle to check whether cross-pool copies are faithful";
         d["  --watch-external                守候进程（静默，无窗口）：看到启动请求就拉起外部引擎，"] = "  --watch-external                Watcher process (silent, no window): launches the external engine when it sees a launch request,";
         d["  [OK] {0}: {1}x{2} 格 "] = "  [OK] {0}: {1}x{2} tiles ";
@@ -286,5 +287,31 @@ public static class LangTable_Program
         d["                                  把玩家名字（≤12 个字母）写进存档第 1 行，直接落到槽位并标记 dr.ini 的 SideB"] = "writes the player name (max 12 letters) into save line 1, fills the slot and marks SideB in dr.ini";
         d["  --make-bside --chapter N [--slot S|--all-slots]   用模板生成 B 面存档（先用你自己导入的，再用随包默认模板；都没有就标记现有存档）"] = "--make-bside --chapter N [--slot S|--all-slots]   build a B-side save from a template (your import first, then the shipped default; without either, mark an existing save as B-side)";
         d["                                  模板位置：bside/templates/chapterN.sav 随包分发；bside/chapterN.sav 是你自己导入的（不进发布包）"] = "template locations: bside/templates/chapterN.sav ships with the release; bside/chapterN.sav is your own import (never packaged)";
+        // C4 P0-3：部署会话（--launch 记录 / --restore-session 还原）
+        d["  --restore-chapter all|root|chapterN   把 live 还原成原版（单章或 all 全部；备份校验不通过则拒绝，退出码 3）"] = "  --restore-chapter all|root|chapterN   restore live to vanilla (one chapter or all; refuses when backup verification fails, exit 3)";
+        d["  --restore-session [--dry-run] [--json]   按上次 --launch 的部署会话还原（默认不自动还原）"] = "  --restore-session [--dry-run] [--json]   restore the deploy session recorded by the last --launch (no auto-restore by default)";
+        d["                                  会话文件 Neutraled\\deploy-session.json；游戏运行中拒绝写盘"] = "                                  session file: Neutraled\\deploy-session.json; refuses to write while the game is running";
+        d["[会话] 本次部署目标已记录: {0}（退出游戏后可 --restore-session 还原）"] = "[Session] Recorded this deploy's targets: {0} (use --restore-session after quitting the game)";
+        d["[警告] 写部署会话失败: {0}"] = "[Warn] Failed to write the deploy session: {0}";
+        d["会话文件是空内容"] = "the session file is empty";
+        d["[警告] 删除部署会话文件失败: {0}"] = "[Warn] Failed to delete the deploy session file: {0}";
+        d["[警告] 部署会话文件读不了: {0}"] = "[Warn] Failed to read the deploy session file: {0}";
+        d["没有未完成的部署会话（Neutraled/deploy-session.json 不存在）。"] = "No unfinished deploy session (Neutraled/deploy-session.json does not exist).";
+        d["[警告] 会话里有无法识别的目标，已跳过: {0}"] = "[Warn] Unrecognized target in the session, skipped: {0}";
+        d["===== 部署会话 ====="] = "===== Deploy session =====";
+        d["  记录时间(UTC): {0}   启动目标: {1}"] = "  Recorded at (UTC): {0}   Launch target: {1}";
+        d["  待还原目标: {0}"] = "  Targets to restore: {0}";
+        d["（空）"] = "(empty)";
+        d["[警告] 会话里没有可还原的目标；删除会话文件（可用 --restore-session 重跑或手工删）"] = "[Warn] The session has no restorable targets; remove the session file (rerun --restore-session or delete it manually)";
+        d["游戏正在运行"] = "the game is running";
+        d["[错误] 游戏正在运行（DELTARUNE）；请先退出游戏再还原（否则 data.win 被占用，可能写一半）"] = "[Error] DELTARUNE is running; quit the game before restoring (otherwise data.win is locked and may be half-written)";
+        d["  预演：将还原 {0} 个目标（不写盘）"] = "  Dry run: would restore {0} target(s), nothing written";
+        d["--- 还原 {0} ---"] = "--- Restore {0} ---";
+        d["[错误] 还原 {0} 失败: {1}"] = "[Error] Failed to restore {0}: {1}";
+        d["已还原 {0} 个目标: {1}"] = "Restored {0} target(s): {1}";
+        d["会话已结束（deploy-session.json 已删除）"] = "Session finished (deploy-session.json deleted)";
+        d["[警告] 有 {0} 个目标还原失败，会话文件保留以便重试: {1}"] = "[Warn] {0} target(s) failed to restore; the session file is kept for a retry: {1}";
+        d["===== 还原 {0} ====="] = "===== Restore {0} =====";
+        d["===== 还原完成: {0}/{1} 章成功 ====="] = "===== Restore finished: {0}/{1} chapters succeeded =====";
     }
 }

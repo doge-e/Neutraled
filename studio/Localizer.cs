@@ -4,7 +4,8 @@ using System.Text.Encodings.Web;
 
 namespace Neutraled.Studio;
 
-/// <summary>Studio 双语（中/英）。语言选择与 ntl-gui 共用同一个 Neutraled/gui_lang.txt（两个工具语言一致）。</summary>
+/// <summary>Studio 双语（中/英）。语言唯一真源与 ntl-gui 相同：Neutraled/config.json 的 lang
+/// （C4 P1-5；旧 gui_lang.txt 已由 <see cref="MigrateLegacy"/> 一次性并入后归档）。</summary>
 public static class Localizer
 {
     public static string Current { get; set; } = "zh";
@@ -51,6 +52,7 @@ public static class Localizer
         ["[警告] 符号表加载失败: {0}"] = "[Warning] failed to load symbol table: {0}",
         ["[错误] 找不到 ntl-builder.exe"] = "[Error] ntl-builder.exe not found",
         ["启动游戏失败: {0}"] = "Failed to launch game: {0}",
+        ["启动失败（退出码 {0}）；详见日志"] = "Launch failed (exit code {0}); see the log",
 
         // ---- 文件树 ----
         ["live（运行时脚本）"] = "live (runtime scripts)",
@@ -70,22 +72,12 @@ public static class Localizer
         ["补全候选 {0} 项（前缀 \"{1}\"）"] = "{0} completion candidate(s) (prefix \"{1}\")"
     };
 
-    /// <summary>载入界面语言。优先 Neutraled/gui_lang.txt；该文件不存在时回退读
-    /// Neutraled/config.json 的 lang 字段（en → en；zh/auto/缺省/其它 → zh），
-    /// 语义与 ntl-gui 的 Localizer.Load 完全一致 —— 两个编辑器读数、写数都走同一条路。</summary>
+    /// <summary>载入界面语言：唯一真源 = Neutraled/config.json 的 lang（与 ntl-gui、builder、游戏内文字同一个键）。
+    /// en → en；zh / auto / 缺省 / 其它 → zh。旧 gui_lang.txt 不再参与解析。</summary>
     public static void Load(string neutraledRoot)
     {
         try
         {
-            var f = Path.Combine(neutraledRoot, "gui_lang.txt");
-            if (File.Exists(f))
-            {
-                var v = File.ReadAllText(f).Trim();
-                if (v == "en" || v == "zh") Current = v;
-                return;
-            }
-
-            // 回退：游戏侧的语言开关（builder/游戏读的是同一个 config.json 的 lang）
             var cfg = Path.Combine(neutraledRoot, "config.json");
             if (!File.Exists(cfg)) return;
             using var doc = JsonDocument.Parse(File.ReadAllText(cfg),
@@ -100,12 +92,37 @@ public static class Localizer
         catch { }
     }
 
-    /// <summary>保存语言：写 gui_lang.txt（ntl-gui 与 studio 共用这一个文件），
-    /// 同时把 lang 同步进 config.json —— 两个编辑器、builder 与游戏内语言始终是同一个开关。</summary>
-    public static void Save(string neutraledRoot)
+    /// <summary>一次性迁移旧 gui_lang.txt（C4 P1-5）：config.json 没写 lang 时把旧值并进去，
+    /// 随后把旧文件改名 .migrated 归档（不再被任何代码读取）。失败不抛：语言真源始终以 config 为准。</summary>
+    public static void MigrateLegacy(string neutraledRoot)
     {
-        try { File.WriteAllText(Path.Combine(neutraledRoot, "gui_lang.txt"), Current); } catch { }
-        SaveConfigLang(neutraledRoot);
+        try
+        {
+            var f = Path.Combine(neutraledRoot, "gui_lang.txt");
+            if (!File.Exists(f)) return;
+            var v = File.ReadAllText(f).Trim().ToLowerInvariant();
+            var cfg = Path.Combine(neutraledRoot, "config.json");
+            var obj = new JsonObject();
+            var hasLang = false;
+            if (File.Exists(cfg))
+            {
+                var node = JsonNode.Parse(File.ReadAllText(cfg),
+                    documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+                if (node is JsonObject o) obj = o;
+                hasLang = obj["lang"] is JsonValue lv && lv.TryGetValue<string>(out var s) && s.Trim().Length > 0;
+            }
+            if (!hasLang && v is "zh" or "en")
+            {
+                obj["lang"] = v;
+                File.WriteAllText(cfg, obj.ToJsonString(new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                }));
+            }
+            File.Move(f, f + ".migrated", overwrite: true);
+        }
+        catch { /* 迁移失败不影响启动；语言继续以 config.json 为准 */ }
     }
 
     /// <summary>把界面语言写进 Neutraled/config.json 的 lang（就地合并：只动 lang 这一个键，

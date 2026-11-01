@@ -419,6 +419,25 @@ if (room != global.ntl_room_last)
     catch (e) { ntl_log("mod", "[共享数据] 自动存盘失败: " + string(e)); }
 }
 
+// ★ 持久数据及时落盘：ntl_mod_data_set 只置脏标记，原先只有「切房间」时才调用 ntl_mod_data_save；
+//   玩家不切房间直接退出，persistOnce（跨重启只触发一次）等标记会丢（真机实测：触发后 mods-shared.json 里没有该键）。
+//   脏标记置位后最多等 20 帧再写盘，避免设置面板同步等「每帧 set」路径造成每帧 IO。
+if (variable_global_exists("ntl_mod_data_dirty") && global.ntl_mod_data_dirty == 1)
+{
+    if (!variable_global_exists("ntl_mod_data_save_wait")) global.ntl_mod_data_save_wait = 20;
+    global.ntl_mod_data_save_wait -= 1;
+    if (global.ntl_mod_data_save_wait <= 0)
+    {
+        global.ntl_mod_data_save_wait = 20;
+        try { ntl_mod_data_save(); }
+        catch (e_sd) { ntl_log("mod", "[共享数据] 定时存盘失败: " + string(e_sd)); }
+    }
+}
+else
+{
+    global.ntl_mod_data_save_wait = 20;
+}
+
 // Mod 设置：面板是游戏 submenu 51 的一页（原生二级菜单通道），按键在 obj_darkcontroller
 // 的注入代码里（builder/Injector.cs）。这里只跑计时器与状态同步。
 ntl_modmenu_step();

@@ -64,12 +64,15 @@ public static class Program
         return p.ExitCode;
     }
 
-    public static void LaunchGame()
+    /// <summary>C4 P1-6：启动游戏统一走 builder --launch（部署/缓存/会话/自愈一条链），不再裸 steam://。
+    ///   bare --launch = root；Studio 里没有章节选择，需要章节请用 ntl-gui 或 CLI。</summary>
+    public static async Task LaunchGameAsync(Action<string>? onLine = null)
     {
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            { FileName = "steam://rungameid/1671210", UseShellExecute = true });
+            var rc = await RunBuilderAsync("--launch", onLine);
+            if (rc != 0)
+                MessageBox.Show(Localizer.T("启动失败（退出码 {0}）；详见日志", rc), "Neutraled Studio");
         }
         catch (Exception ex) { MessageBox.Show(Localizer.T("启动游戏失败: {0}", ex.Message), "Neutraled Studio"); }
     }

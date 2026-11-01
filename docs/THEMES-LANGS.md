@@ -395,7 +395,7 @@ builder 侧（`L("中文原文")`）：
 ### ⚠️ 踩坑记录
 
 - `--theme-show <不存在的 id>` **返回 0**（只有一行「找不到主题」），脚本里要看输出而不是退出码；`--theme-use` 找不到才是 1。
-- 命令行下 `--gb-install` / `--queue-run` 不会自动装 mod（见 [GB.md](GB.md)），但主题与语言不受影响。
+- 命令行 `--install-id` / `--install-url` 会自动装 mod；`--queue-run` 只跑下载队列（见 [GB.md](GB.md)）。主题与语言不受影响。
 - **主题名会按生成 `console-theme.json` 那一刻的界面语言写死**：本机这个文件里的 `name` 现在是俄语 `Тёмная (по умолчанию)`，因为它是先前 `lang=ru` 时生成的。之后切回中文不会自动重写它 —— 想刷新就再跑一次 `--theme-use`。
 - 手改 `console-theme.json` 时**红蓝容易写反**：GameMaker 的颜色是 BGR，不是 CSS 的 RGB。写反的表现是颜色整体偏蓝/偏红。别自己算，改 `themes/*.json` 里的 `#RRGGBB` 再 `--theme-use` 一次，让 builder 帮你算 `colors_bgr`。
 - `console-theme.json` **缺 `colors_bgr` 就是整套默认配色**（不是只用缺的那几个键补默认），所以别只写 `colors`。

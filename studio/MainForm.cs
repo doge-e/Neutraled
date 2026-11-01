@@ -20,7 +20,8 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Localizer.Load(Program.NeutraledRoot);   // 与 ntl-gui 共用同一个 Neutraled/gui_lang.txt
+        Localizer.MigrateLegacy(Program.NeutraledRoot);   // C4 P1-5：旧 gui_lang.txt 并入 config.json.lang 后归档
+        Localizer.Load(Program.NeutraledRoot);            // 与 ntl-gui 共用 config.json 的 lang（唯一真源）
 
         Text = Localizer.T("Neutraled Studio — DELTARUNE Mod 编辑器");
         Width = 1280; Height = 800; MinimumSize = new Size(900, 600);
@@ -40,7 +41,7 @@ public sealed class MainForm : Form
         Btn("保存", () => SaveFile(false));
         toolbar.Items.Add(new ToolStripSeparator());
         Btn("部署当前章节", () => _ = DeployAsync());
-        Btn("启动游戏", Program.LaunchGame);
+        Btn("启动游戏", () => _ = Program.LaunchGameAsync(Log));
         Btn("热重载 live", HotReload);
         toolbar.Items.Add(new ToolStripSeparator());
         Btn("补全 (Ctrl+Space)", () => { _editor.Focus(); _editor.ShowCompletion(); Log(Localizer.T("已触发补全列表")); });
@@ -58,7 +59,7 @@ public sealed class MainForm : Form
         _langCombo.SelectedIndexChanged += (_, _) =>
         {
             Localizer.Current = _langCombo.SelectedIndex == 1 ? "en" : "zh";
-            Localizer.Save(Program.NeutraledRoot);
+            Localizer.SaveConfigLang(Program.NeutraledRoot);   // config.json.lang = 唯一真源
             ApplyLocalizedTexts();
         };
         toolbar.Items.Add(_langCombo);
@@ -277,7 +278,8 @@ public sealed class MainForm : Form
     {
         if (_dirty) SaveFile(true);
         Log(Localizer.T("===== 部署中（先关闭游戏）====="));
-        var rc = await Program.RunBuilderAsync("--deploy --chapter chapter4", Log);
+        // C4 P1-9：不再沉默地永远部署第 4 章 —— 裸 --deploy 的默认目标由 builder 决定（root）
+        var rc = await Program.RunBuilderAsync("--deploy", Log);
         Log(rc == 0 ? Localizer.T("部署完成 ✓") : Localizer.T("部署失败 (exit={0})", rc));
     }
 

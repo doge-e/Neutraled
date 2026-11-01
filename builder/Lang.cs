@@ -27,6 +27,12 @@ public static class Lang
         LangTable_Tools.Fill(En);
         LangTable_Extra.Fill(En);
         LangTable_Features.Fill(En);   // 第十二批：G3M 对等功能（配置档/快照/恢复点/黑名单/GameBanana/队列/插件/主题/语言包/网页界面）
+        LangTable_Baseline.Fill(En);   // C1：原版备份卫生 / baseline 账本 / --verify-backup / --repair-backup
+        LangTable_C2.Fill(En);         // C2：部署只写 live / live 修改归档 / 单一备份写者
+        LangTable_C4.Fill(En);         // C4 P0-1：--deploy-state 按内容哈希判定 live 原版/已部署
+        LangTable_Cli.Fill(En);        // C4 P1-1：--help 分层 / --help --audit / --gen-docs / lint 规则 18
+        LangTable_Config.Fill(En);     // C4 P1-8 / P1-5：config.json 配置键目录 / 语言唯一真源 / --config-* / --lang-resolve
+        LangTable_P12P13.Fill(En);     // C4 P1-2 / P1-3：统一搜索 / 统一下载+导入 / 包探测
     }
 
     /// <summary>英文表命中数（--lang-diag 用）。</summary>
@@ -79,19 +85,13 @@ public static class Lang
         lock (Extra) return Extra.TryGetValue(code, out var t) && t.TryGetValue(key, out var v2) ? v2 : key;
     }
 
-    /// <summary>命令行 --lang 优先；否则 NTL_LANG；否则 config.json 的 lang。</summary>
+    /// <summary>命令行 --lang 优先；否则 NTL_LANG；否则 config.json 的 lang；都没有则 zh。
+    /// 解析逻辑收敛到 ConfigSchema.ResolveLang（--lang-resolve 与 GUI 共用同一套顺序）。</summary>
     public static void Init(string? cliLang, string? gameRoot)
     {
-        if (!string.IsNullOrWhiteSpace(cliLang)) { Set(cliLang); return; }
-        var env = Environment.GetEnvironmentVariable("NTL_LANG");
-        if (!string.IsNullOrWhiteSpace(env)) { Set(env); return; }
         try
         {
-            if (string.IsNullOrWhiteSpace(gameRoot)) return;
-            // 统一走 ConfigFile：裸 JsonNode.Parse 在「config.json 有重复键」时必抛，
-            // 而这里 catch 之后会静默保持 zh（玩家选了别的语言却仍显示中文）。
-            var node = ConfigFile.Load(gameRoot);
-            Set(node["lang"]?.GetValue<string>());
+            Set(ConfigSchema.ResolveLang(gameRoot, cliLang).Code);
         }
         catch { /* 配置读不了就保持 zh，绝不影响部署 */ }
     }

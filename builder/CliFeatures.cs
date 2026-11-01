@@ -108,17 +108,22 @@ public static class CliFeatures
     /// <summary>执行一条新功能命令；返回进程退出码。</summary>
     public static int Run(string gameRoot, string cmd, string[] args)
     {
-        Console.WriteLine(L("游戏根: {0}", gameRoot));
+        // --json 的输出必须是纯 JSON（stdout 不能混中文抬头/加载日志）；其余命令保持原样。
+        bool json = args.Contains("--json", StringComparer.Ordinal);
+        bool pureJson = json && cmd is "profile-list" or "gb-search" or "gb-install";
+        if (!pureJson) Console.WriteLine(L("游戏根: {0}", gameRoot));
         try
         {
-            // 外部语言包要在任何输出之前生效（config.json 的 lang 若为 ja/ru…，此处灌表）
-            LangPacks.LoadAllExternal(gameRoot);
+            // 外部语言包要在任何输出之前生效（config.json 的 lang 若为 ja/ru…，此处灌表）；
+            // 纯 JSON 输出时跳过：加载会往 stdout 打一行「已加载 N 个外部语言包」，破坏可解析性，
+            // 而配置档清单的字段（id/name/enabled/chapters…）与语言包无关。
+            if (!pureJson) LangPacks.LoadAllExternal(gameRoot);
             Lang.SetCode(LangPackRequested(gameRoot, args));
 
             switch (cmd)
             {
                 // ---- 配置档 ----
-                case "profile-list": Profiles.PrintList(gameRoot); return 0;
+                case "profile-list": return Profiles.PrintList(gameRoot, json);
                 case "profile-show":
                 {
                     var showId = Tail(args, "--profile-show").FirstOrDefault();
@@ -300,8 +305,23 @@ public static class CliFeatures
                 case "gb-search":
                 {
                     var t = Tail(args, "--gb-search");
-                    if (t.Count < 1) return Usage("--gb-search <关键词> [--per-page N]");
-                    return GbBrowse.Search(gameRoot, string.Join(' ', t), OptInt(args, "--per-page", 15)).GetAwaiter().GetResult();
+                    int perPage = 15;
+                    var pp = Opt(args, "--per-page");
+                    if (pp != null && !int.TryParse(pp, out perPage))
+                    {
+                        Console.Error.WriteLine(L("[错误] --per-page 需要整数: {0}", pp));
+                        return 2;
+                    }
+                    // 旧名别名：与 --search 共用 GbSearch.Run（默认过滤黑名单；--dry-run 零网络）。
+                    return GbSearch.Run(gameRoot, new SearchOptions
+                    {
+                        Query = string.Join(' ', t),
+                        PerPage = perPage,
+                        UseBlocklist = !Flag(args, "--no-blocklist"),
+                        Json = json,
+                        DryRun = Flag(args, "--dry-run"),
+                        Alias = "--gb-search",
+                    });
                 }
                 case "gb-files":
                 {
@@ -313,10 +333,34 @@ public static class CliFeatures
                 {
                     var t = Tail(args, "--gb-install");
                     if (t.Count < 1 || !int.TryParse(t[0], out var id)) return Usage("--gb-install <modId> [--file N] [--chapter 章节] [--force]");
-                    // 下载完成后要真的导入 mod：钩子原先只在 --web 启动时注入 ⇒ CLI 永远停在「已下载未安装」
-                    GbBrowse.ImportHook ??= Program.ImportModForHook;
-                    return GbBrowse.Install(gameRoot, id, Opt(args, "--gb-type"), Opt(args, "--file") is string fs && int.TryParse(fs, out var fid) ? fid : null,
-                                            Opt(args, "--chapter"), Flag(args, "--force")).GetAwaiter().GetResult();
+                    int? fileIndex = null;
+                    var fs = Opt(args, "--file");
+                    if (fs != null)
+                    {
+                        if (!int.TryParse(fs, out var fid))
+                        {
+                            Console.Error.WriteLine(L("[错误] --file 需要整数: {0}", fs));
+                            return 2;
+                        }
+                        fileIndex = fid;
+                    }
+                    var chapter = Opt(args, "--chapter");
+                    // 旧名别名：与 --install-id 共用 InstallFlow.Run（探测 → 下载 → 导入）。
+                    // 新入口的 --as / --as-delta 也在这里接上，旧名不是功能子集。
+                    return InstallFlow.Run(gameRoot, new InstallOptions
+                    {
+                        Value = id.ToString(),
+                        FileIndex = fileIndex,
+                        Type = Opt(args, "--gb-type") ?? "Mod",
+                        Chapter = chapter,
+                        ChapterExplicit = chapter != null,
+                        As = Opt(args, "--as"),
+                        AsDelta = Flag(args, "--as-delta"),
+                        Force = Flag(args, "--force"),
+                        DryRun = Flag(args, "--dry-run"),
+                        Json = json,
+                        Alias = "--gb-install",
+                    });
                 }
                 case "queue-list": DownloadQueue.PrintList(gameRoot); return 0;
                 case "queue-add":
@@ -471,6 +515,11 @@ public static class CliFeatures
     {
         var explicitCode = Opt(args, "--lang");
         if (!string.IsNullOrWhiteSpace(explicitCode)) return explicitCode!;
+        // NTL_LANG 与 --lang 同级（Lang.Init 已按它切过语言）；这里若只看 config.json，
+        // 会把 --gb-search / --gb-install 的新增输出重新压回中文（英文模式下混 CJK）。
+        var envCode = Environment.GetEnvironmentVariable("NTL_LANG");
+        if (!string.IsNullOrWhiteSpace(envCode) &&
+            !string.Equals(envCode, "auto", StringComparison.OrdinalIgnoreCase)) return envCode!;
         return ConfigFile.GetString(gameRoot, "lang") ?? "zh";
     }
 }

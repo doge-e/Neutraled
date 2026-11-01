@@ -475,6 +475,8 @@ public static class Cache
             if (!File.Exists(src)) continue;
             var dst = t == "root" ? Paths.RootDataWin(gameRoot) : Paths.ChapterDataWin(gameRoot, t);
             Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+            // C2：缓存应用是隐式写 live（--launch 命中缓存时）——覆盖前先归档被外部改过的 live（不变量 I5）
+            if (File.Exists(dst)) LiveEdits.ArchiveIfEdited(gameRoot, t, dst, "cache-apply");
             if (File.Exists(dst)) { try { File.SetAttributes(dst, FileAttributes.Normal); File.Delete(dst); } catch { } }
             try
             {

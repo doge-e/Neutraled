@@ -34,7 +34,7 @@ public static class LangTable_Mods
         d["     验证: {0} → {1}"] = "     Verify: {0} → {1}";
         d["    1) 用 UTMT 打开 chapterN_windows/data.win，运行该 .csx，另存为 new.win"] = "    1) open chapterN_windows/data.win with UTMT, run that .csx, and save as new.win";
         d["    1) 编辑 main.lua（随便改一行 print）"] = "    1) edit main.lua (change any print line)";
-        d["    2) 关闭游戏后运行 Neutraled\\launch.ps1"] = "    2) close the game, then run Neutraled\\launch.ps1";
+        d["    2) 运行 Neutraled\\launch.ps1（默认 root；-Chapter chapter1 指定章节）"] = "    2) run Neutraled\\launch.ps1 (root by default; -Chapter chapter1 picks a chapter)";
         d["    3) 看日志里的 ["] = "    3) look in the log for [";
         d["    README.md      使用说明"] = "    README.md      usage notes";
         d["    [{0}] 读取 {1}: {2}"] = "    [{0}] read {1}: {2}";
@@ -188,8 +188,8 @@ public static class LangTable_Mods
         d["  ✅ 没有用到已知未实现的 API"] = "  ✅ no known unimplemented API was used";
         d["  下一步   : ntl-builder.exe --deploy --chapter root   （之后在章节选择器里就能看到它）"] = "  Next     : ntl-builder.exe --deploy --chapter root   (it will then show up in the chapter selector)";
         d["  下一步:"] = "  Next:";
-        d["  下一步: 关闭游戏后运行 launch.ps1 部署并启动"] = "  Next: close the game, then run launch.ps1 to deploy and start";
-        d["  下一步: 编辑 main.lua -> 关游戏 -> 运行 Neutraled\\launch.ps1"] = "  Next: edit main.lua -> close the game -> run Neutraled\\launch.ps1";
+        d["  下一步: 运行 launch.ps1 部署并启动（默认 root；-Chapter chapter1 指定章节）"] = "  Next: run launch.ps1 to deploy and start (root by default; -Chapter chapter1 picks a chapter)";
+        d["  下一步: 编辑 main.lua -> 运行 Neutraled\\launch.ps1"] = "  Next: edit main.lua -> run Neutraled\\launch.ps1";
         d["  不支持: "] = "  unsupported: ";
         d["  产物: {0} MB  对象={1} 代码={2} 精灵={3} 声音={4}"] = "  Product: {0} MB  objects={1} code={2} sprites={3} sounds={4}";
         d["  共 {0} 个"] = "  {0} total";
@@ -267,7 +267,9 @@ public static class LangTable_Mods
         d["===== 传统 mod 导入（转 ntl 格式） ====="] = "===== legacy mod import (convert to ntl format) =====";
         d["===== 存档备份 ====="] = "===== save backup =====";
         d["===== 导入结果 ====="] = "===== import result =====";
-        d["===== 已安装的 mod ====="] = "===== installed mods =====";
+        d["===== 已安装的 mod（与部署扫描同源）====="] = "===== installed mods (same scan as deploy) =====";
+        d["  共 {0} 个（启用 {1} 个）"] = "  {0} total ({1} enabled)";
+        d["禁用"] = "disabled";
         d["===== 给融合版 Kristal 注入控制台 ====="] = "===== injecting the console into a fused Kristal =====";
         d["[警告] mod_config.json 解析失败: "] = "[Warning] mod_config.json parse failed: ";
         d["[警告] modding.xml 解析失败: "] = "[Warning] modding.xml parse failed: ";

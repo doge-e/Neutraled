@@ -193,7 +193,7 @@ Get-NetTCPConnection -LocalPort 7933 -State Listen -ErrorAction SilentlyContinue
 - 「执行队列（下载并安装）」→ `POST /api/queue/run {autoInstall:true}`；
 - 「执行队列（仅下载）」→ `{autoInstall:false}`。
 
-两者都会弹确认。队列本身是在命令行 `--dl-add`、`--gb-install` 累积出来的，网页只是把它们跑完。
+两者都会弹确认。队列本身是在命令行 `--dl-add`、`--install-id`（旧名 `--gb-install`）累积出来的，网页只是把它们跑完。
 
 ### 4.7 插件
 

@@ -10,6 +10,16 @@ if (variable_global_exists("ntl_focus_frame") && variable_global_exists("ntl_foc
 {
     return global.ntl_focus_now;
 }
+// ★ 开发/自动化逃生门（2026-10-31，C5 用）：<游戏根>\Neutraled\input-no-focus.flag 存在时
+//   直接认为窗口在前台。原因：本机被 GameInputSvc 长期占住前台，win32 SetForegroundWindow/
+//   SwitchToThisWindow 都抢不到（真机实测），而无头自动化仍能注入按键、需要读键逻辑放行。
+//   正式游玩不要创建这个文件（它会让后台按键漏进游戏，而这正是本函数要防的）。
+if (file_exists(program_directory + "Neutraled/input-no-focus.flag"))
+{
+    global.ntl_focus_now = 1;
+    global.ntl_focus_frame = global.ntl_frames;
+    return 1;
+}
 var _f = 1;
 var _paused = -1;
 try { _paused = os_is_paused(); } catch (e) { _paused = -1; }

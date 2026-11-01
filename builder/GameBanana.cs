@@ -45,9 +45,7 @@ public static class GameBanana
     /// <summary>搜索 mod（只保留 Mod / Wip / Sound / Script 类型）。</summary>
     public static async Task<List<GbSearchResult>> SearchAsync(string query, int perPage = 15)
     {
-        var url = $"https://gamebanana.com/apiv11/Util/Search/Results?_sModelName=Mod&_sOrder=best_match" +
-                  $"&_sSearchString={Uri.EscapeDataString(query)}&_nPerpage={perPage}" +
-                  $"&_idGameRow={DeltaruneGameId}";
+        var url = SearchUrl(query, perPage);
         var json = await Http.GetStringAsync(url);
         using var doc = JsonDocument.Parse(json);
         var list = new List<GbSearchResult>();
@@ -72,6 +70,12 @@ public static class GameBanana
         }
         return list;
     }
+
+    /// <summary>搜索 URL 的唯一拼装点（--search --dry-run 与真实请求共用，保证打印的就是请求的）。</summary>
+    public static string SearchUrl(string query, int perPage) =>
+        $"https://gamebanana.com/apiv11/Util/Search/Results?_sModelName=Mod&_sOrder=best_match" +
+        $"&_sSearchString={Uri.EscapeDataString(query)}&_nPerpage={perPage}" +
+        $"&_idGameRow={DeltaruneGameId}";
 
     /// <summary>取某个 mod 的文件列表。</summary>
     public static async Task<List<GbFile>> GetFilesAsync(int modId, string type = "Mod")

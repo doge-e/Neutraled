@@ -3,6 +3,8 @@
 > 一句话：这一篇解决「不开浏览器也能从 GameBanana 找 DELTARUNE 的 mod、下载下来、排进队列，并把不想要的东西挡在搜索结果外面」。
 >
 > 本文是 [MANAGE.md](MANAGE.md) §5/§6 的深挖版：只讲 GameBanana、下载队列、黑名单这三块；下载完之后怎么导入、导入的格式转换规则看 [PIPELINE.md](PIPELINE.md)；部署与缓存看 [PIPELINE.md](PIPELINE.md)。
+>
+> **入口名称（2026-10 起）**：标准入口是 `--search` / `--install-id` / `--install-url` / `--route-probe`；旧名 `--gb-search`、`--gb-install`、`--fetch`、`--fetch-mod` 仍然可用但会打印一行 `[deprecated]`。旧名与新名现在共用同一实现，所以下面「旧名时代」的输出现场只作历史参考，行为差异已在 §3 标注。
 
 ## 目的
 
@@ -10,10 +12,10 @@ GameBanana 相关的功能在 builder 里是四个开关族加一个黑名单：
 
 | 开关族 | 干什么 |
 |---|---|
-| `--gb-search` / `--gb-files` / `--gb-install` | 搜索、看文件表、下载并导入 |
+| `--search` / `--gb-files` / `--install-id` | 搜索、看文件表、下载并导入（旧名 `--gb-search` / `--gb-install` 是可用别名） |
 | `--queue-add` / `--queue-list` / `--queue-run` / `--queue-remove` | 下载队列（先排队、之后一次性下载） |
 | `--block-list` / `--block-add` / `--block-remove` | 黑名单（只过滤搜索结果列表） |
-| `--fetch-mod <gamebananaId> [--model Mod\|Wip]` | 更早的入口：下载 + 自动识别格式转换，见 [PIPELINE.md](PIPELINE.md) |
+| `--install-url <url>` / `--route-probe <路径>` | 直链下载并导入、只读探测本地包型（旧名 `--fetch` / `--fetch-mod` 已并入 `--install-id`） |
 
 GameBanana 上 **DELTARUNE 的 game id 是 6755**（源码里写作 `GameBanana.DeltaruneGameId = 6755`），所有搜索都带 `_idGameRow=6755`，所以不会搜到别的游戏。注意 Kristal 是**另一个游戏条目（id 16251）**，不在 6755 里，见 [PIPELINE.md](PIPELINE.md)。
 
@@ -30,10 +32,11 @@ $exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0
 [语言] 已加载 7 个外部语言包: de, es, fr, ja, ko, ru, zh-tw（共 15715 条译文）
 ```
 
-## 1. 搜索：`--gb-search`
+## 1. 搜索：`--search`
 
 ```powershell
-& $exe --gb-search kris
+& $exe --search kris
+# 旧名也行：& $exe --gb-search kris（会多一行 [deprecated]）
 ```
 
 ```text
@@ -47,8 +50,9 @@ $exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0
 [GB] 共 13 条结果
 ```
 
-- 关键词可以是多个词，builder 用空格拼起来一起提交：`--gb-search kris over kris`。
-- `--per-page N` 只是**透传**给 API 的参数，**返回条数由 GameBanana 决定**。实测 `--gb-search "kris over kris" --per-page 3` 的表头写「每页 3 条」，但照样返回 13 条。
+- 新入口 `--search` 只吃紧随其后的**一个** token，多词请加引号：`--search "kris over kris"`；旧名 `--gb-search` 仍把尾部多个 token 拼成一个关键词（历史行为）。
+- `--per-page N` 只是**透传**给 API 的参数，**返回条数由 GameBanana 决定**。实测 `--search "kris over kris" --per-page 3` 的表头写「每页 3 条」，但照样返回 13 条。
+- `--no-blocklist` 关闭黑名单过滤；`--dry-run` 零网络（只打印计划，`--json` 里 `network=false`）。
 - 没有结果时打一行「[GB] 没有搜索结果」；搜索失败时打「[GB] 搜索失败: …」并返回 1。
 - 表格里的 **下载量列恒为 0、更新时间列为空**：这个搜索端点的返回里没有这两个字段的值，不是你的网络问题。
 
@@ -79,13 +83,18 @@ $exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0
 
 第二行看着莫名其妙，其实是 API 对未知类型返回了**非 JSON 文本**，解析器报的是那句话。类型名只允许字母、最长 16 位（见 §3）。
 
-## 3. 一键安装：`--gb-install`
+## 3. 一键安装：`--install-id`
 
 ```powershell
-& $exe --gb-install <modId> [--file N] [--chapter 章节] [--force]
+& $exe --install-id <modId> [--file N] [--as KIND] [--as-delta] [--dry-run] [--json]
+& $exe --install-url <url> [--as KIND] [--dry-run] [--json]
 ```
 
-流程是：取文件表 → 选中一个文件（`--file` 指定，否则取第一个）→ 下载到 `Neutraled/dl/` → 交给导入器导入。实测错误路径：
+流程是：取文件表 → 选中一个文件 → 下载到 `Neutraled/dl/` → `PackageRouter` 探测包型（xdelta / data.win / .ntlmod / Kristal / GM3P / 外部引擎）→ 路由到对应导入器。**`--file` 现在是 1-based 序号（不是旧的「文件 id」）**；不指定时 `--install-id` 取第一个文件，旧名 `--fetch-mod` 保留「取最大文件」的历史行为。**命令行现在会自动导入**（旧版本「只下载不导入、退出码 2」的说法已作废，见下方 §3 备注）。
+
+`--dry-run` 零网络：只输出「探测 → 下载 → 导入」计划，`--json` 是纯 JSON（`schemaVersion=1`）。
+
+历史错误路径（旧名时代的输出，命令仍可用但参数语义以本节为准）：
 
 ```powershell
 & $exe --gb-install 705025 --file 999999
@@ -126,14 +135,9 @@ $exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0
 [GB] 请让 Program.cs 启动时给 GbBrowse.ImportHook 赋值，或手工导入上面的文件
 ```
 
-**退出码是 2，不是 0** —— 命令行上的 `--gb-install` 只下载、不自动导入。原因是导入钩子只在网页界面那条路上注入：
+**命令行会自动导入（2026-10 起）**：`--install-id` / `--install-url` 以及旧名 `--fetch` / `--fetch-mod` / `--gb-install` 都走同一个 `builder/InstallFlow.cs`（探测 → 下载 → 导入），不再停在「已下载未安装」。上面那段「未注入导入器」是旧版本的历史输出，保留作对照。
 
-| 入口 | 会不会自动导入 |
-|---|---|
-| `--gb-install` / `--queue-run`（命令行） | **不会**，下载完成后停在「已下载未安装」，退出码 2 |
-| `--web` 网页界面里的 GameBanana 面板 | 会，面板启动时注入了导入器 |
-
-这一点和 [MANAGE.md](MANAGE.md) §6 里「会调用与 `--import-mod` 相同的导入器」的说法**只在网页界面成立**。命令行下请把打印出来的路径交给 `--import-mod`，或者直接用 `--web`。
+注意 `--queue-run` 仍是「只下载队列」的语义（队列项由网页面板或 `--install-*` 累积），需要导入时用 `--install-*` 或网页面板。
 
 ### 退出码
 
@@ -203,7 +207,7 @@ $exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0
 两个实测踩坑：
 
 - **重复添加照样返回 0**：先打一行「[黑名单] 已存在 999001」，紧接着还是打「[黑名单] 已加入 999001」，退出码 0。要判断有没有真加进去，看第一行。
-- **黑名单只过滤搜索列表**。源码里过滤只发生在两处：`--gb-search` 的结果、网页界面的搜索结果。直接给 mod id 的 `--gb-files`、`--gb-install`、`--fetch-mod` **不受黑名单影响** —— 黑名单是「别让我再看到它」，不是「禁止安装它」。
+- **黑名单只过滤搜索列表**。源码里过滤只发生在两处：`--search`（含旧名 `--gb-search`）的结果、网页界面的搜索结果。直接给 mod id 的 `--gb-files`、`--install-id`（含旧名 `--gb-install` / `--fetch-mod`）**不受黑名单影响** —— 黑名单是「别让我再看到它」，不是「禁止安装它」。
 - `blacklist.json` 坏了不会让程序崩：读不了就按空表处理，并打一行「[黑名单] 文件损坏，已忽略: …」。这个文件也接受尾逗号与 `//` 注释，手改不用太小心。
 
 ## 5. 下载队列：`--queue-*`
@@ -346,7 +350,7 @@ game id 过滤是真的生效（实测把 `_idGameRow` 从 6755 改成 9999，�
 
 - **搜索结果的「下载量」永远是 0、「更新时间」永远是空**：端点没返回这两个值。
 - **`--per-page` 不生效**：它只是透传参数，返回条数由 GameBanana 决定。
-- **命令行的 `--gb-install` / `--queue-run` 不会自动安装**，退出码 2 / 1；要自动安装就用 `--web` 面板，或者自己接 `--import-mod`。
+- **命令行 `--install-id` / `--install-url` 会自动安装**；`--queue-run` 仍只负责下载队列。历史版本的「命令行不自动安装」已作废。
 - **`--block-remove` 必须带与添加时相同的 `--kind`**，否则「没找到」并返回 1。
 - **重复 `--block-add` 仍返回 0**，别只看退出码。
 - **黑名单管不到按 id 直接下载**：它只过滤搜索列表。

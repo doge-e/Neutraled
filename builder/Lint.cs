@@ -206,6 +206,15 @@ public static class Lint
         // ---------- 第五批规则（LintRules5：资源索引不许写死）----------
         LintRules5.Run(neutraledRoot, issues);
 
+        // ---------- 第六批规则（LintRules6：命令行目录不许和 --help 漂移，C4 P1-1）----------
+        LintRules6.Run(issues);
+
+        // ---------- 第七批规则（LintRules7：GUI/Studio 不许写死章节默认值，C4 P1-9）----------
+        LintRules7.Run(neutraledRoot, issues);
+
+        // ---------- 第八批规则（LintRules8：前端调 builder 的开关必须存在，C4 P1-11）----------
+        LintRules8.Run(neutraledRoot, issues);
+
 return issues;
     }
 

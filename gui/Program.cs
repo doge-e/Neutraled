@@ -68,16 +68,24 @@ public static class Program
                 return;
             }
 
+        // 无窗口自检/自动化入口（C4 P1-12）：绝不创建窗口，只读文件或转发 builder。
+        //   ntl-gui.exe --headless alerts|selftest|plan|deploy-state|lang-report [--json]
+        if (Headless.IsHeadless(args))
+        {
+            Environment.ExitCode = Headless.Run(args);
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
         Application.Run(new MainForm());
     }
 
     /// <summary>结构自检：构造工具箱对话框（不显示），量控件边界/文字高度并打印开关与代价文案。
-    /// 用法: ntl-gui.exe --check-toolbox-layout [zh|en]（不带语言就沿用 gui_lang.txt）。</summary>
+    /// 用法: ntl-gui.exe --check-toolbox-layout [zh|en]（不带语言就沿用 config.json 的 lang）。</summary>
     private static void CheckToolboxLayout(string[] args)
     {
         try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
-        using var owner = new MainForm();          // 构造里会 Localizer.Load(gui_lang.txt)，所以语言在这之后再定
+        using var owner = new MainForm();          // 构造里会 Localizer.Load(config.json.lang)，所以语言在这之后再定
         foreach (var a in args)
             if (a is "zh" or "en") Localizer.Current = a;
         Console.WriteLine($"[layout] language = {Localizer.Current}");
@@ -121,9 +129,9 @@ public static class Program
 
         Console.WriteLine("[selfcheck] fast-deploy = " + (DeployOptions.FastDeploy ? "on" : "off"));
         Console.WriteLine("[selfcheck] settings    = " + DeployOptions.SettingsPath(NeutraledRoot));
-        Console.WriteLine("[selfcheck] deploy          : " + DeployOptions.AppendFastDeploy("--deploy --chapter chapter4"));
+        Console.WriteLine("[selfcheck] deploy          : " + DeployOptions.AppendFastDeploy("--deploy --chapter chapter1"));
         Console.WriteLine("[selfcheck] deploy all      : " + DeployOptions.AppendFastDeploy("--deploy --chapter all"));
-        Console.WriteLine("[selfcheck] deploy + launch : " + DeployOptions.AppendFastDeploy("--launch chapter4"));
+        Console.WriteLine("[selfcheck] deploy + launch : " + DeployOptions.AppendFastDeploy("--launch chapter1"));
     }
 
     /// <summary>后台起一个"外部章节守候"进程（不阻塞 GUI）。
@@ -177,20 +185,6 @@ public static class Program
         return p.ExitCode;
     }
 
-    /// <summary>通过 Steam 启动游戏。</summary>
-    public static void LaunchGame()
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "steam://rungameid/1671210",
-                UseShellExecute = true
-            });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(Localizer.T("启动游戏失败: {0}", ex.Message), "Neutraled");
-        }
-    }
+    // C4 P1-13 / P1-6：这里原来有一个 LaunchGame()（裸 steam:// 启动，绕过 --launch 的部署与缓存），
+    // 已无任何调用点 —— 留着只会让人误以为还能用，所以删除。
 }

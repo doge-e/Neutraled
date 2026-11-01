@@ -41,6 +41,7 @@
 ```powershell
 ntl-builder --profile-new 剧情 --name "只看剧情" --from default   # 以现有档为底
 ntl-builder --profile-list                                        # 列出全部档 + 当前生效档
+ntl-builder --profile-list --json                                 # 同一份清单的机器可读结构（GUI 只读入口读它）
 ntl-builder --profile-show 剧情                                   # 看某个档的启用集合
 ntl-builder --profile-use 剧情                                    # 应用（改 mod.json 的 enabled）
 ntl-builder --profile-copy 剧情 剧情-测试 --name "剧情（实验）"
@@ -86,7 +87,7 @@ ntl-builder --restore-delete rp-20260926-120641 [--force]
 
 ### 5. 黑名单 blacklist
 
-在 `--gb-search` 的结果里屏蔽不想要的条目（按 GameBanana id、名称子串或类别）。
+在 `--search`（旧名 `--gb-search`）的结果里屏蔽不想要的条目（按 GameBanana id、名称子串或类别）。
 
 ```powershell
 ntl-builder --block-add 123456 --kind id --note "换皮包"
@@ -98,9 +99,11 @@ ntl-builder --block-remove 123456 --kind id
 ### 6. GameBanana 浏览与下载队列
 
 ```powershell
-ntl-builder --gb-search "pizza tower" [--per-page 30]
+ntl-builder --search "pizza tower" [--per-page 30] [--no-blocklist] [--dry-run] [--json]
 ntl-builder --gb-files 123456 [--gb-type Mod]
-ntl-builder --gb-install 123456 [--file 0] [--chapter chapter3] [--force]   # 下载 + 自动识别格式 + 导入
+ntl-builder --install-id 123456 [--file 1] [--as xdelta|datawin|ntlmod|kristal|gm3p|external] [--dry-run] [--json]   # 下载 + 自动探测包型 + 导入（--file 是 1-based 序号）
+ntl-builder --install-url https://... [--as KIND] [--dry-run]   # 直链下载并导入
+ntl-builder --route-probe <路径|目录> [--json]                # 只读探测包型（不下载/不导入）
 ntl-builder --queue-add 123456 --name "某 mod" [--file 1] [--url 直链] [--size 字节]
 ntl-builder --queue-list
 ntl-builder --queue-run [--no-install] [--delete-after]
@@ -109,7 +112,7 @@ ntl-builder --queue-remove <条目id> [--delete-file]
 
 * 下载优先用系统 `curl`（支持断点续传、4 次重试）；非 Windows 平台或没有 curl 时回退到内置 HTTP 客户端。
 * 队列状态机：`queued → downloading → downloaded → ready-to-install → installed`（失败 / 取消有独立状态）。
-* `--gb-install` 会调用与 `--import-mod` 相同的导入器（含 Kristal 转换），因此 **导入结果与手动导入完全一致**（CLI 与 `--web` 两条路径都会注入导入钩子）。
+* `--install-id` / `--install-url`（以及旧名 `--fetch` / `--fetch-mod` / `--gb-install`）会调用与 `--import-mod` 相同的导入器（含 Kristal 转换），因此 **导入结果与手动导入完全一致**；包型由 `PackageRouter` 自动探测，也可用 `--as` 强制。
 * `--queue-run` 默认下载完就安装；`--no-install` 只下载（状态停在 `ready-to-install`）。
 
 ### 7. 插件与钩子
@@ -1419,7 +1422,7 @@ ntl-builder.exe --snapshot-list
 7. **失败消息在 stderr 且退出码不统一**：`create` / `import` / 名字非法是 **1**（stderr 带 `[错误] ` 前缀），而 `--snapshot-use` 找不到快照是 **2**（stdout 一行 `找不到快照: …`）。脚本要同时看退出码和 stderr。
 8. **`--snapshot-auto` 只认扫描到的 mod 列表**：扫描器跳过的目录（不是 `root`/`chapterN` 叶子、`mod.json` 坏掉等）不会进快照，也不会被提示。
    另外它按「mod id 去重」——同一个 mod 的多个章节目录只会存一份（快照的是该 mod 的**一个**目录，多章节 mod 的其它章节不在这份快照里）。
-9. **未验证的部分**：GUI / Web / 插件侧的快照入口（只测了 CLI）；7z/rar 压缩包导入（实测只用了 zip，代码走同一个 SharpCompress 入口）；正在运行的游戏进程并发读写 mod 目录；macOS/Linux（本机 Windows 10 实测，路径比较在源码里按平台分支）。
+9. **未验证的部分**：Web / 插件侧的快照入口（只测了 CLI；GUI 没有快照入口——C4 P1-13 定案快照属于 CLI/自动化能力，GUI 只保留只读的配置档列表）；7z/rar 压缩包导入（实测只用了 zip，代码走同一个 SharpCompress 入口）；正在运行的游戏进程并发读写 mod 目录；macOS/Linux（本机 Windows 10 实测，路径比较在源码里按平台分支）。
 
 ---
 
@@ -1833,7 +1836,7 @@ ntl-builder.exe --block-remove 12345
 9. **黑名单不拦已装的 mod**，只在 GameBanana 搜索/浏览/下载入口过滤；`--blacklist-*` 这个开关**不存在**（真开关是 `--block-list` / `--block-add` / `--block-remove`）。
 10. **黑名单的 `name` / `category` 是子串匹配**，容易误伤：`--block-add Rush --kind name` 会把任何名字里含 `Rush` 的条目一起挡掉。
 11. **`--block-add` 恒退出 0**：kind 写错或值非法时只打一行警告，CLI 仍报 `[黑名单] 已加入 <值>`（实际没写）；重复加入同理（`已存在 …` + `已加入 …`）。
-12. **未验证的部分**：GUI / Web / 插件的恢复点入口；退出码 3（游戏正在运行）的真机复现；游戏运行中的并发行为；macOS/Linux（本机 Windows 10 实测）。
+12. **未验证的部分**：Web 的恢复点入口（GUI 没有恢复点入口——C4 P1-13 定案恢复点属于 CLI/自动化能力）；退出码 3（游戏正在运行）的真机复现；游戏运行中的并发行为；macOS/Linux（本机 Windows 10 实测）。
 
 ---
 

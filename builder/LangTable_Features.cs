@@ -21,7 +21,7 @@ public static class LangTable_Features
         d["  --profile-copy <源> <目标>      复制配置档"] = "  --profile-copy <SRC> <DST>      Copy a profile";
         d["  --profile-delete <id> [--force] 删除配置档（活动档需 --force）"] = "  --profile-delete <id> [--force] Delete a profile (the active one needs --force)";
         d["  --profile-export <id> [--out 文件] / --profile-import <文件> [--force]   导出与导入"] = "  --profile-export <id> [--out FILE] / --profile-import <FILE> [--force]   Export / import";
-        d["  --profile-list                  列出配置档（* = 当前活动档）"] = "  --profile-list                  List profiles (* = active profile)";
+        d["  --profile-list [--json]         列出配置档（* = 当前活动档；--json：GUI 只读入口读它）"] = "  --profile-list [--json]         List profiles (* = active; --json: read by the GUI read-only entry)";
         d["  --profile-new <id> [--name 名] [--from 档] [--desc 说明]    新建配置档"] = "  --profile-new <id> [--name NAME] [--from PROFILE] [--desc NOTE]   Create a profile";
         d["  --profile-rename <旧> <新>      重命名配置档"] = "  --profile-rename <OLD> <NEW>    Rename a profile";
         d["  --profile-show [id]             查看配置档内容"] = "  --profile-show [id]             Show a profile's contents";
