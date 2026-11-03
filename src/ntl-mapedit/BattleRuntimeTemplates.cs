@@ -1543,6 +1543,57 @@ function ntlb_cutscene_tick()
         return 0;
     }
     global.ntlb_cut_frames += 1;
+    if (_kind == "event" || _kind == "script") {
+        // 原版代码引用步骤：首帧执行一次原版脚本/对象事件，之后按 frames 等待。
+        if (global.ntlb_cut_frames == 1) {
+            var _scr = ntlb_str(_st, "script", "");
+            var _si = -1;
+            if (_scr != "") _si = asset_get_index(_scr);
+            if (_si < 0) {
+                ntl_log("ntlb", "[剧情] [警告] 找不到原版脚本: " + _scr + "（步骤跳过）");
+            } else {
+                var _eobj = ntlb_str(_st, "evObject", "");
+                var _tgt = noone;
+                if (_eobj != "") {
+                    var _oi = asset_get_index(_eobj);
+                    if (_oi < 0) {
+                        ntl_log("ntlb", "[剧情] [警告] 找不到对象: " + _eobj + "，改为直接执行脚本");
+                    } else {
+                        var _pn = instance_number(_oi);
+                        if (_pn <= 0) {
+                            ntl_log("ntlb", "[剧情] [警告] 场景里没有 " + _eobj + " 的实例，改为直接执行脚本");
+                        } else {
+                            var _px = 0;
+                            var _py = 0;
+                            var _pl = asset_get_index("obj_mainchara");
+                            if (_pl >= 0 && instance_number(_pl) > 0) {
+                                var _pi = instance_find(_pl, 0);
+                                _px = _pi.x;
+                                _py = _pi.y;
+                            }
+                            var _best = instance_find(_oi, 0);
+                            var _bd = point_distance(_px, _py, _best.x, _best.y);
+                            for (var _k = 1; _k < _pn; _k += 1) {
+                                var _cand = instance_find(_oi, _k);
+                                var _cd = point_distance(_px, _py, _cand.x, _cand.y);
+                                if (_cd < _bd) { _bd = _cd; _best = _cand; }
+                            }
+                            _tgt = _best;
+                        }
+                    }
+                }
+                if (_tgt != noone) {
+                    with (_tgt) { script_execute(_si); }
+                    ntl_log("ntlb", "[剧情] 已执行原版代码 " + _scr + "（在对象实例上）");
+                } else {
+                    script_execute(_si);
+                    ntl_log("ntlb", "[剧情] 已执行原版代码 " + _scr);
+                }
+            }
+        }
+        if (global.ntlb_cut_frames >= _fr) ntlb_cutscene_next();
+        return 0;
+    }
     if (_kind == "sound") {
         if (global.ntlb_cut_frames == 1) {
             var _snd = ntlb_str(_st, "sound", "");

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Windows.Forms;
 using UndertaleModLib;
@@ -20,10 +21,123 @@ public static class Program
         return UndertaleIO.Read(fs, (w, imp) => { }, m => { }, false);
     }
 
-    private static void LogCrash(Exception? ex)
+    private static string[] _argv = Array.Empty<string>();
+    private static string _command = "";
+    private const string UsageHint = "运行 ntl-mapedit help 查看全部命令。";
+
+    /// <summary>参数/用法类错误（退出码固定 2，不写崩溃日志）。</summary>
+    private sealed class CliError : Exception
     {
-        // 崩溃日志不能写死开发机路径（A3 §5 第 8 条）：优先 %LOCALAPPDATA%\DRMapEditor\logs，
-        // 失败再退到临时目录；两处都失败就静默放弃（不能因为写日志再崩一次）。
+        public int Code { get; }
+        public CliError(int code, string? message = null) : base(message ?? "") { Code = code; }
+    }
+
+    /// <summary>缺参守卫：打印用法并抛 CliError(2)。</summary>
+    private static void Need(string usage, int minArgs)
+    {
+        if (_argv.Length < minArgs)
+        {
+            Console.Error.WriteLine("用法: ntl-mapedit " + usage);
+            Console.Error.WriteLine("  " + (_command.Length > 0 ? _command : "命令") + " 参数不足（至少需要 " + (minArgs - 1) + " 个参数）。" + UsageHint);
+            throw new CliError(2);
+        }
+    }
+
+    /// <summary>多余参数守卫（maxArgs 含命令本身）：报出多余参数并抛 CliError(2)。</summary>
+    private static void NoExtra(string usage, int maxArgs)
+    {
+        if (_argv.Length > maxArgs)
+        {
+            Console.Error.WriteLine("多余参数: " + string.Join(" ", _argv.Skip(maxArgs)));
+            Console.Error.WriteLine("用法: ntl-mapedit " + usage);
+            Console.Error.WriteLine("  " + UsageHint);
+            throw new CliError(2);
+        }
+    }
+
+    /// <summary>输出文件预处理：目标为目录则报用法错误；父目录为空（相对文件名）时按当前目录处理。</summary>
+    private static string PrepareOutFile(string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (Directory.Exists(full)) throw new CliError(2, "[错误] 输出路径是目录，请指定文件名: " + full);
+        var dir = Path.GetDirectoryName(full);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        return full;
+    }
+
+    /// <summary>输出目录预处理：目标为文件时报用法错误；否则创建目录。</summary>
+    private static string PrepareOutDir(string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (File.Exists(full)) throw new CliError(2, "[错误] 输出路径是文件，请指定目录名: " + full);
+        Directory.CreateDirectory(full);
+        return full;
+    }
+
+    /// <summary>房间名解析：精确匹配优先；单一模糊匹配给提示；多义/无命中抛 CliError(2) 并给候选项。</summary>
+    private static UndertaleRoom ResolveRoom(IEnumerable<UndertaleRoom> rooms, string name)
+    {
+        var list = rooms.ToList();
+        var exact = list.FirstOrDefault(r => string.Equals(GameData.Name(r.Name), name, StringComparison.OrdinalIgnoreCase));
+        if (exact != null) return exact;
+        var matches = list.Where(r => GameData.Name(r.Name).Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (matches.Count == 0)
+            throw new CliError(2, "[错误] 未找到房间: " + name + "（运行 ntl-mapedit rooms <data.win> 查看全部房间名）");
+        if (matches.Count == 1)
+        {
+            Console.Error.WriteLine("[提示] 未精确匹配，使用模糊匹配: " + name + " -> " + GameData.Name(matches[0].Name));
+            return matches[0];
+        }
+        throw new CliError(2, "[错误] 房间名不唯一: " + name + "，候选: " +
+            string.Join(", ", matches.Take(12).Select(m => GameData.Name(m.Name))) + "（请使用完整房间名）");
+    }
+
+    /// <summary>自检套件输入守卫：源必须是存在的 data.win 文件（不是目录）。</summary>
+    private static void CheckSuiteSource(string src, string label)
+    {
+        if (Directory.Exists(src)) throw new CliError(2, label + " FAIL: 源是目录，需要 data.win 文件: " + src);
+        if (!File.Exists(src)) throw new CliError(2, label + " FAIL: 源 data.win 不存在: " + src);
+    }
+
+    /// <summary>自检套件 workDir 守卫：不得位于真实游戏根内；不得是已存在文件（两个套件共用一致口径）。</summary>
+    private static void CheckSuiteWorkDir(string workDir, string label)
+    {
+        string full;
+        try { full = Path.GetFullPath(workDir); }
+        catch (Exception ex) { throw new CliError(2, label + " FAIL: 无效 workDir: " + ex.Message); }
+        if (File.Exists(full)) throw new CliError(2, label + " FAIL: workDir 是文件而不是目录: " + full);
+        var root = FileRole.FindGameRoot();
+        if (root == null) return;
+        var r = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var f = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.Equals(f, r, StringComparison.OrdinalIgnoreCase) ||
+            f.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new CliError(2, label + " FAIL: workDir 位于真实游戏根内，拒绝运行（fixture 只能放 tmp）: " + full);
+    }
+
+    /// <summary>把 common I/O 异常映射为 2（参数/环境错误），其余为 1（内部错误）。</summary>
+    private static int ClassifyError(Exception ex)
+    {
+        if (ex is FileNotFoundException || ex is DirectoryNotFoundException ||
+            ex is UnauthorizedAccessException || ex is IOException ||
+            ex is System.Runtime.InteropServices.ExternalException) return 2;
+        return 1;
+    }
+
+    private static string Describe(Exception ex) => ex switch
+    {
+        FileNotFoundException => "找不到文件（检查 data.win / 输出路径）: " + ex.Message,
+        DirectoryNotFoundException => "找不到目录（检查输出路径的父目录）: " + ex.Message,
+        UnauthorizedAccessException => "没有访问权限（文件只读、被占用或目标是目录）: " + ex.Message,
+        IOException => "读写失败（可能不是有效 data.win，或目标不是可写文件）: " + ex.Message,
+        System.Runtime.InteropServices.ExternalException => "图片保存失败（输出路径可能是目录或不可写）: " + ex.Message,
+        _ => "未处理异常: " + ex.Message,
+    };
+
+    private static string? LogCrash(Exception? ex)
+    {
+        // 崩溃日志不能写死开发机路径：优先 %LOCALAPPDATA%\DRMapEditor\logs，失败再退临时目录；
+        // 两处都失败就静默放弃（不能因为写日志再崩一次）。
         foreach (var dir in new[]
                  {
                      Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DRMapEditor", "logs"),
@@ -33,12 +147,51 @@ public static class Program
             try
             {
                 Directory.CreateDirectory(dir);
-                File.AppendAllText(Path.Combine(dir, "ntl-mapedit-crash.log"),
-                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + (ex?.ToString() ?? "(null)") + Environment.NewLine + Environment.NewLine);
-                return;
+                var file = Path.Combine(dir, "ntl-mapedit-crash.log");
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " cmd=" + _command + " argv=" + string.Join(" ", _argv));
+                sb.AppendLine("提示: Release 构建的堆栈行号仅供参考；请按命令名与异常类型定位（运行 ntl-mapedit help 查看用法）。");
+                sb.AppendLine(ex?.ToString() ?? "(null)");
+                sb.AppendLine();
+                File.AppendAllText(file, sb.ToString());
+                return file;
             }
             catch { }
         }
+        return null;
+    }
+
+    /// <summary>打印各章节 data.win 是否存在（不需要加载，纯文件探测）。</summary>
+    private static void PrintChapterTable()
+    {
+        string root = GameRootDir();
+        int preferred = StartupSettings.ChapterNumber(StartupSettings.Load().DefaultChapter);
+        Console.WriteLine("游戏根: " + root);
+        for (int n = StartupSettings.MinChapter; n <= StartupSettings.MaxChapter; n++)
+        {
+            string live = StartupSettings.LivePath(root, n);
+            string baseline = StartupSettings.BaselinePath(root, n);
+            Console.WriteLine("  Chapter " + n + (preferred == n ? "  ← 默认" : ""));
+            Console.WriteLine("    游戏文件(可保存): " + (File.Exists(live) ? "OK   " + live : "缺失 " + live));
+            Console.WriteLine("    原版基线(只读)  : " + (File.Exists(baseline) ? "OK   " + baseline : "缺失"));
+        }
+    }
+
+    /// <summary>查看启动设置全貌：默认章节、设置文件、最近打开、各章节可用性、解析出的启动目标。</summary>
+    private static void PrintStartupState()
+    {
+        var st = StartupSettings.Load();
+        Console.WriteLine("默认启动章节: " + StartupSettings.Describe(st.DefaultChapter) + "（" + st.DefaultChapter + "）");
+        Console.WriteLine("设置文件: " + StartupSettings.DefaultFile + "（" + (File.Exists(StartupSettings.DefaultFile) ? "存在" : "尚未创建，按 auto 处理") + "）");
+        Console.WriteLine("最近打开: " + (RecentStore.LastPath ?? "(无)"));
+        Console.WriteLine();
+        PrintChapterTable();
+        var t = StartupSettings.ResolveTarget(GameRootDir(), RecentStore.LastPath);
+        Console.WriteLine();
+        Console.WriteLine("下次双击 / 无参数启动将打开: " + t.Path);
+        Console.WriteLine("  来源: " + t.Source + (t.IsBaseline ? "（只读）" : ""));
+        Console.WriteLine();
+        Console.WriteLine("修改: ntl-mapedit default-chapter auto|chapter1..chapter5");
     }
 
     private static int StartGui(string? path)
@@ -64,14 +217,73 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        _argv = args ?? Array.Empty<string>();
+        _command = _argv.Length > 0 ? _argv[0] : "";
+        try
+        {
+            return Run(_argv);
+        }
+        catch (CliError ce)
+        {
+            if (!string.IsNullOrEmpty(ce.Message)) Console.Error.WriteLine(ce.Message);
+            return ce.Code;
+        }
+        catch (Exception ex)
+        {
+            int code = ClassifyError(ex);
+            Console.Error.WriteLine("[错误] " + Describe(ex) + "（命令: " + (_command.Length > 0 ? _command : "(无参数)") + "）");
+            var logPath = LogCrash(ex);
+            if (logPath != null)
+                Console.Error.WriteLine("  崩溃日志: " + logPath + "（堆栈行号仅供参考，请按命令与异常类型定位）");
+            return code;
+        }
+    }
+
+    private static int Run(string[] args)
+    {
         if (args.Length > 0 && args[0] == "gui")
         {
-            return StartGui(args.Length > 1 ? args[1] : null);
+            if (args.Length > 2)
+            {
+                NoExtra("gui [data.win|chapterN]", 2);
+            }
+            if (args.Length > 1)
+            {
+                int wantChapter = StartupSettings.ChapterNumber(args[1]);
+                if (wantChapter > 0)
+                {
+                    string root = GameRootDir();
+                    string live = StartupSettings.LivePath(root, wantChapter);
+                    if (File.Exists(live)) return StartGui(live);
+                    string baseline = StartupSettings.BaselinePath(root, wantChapter);
+                    if (File.Exists(baseline))
+                    {
+                        Console.WriteLine("[提示] chapter" + wantChapter + " 游戏文件不存在，改打开原版基线（只读）: " + baseline);
+                        return StartGui(baseline);
+                    }
+                    throw new CliError(2, "[错误] chapter" + wantChapter + " 的数据文件不存在（已试: " + live + "、" + baseline + "）；运行 ntl-mapedit chapters 查看可用章节");
+                }
+                return StartGui(args[1]);
+            }
+            return StartGui(null);
         }
-        if (args.Length == 0 || args[0] == "help")
+        if (args.Length == 0)
         {
+            // 双击 exe（无参数）直接进 GUI；命令行帮助用 help/-h/--help。
+            return StartGui(null);
+        }
+        if (args[0] == "help" || args[0] == "-h" || args[0] == "--help" || args[0] == "-?")
+        {
+            if (args.Length > 1)
+            {
+                NoExtra("help", 1);
+            }
             Console.WriteLine("GUI / 查看:");
+            Console.WriteLine("  ntl-mapedit                            - 打开地图编辑器（GUI，等同 gui）");
             Console.WriteLine("  ntl-mapedit gui [data.win]              - 打开地图编辑器（GUI）");
+            Console.WriteLine("  ntl-mapedit gui chapterN                - 直接打开第 N 章游戏文件（N=1..5；缺 live 自动退回原版基线）");
+            Console.WriteLine("  ntl-mapedit default-chapter [auto|chapterN] - 查看/设置默认启动章节（双击 exe 或无参数启动时打开哪个章节）");
+            Console.WriteLine("  ntl-mapedit chapters                    - 列出各章节 data.win 是否存在（游戏文件 / 原版基线）");
             Console.WriteLine("  ntl-mapedit rooms <data.win>            - 列出全部房间（名字/宽高）");
             Console.WriteLine("  ntl-mapedit inspect <data.win> <room>   - 逐层 dump 房间结构（实例/瓦片）");
             Console.WriteLine("  ntl-mapedit room-stat <data.win> <room> - 房间汇总：尺寸/图层/实例/图块/背景/瓦片来源");
@@ -79,7 +291,10 @@ public static class Program
             Console.WriteLine("  ntl-mapedit render <data.win> <room> [scale] [out.png] - 把房间渲染成 PNG");
             Console.WriteLine("  ntl-mapedit render-stats <data.win> <room> [scale] [out.json] - 渲染覆盖统计（逐层绘制数/不支持项/黑像素占比）");
             Console.WriteLine("  ntl-mapedit asset-clone-test <data.win> <room> - 复制房间深拷贝自检（Assets Sprite/NineSlice/原生 Tiles）");
-            Console.WriteLine("  ntl-mapedit inspect/sprite/object/texture/probe-room - 资源与底层反射工具");
+            Console.WriteLine("  ntl-mapedit sprite <data.win> [filter]   - 列出精灵帧布局（空纹理帧会跳过并告警）");
+            Console.WriteLine("  ntl-mapedit object <data.win> [filter]   - 列出游戏对象定义");
+            Console.WriteLine("  ntl-mapedit probe-room <data.win> <room> - 实例创建顺序/引用一致性探测");
+            Console.WriteLine("  ntl-mapedit texture <data.win> <outDir>  - 导出前 8 张纹理页为 PNG");
             Console.WriteLine("测试（离线，不碰游戏本体）:");
             Console.WriteLine("  ntl-mapedit document-test <src data.win> <dst data.win>  - 编辑模型全量测试（房间/图层/实例/瓦片/剪贴板/对齐）");
             Console.WriteLine("  ntl-mapedit mapedit-test <src data.win> <workDir>        - mer 写盘守卫自检（原版基线只读/live 可保存/sidecar/默认启动目标）");
@@ -87,19 +302,26 @@ public static class Program
             Console.WriteLine("  ntl-mapedit structure-test <src data.win> <dst data.win> - 房间结构复制/删除/排序往返测试");
             Console.WriteLine("  ntl-mapedit resource-browser-test <data.win>          - 资源浏览器只读自检（12 类资源可枚举 + 源文件不变）");
             Console.WriteLine("  ntl-mapedit stress-test <src data.win> <dst data.win>    - 大房间（room_town_north）绘制/保存/重载冒烟");
+            Console.WriteLine("  ntl-mapedit vanilla-scan-test <data.win> [outJson]       - 原版交互/对话扫描自检（反编译+条件三态+lang 解析）");
+            Console.WriteLine("  ntl-mapedit vanilla-scan <data.win> <object> [room] [x] [y] [outJson] - 扫描单个对象的原版交互/对白（只读；打印行摘要，可选导出 JSON 对账）");
+            Console.WriteLine("  ntl-mapedit settings-test <workDir>                      - 默认启动章节设置自检（读写/坏文件自愈/解析优先级）");
             Console.WriteLine("  ntl-mapedit battle-test [data.win] [outDir]              - 战斗配置校验/sidecar 往返/生成 mod 的自检");
             Console.WriteLine("  ntl-mapedit battle-demo [data.win] [modsDir]             - 生成可直接部署的示例战斗 mod（默认 Neutraled/mods）");
-        Console.WriteLine("  ntl-mapedit manifest-test [modsDir] [outJson]            - mods.json 整包清单扫描/校验/保存重读自检");
+            Console.WriteLine("  ntl-mapedit manifest-test [modsDir] [outJson]            - mods.json 整包清单扫描/校验/保存重读自检");
             Console.WriteLine("  ntl-mapedit edit-test | tile-test <src> <dst>            - 早期编辑/瓦片测试");
             Console.WriteLine("  ntl-mapedit save-roundtrip <src> <dst>                   - 经 EditorDocument 打开→不修改→Save，校验 SHA256 不变");
             Console.WriteLine("  ntl-mapedit roundtrip <src data.win> <dst data.win>      - data.win 读写往返");
             Console.WriteLine("其它:");
             Console.WriteLine("  ntl-mapedit types [filter] | io | delegates              - 反射 UndertaleModLib 类型/接口");
+            Console.WriteLine("退出码: 0=成功  1=运行失败（业务判据未过）  2=用法/参数/路径错误");
+            Console.WriteLine("提示: 相对输出路径按当前目录解析；输出文件父目录会自动创建；Release 堆栈行号仅供参考。");
+            Console.WriteLine("崩溃日志: %LOCALAPPDATA%\\DRMapEditor\\logs\\ntl-mapedit-crash.log");
             return 0;
         }
         var asm = typeof(UndertaleData).Assembly;
         if (args[0] == "types")
         {
+            NoExtra("types [filter]", 2);
             var filter = args.Length > 1 ? args[1] : "";
             foreach (var t in asm.GetTypes().Where(t => t.FullName != null && t.FullName.Contains(filter, StringComparison.OrdinalIgnoreCase)).OrderBy(t => t.FullName))
             {
@@ -115,6 +337,7 @@ public static class Program
         }
         if (args[0] == "io")
         {
+            NoExtra("io", 1);
             var t = asm.GetType("UndertaleModLib.UndertaleIO")!;
             foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.Static))
                 Console.WriteLine($"meth {Nice(m.ReturnType)} {m.Name}({string.Join(", ", m.GetParameters().Select(p => Nice(p.ParameterType) + " " + p.Name))})");
@@ -122,6 +345,7 @@ public static class Program
         }
         if (args[0] == "delegates")
         {
+            NoExtra("delegates", 1);
             foreach (var n in new[] { "UndertaleModLib.UndertaleReader+WarningHandlerDelegate", "UndertaleModLib.UndertaleReader+MessageHandlerDelegate" })
             {
                 var t = asm.GetType(n); if (t == null) { Console.WriteLine("MISS " + n); continue; }
@@ -132,6 +356,8 @@ public static class Program
         }
         if (args[0] == "rooms")
         {
+            Need("rooms <data.win>", 2);
+            NoExtra("rooms <data.win>", 2);
             var data = Load(args[1]);
             Console.WriteLine($"rooms={data.Rooms.Count} sprites={data.Sprites.Count} objects={data.GameObjects.Count} backgrounds={data.Backgrounds.Count} textures={data.EmbeddedTextures.Count}");
             for (int i = 0; i < data.Rooms.Count; i++)
@@ -143,10 +369,10 @@ public static class Program
         }
         if (args[0] == "inspect")
         {
+            Need("inspect <data.win> <room>", 3);
+            NoExtra("inspect <data.win> <room>", 3);
             var data = Load(args[1]);
-            var name = args[2];
-            var room = data.Rooms.FirstOrDefault(r => string.Equals(r.Name?.Content, name, StringComparison.OrdinalIgnoreCase))
-                       ?? data.Rooms.First(r => r.Name?.Content?.Contains(name, StringComparison.OrdinalIgnoreCase) == true);
+            var room = ResolveRoom(data.Rooms, args[2]);
             Console.WriteLine($"ROOM {room.Name?.Content} {room.Width}x{room.Height} speed={room.Speed} persistent={room.Persistent} flags={room.Flags} bgcolor=0x{room.BackgroundColor:X8} drawbg={room.DrawBackgroundColor}");
             Console.WriteLine($"layers={room.Layers?.Count} legacyObjs={room.GameObjects?.Count} legacyTiles={room.Tiles?.Count} bgs={room.Backgrounds?.Count} views={room.Views?.Count}");
             if (room.Layers != null)
@@ -205,6 +431,11 @@ public static class Program
                 foreach (var f in spr.Textures.Take(3))
                 {
                     var tp = f.Texture;
+                    if (tp == null)
+                    {
+                        Console.WriteLine($"  frame{fi++}: (空纹理帧，已跳过)");
+                        continue;
+                    }
                     Console.WriteLine($"  frame{fi++}: src=({tp.SourceX},{tp.SourceY},{tp.SourceWidth},{tp.SourceHeight}) target=({tp.TargetX},{tp.TargetY},{tp.TargetWidth},{tp.TargetHeight}) bound=({tp.BoundingWidth},{tp.BoundingHeight}) page={tp.TexturePage?.Name?.Content} pageSize={tp.TexturePage?.TextureWidth}x{tp.TexturePage?.TextureHeight}");
                 }
             }
@@ -218,21 +449,41 @@ public static class Program
         }
         if (args[0] == "sprite")
         {
+            Need("sprite <data.win> [filter]", 2);
+            NoExtra("sprite <data.win> [filter]", 3);
             var gd = new GameData(args[1]);
             var filter = args.Length > 2 ? args[2] : "";
+            int emptyFrames = 0, emptySprites = 0;
             foreach (var s in gd.Data.Sprites.Where(s => GameData.Name(s.Name).Contains(filter, StringComparison.OrdinalIgnoreCase)))
             {
                 Console.WriteLine($"SPR {GameData.Name(s.Name)} {s.Width}x{s.Height} origin=({s.OriginX},{s.OriginY}) frames={s.Textures?.Count} margins=({s.MarginLeft},{s.MarginRight},{s.MarginTop},{s.MarginBottom}) ");
-                if (s.Textures != null) foreach (var (f, i) in s.Textures.Select((f, i) => (f, i)).Take(32))
+                if (s.Textures == null) continue;
+                int valid = 0;
+                for (int fi = 0; fi < s.Textures.Count && fi < 32; fi++)
                 {
-                    var tp = f.Texture;
-                    Console.WriteLine($"   f{i} src=({tp.SourceX},{tp.SourceY},{tp.SourceWidth},{tp.SourceHeight}) target=({tp.TargetX},{tp.TargetY},{tp.TargetWidth},{tp.TargetHeight}) bound=({tp.BoundingWidth},{tp.BoundingHeight}) page={GameData.Name(tp.TexturePage?.Name)}");
+                    var tp = s.Textures[fi]?.Texture;
+                    if (tp == null)
+                    {
+                        Console.WriteLine($"   f{fi} (空纹理帧 Texture=null，已跳过)");
+                        emptyFrames++;
+                        continue;
+                    }
+                    valid++;
+                    Console.WriteLine($"   f{fi} src=({tp.SourceX},{tp.SourceY},{tp.SourceWidth},{tp.SourceHeight}) target=({tp.TargetX},{tp.TargetY},{tp.TargetWidth},{tp.TargetHeight}) bound=({tp.BoundingWidth},{tp.BoundingHeight}) page={GameData.Name(tp.TexturePage?.Name)}");
                 }
+                if (s.Textures.Count > 0 && valid == 0) emptySprites++;
+            }
+            if (emptyFrames > 0)
+            {
+                Console.Error.WriteLine($"[警告] {emptyFrames} 个空纹理帧已跳过；{emptySprites} 个 sprite 无有效纹理帧（坏数据，建议修复/重导 data.win）");
+                return emptySprites > 0 ? 1 : 0;
             }
             return 0;
         }
         if (args[0] == "object")
         {
+            Need("object <data.win> [filter]", 2);
+            NoExtra("object <data.win> [filter]", 3);
             var gd = new GameData(args[1]);
             var filter = args.Length > 2 ? args[2] : "";
             foreach (var o in gd.Data.GameObjects.Where(o => GameData.Name(o.Name).Contains(filter, StringComparison.OrdinalIgnoreCase)))
@@ -241,10 +492,15 @@ public static class Program
         }
         if (args[0] == "probe-room")
         {
+            Need("probe-room <data.win> <room>", 3);
+            NoExtra("probe-room <data.win> <room>", 3);
             var gd = new GameData(args[1]);
-            var room = gd.FindRoom(args[2])!;
-            var layerInsts = room.Layers!.Where(l => l.InstancesData != null).SelectMany(l => l.InstancesData.Instances).ToList();
-            Console.WriteLine($"layerInstances={layerInsts.Count} legacyGameObjects={room.GameObjects?.Count} creationOrder={room.InstanceCreationOrderIDs?.InstanceIDs?.Count}");
+            var room = ResolveRoom(gd.Data.Rooms, args[2]);
+            var layerInsts = room.Layers == null
+                ? new List<UndertaleRoom.GameObject>()
+                : room.Layers.Where(l => l.InstancesData != null).SelectMany(l => l.InstancesData.Instances).ToList();
+            var creationOrder = room.InstanceCreationOrderIDs?.InstanceIDs;
+            Console.WriteLine($"layerInstances={layerInsts.Count} legacyGameObjects={room.GameObjects?.Count} creationOrder={(creationOrder == null ? "(无 creationOrder)" : creationOrder.Count.ToString())}");
             if (room.GameObjects != null && layerInsts.Count > 0 && room.GameObjects.Count > 0)
             {
                 var first = layerInsts[0];
@@ -253,12 +509,17 @@ public static class Program
                 Console.WriteLine($"sameRef={(idx >= 0)} legacyIndex={idx} canCast={room.GameObjects[0].InstanceID}");
                 Console.WriteLine("legacyIDs=" + string.Join(",", room.GameObjects.Select(g => g.InstanceID).Take(8)));
                 Console.WriteLine("layerIDs=" + string.Join(",", layerInsts.Select(g => g.InstanceID).Take(8)));
-                Console.WriteLine("orderIDs=" + string.Join(",", room.InstanceCreationOrderIDs!.InstanceIDs.Take(8)));
+                if (creationOrder != null && creationOrder.Count > 0)
+                    Console.WriteLine("orderIDs=" + string.Join(",", creationOrder.Take(8)));
+                else
+                    Console.WriteLine("orderIDs=(无 creationOrder，GMS2 房间可省略该表)");
             }
             return 0;
         }
         if (args[0] == "edit-test")
         {
+            Need("edit-test <src data.win> <dst data.win>", 3);
+            NoExtra("edit-test <src data.win> <dst data.win>", 3);
             var src = args[1];
             var dst = args[2];
             var gd = new GameData(src);
@@ -268,7 +529,7 @@ public static class Program
             int before = RoomEdit.AllInstances(room).Count();
             var added = RoomEdit.AddInstance(gd.Data, room, layer, obj, 120, 150);
             Console.WriteLine($"added id={added.InstanceID} at (120,150): {before} -> {RoomEdit.AllInstances(room).Count()}");
-            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+            dst = PrepareOutFile(dst);
             using (var fs = File.Create(dst)) UndertaleIO.Write(fs, gd.Data, m => { });
             Console.WriteLine($"written {dst} {new FileInfo(dst).Length} B (src {new FileInfo(src).Length} B)");
             var gd2 = new GameData(dst);
@@ -289,6 +550,8 @@ public static class Program
         }
         if (args[0] == "tile-test")
         {
+            Need("tile-test <src data.win> <dst data.win>", 3);
+            NoExtra("tile-test <src data.win> <dst data.win>", 3);
             var src = args[1];
             var dst = args[2];
             var gd = new GameData(src);
@@ -298,7 +561,7 @@ public static class Program
             int before = RoomEdit.AllTiles(room).Count();
             var added = RoomEdit.AddTile(gd.Data, room, layer, srcTile, 200, 190);
             Console.WriteLine($"added tile id={added.InstanceID} at (200,190): {before} -> {RoomEdit.AllTiles(room).Count()} tpag={(added.Tpag == null ? "NULL" : "ok")}");
-            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+            dst = PrepareOutFile(dst);
             using (var fs = File.Create(dst)) UndertaleIO.Write(fs, gd.Data, m => { });
             Console.WriteLine($"written {dst} {new FileInfo(dst).Length} B (src {new FileInfo(src).Length} B)");
             var gd2 = new GameData(dst);
@@ -320,6 +583,8 @@ public static class Program
 
         if (args[0] == "document-test")
         {
+            Need("document-test <src data.win> <dst data.win>", 3);
+            NoExtra("document-test <src data.win> <dst data.win>", 3);
             var src = args[1];
             var dst = args[2];
             int fails = 0;
@@ -896,7 +1161,7 @@ public static class Program
             Check(doc.DeleteRoom(), "delete renamed room");
             Check(gd.Rooms.Count() == baseRooms, "back to baseline rooms");
 
-            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+            dst = PrepareOutFile(dst);
             var saveResult = doc.Save(dst);
             Check(saveResult.Ok, "save dst");
             var gd2 = new GameData(dst);
@@ -908,43 +1173,140 @@ public static class Program
         }
         if (args[0] == "mapedit-test")
         {
-            if (args.Length < 3)
+            Need("mapedit-test <src data.win> <workDir>", 3);
+            NoExtra("mapedit-test <src data.win> <workDir>", 3);
+            Console.WriteLine("  src 只读；fixture 只建在 workDir 下，workDir 不得位于真实游戏根内。");
+            CheckSuiteSource(args[1], "MAPEDIT-TEST");
+            CheckSuiteWorkDir(args[2], "MAPEDIT-TEST");
+            return MapeditSelfTest.Run(args[1], args[2]);
+        }
+        if (args[0] == "default-chapter")
+        {
+            NoExtra("default-chapter [auto|chapter1..chapter5]", 2);
+            string sfile = StartupSettings.DefaultFile;
+            if (args.Length > 1)
             {
-                Console.WriteLine("用法: ntl-mapedit mapedit-test <src data.win> <workDir>");
-                Console.WriteLine("  src 只读；fixture 只建在 workDir 下，workDir 不得位于真实游戏根内。");
+                string raw = args[1].Trim();
+                string lower = raw.ToLowerInvariant();
+                bool valid = lower is "auto" or "default" or "last" || StartupSettings.NormalizeChapter(raw) != StartupSettings.AutoChapter;
+                if (!valid)
+                {
+                    throw new CliError(2, "[错误] 无法识别章节: " + raw + "（可用: auto 或 chapter1..chapter5）");
+                }
+                var st = StartupSettings.Load(sfile);
+                st.DefaultChapter = StartupSettings.NormalizeChapter(raw);
+                st.Save(sfile);
+                Console.WriteLine("默认启动章节已设为: " + StartupSettings.Describe(st.DefaultChapter) + "（" + st.DefaultChapter + "）");
+                Console.WriteLine("设置文件: " + sfile);
+                var resolved = StartupSettings.ResolveTarget(GameRootDir(), RecentStore.LastPath);
+                Console.WriteLine("下次启动将打开: " + resolved.Path + "（来源: " + resolved.Source + (resolved.IsBaseline ? "，只读" : "") + "）");
+                return 0;
+            }
+            PrintStartupState();
+            return 0;
+        }
+        if (args[0] == "chapters")
+        {
+            NoExtra("chapters", 1);
+            PrintChapterTable();
+            var resolved = StartupSettings.ResolveTarget(GameRootDir(), RecentStore.LastPath);
+            Console.WriteLine();
+            Console.WriteLine("当前解析目标: " + resolved.Path + "（来源: " + resolved.Source + (resolved.IsBaseline ? "，只读" : "") + "）");
+            return 0;
+        }
+        if (args[0] == "vanilla-scan-test")
+        {
+            Need("vanilla-scan-test <data.win> [outJson]", 2);
+            if (args.Length > 3) NoExtra("vanilla-scan-test <data.win> [outJson]", 3);
+            Console.WriteLine("  只读：反编译对象事件、抽 global.msg 对白行、做条件三态判定、解析 lang 文本。");
+            CheckSuiteSource(args[1], "VANILLA-SCAN-TEST");
+            return VanillaScanSelfTest.Run(args[1], args.Length > 2 ? args[2] : null);
+        }
+        if (args[0] == "vanilla-scan")
+        {
+            Need("vanilla-scan <data.win> <object> [room] [x] [y] [outJson]", 3);
+            if (args.Length > 7) NoExtra("vanilla-scan <data.win> <object> [room] [x] [y] [outJson]", 7);
+            CheckSuiteSource(args[1], "VANILLA-SCAN");
+            using var gd = new GameData(args[1]);
+            var obj = gd.Data.GameObjects.FirstOrDefault(o => o?.Name?.Content == args[2]);
+            if (obj == null)
+            {
+                Console.WriteLine("对象不存在: " + args[2]);
                 return 2;
             }
-            return MapeditSelfTest.Run(args[1], args[2]);
+            string roomName = args.Length > 3 ? args[3] : "room_krisroom";
+            var room = gd.Data.Rooms.FirstOrDefault(r => r?.Name?.Content == roomName);
+            int roomIndex = room != null ? gd.Data.Rooms.IndexOf(room) : -1;
+            float sx = float.NaN, sy = float.NaN;   // 不给坐标 = 未知（x/y 条件保持 ?）
+            if (args.Length > 4 && !float.TryParse(args[4], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out sx))
+                throw new CliError(2, "x 坐标不是数字: " + args[4]);
+            if (args.Length > 5 && !float.TryParse(args[5], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out sy))
+                throw new CliError(2, "y 坐标不是数字: " + args[5]);
+            var vc = new VanillaCode(gd.Data, Path.GetFullPath(args[1]));
+            var info = vc.ScanObject(obj, roomIndex, sx, sy);
+            string coordText = (float.IsNaN(sx) || float.IsNaN(sy)) ? "坐标未知" : $"{sx},{sy}";
+            Console.WriteLine($"VANILLA-SCAN {args[2]} @ {roomName}[{roomIndex}] ({coordText})");
+            Console.WriteLine("  " + vc.LangStatus);
+            Console.WriteLine($"  事件={info.Events.Count} 有对白事件={info.DialogueEventCount} 对白行={info.DialogueLineCount}（可阅读 {info.DisplayableLineCount}；运行期文本/控制码 {info.RuntimeTextLineCount}） 截断={(info.Events.Any(e => e.Truncated) ? "是" : "否")} 继承行={info.InheritedDialogueLineCount}");
+            Console.WriteLine("  父对象: " + (info.ParentChain.Count > 0 ? string.Join(" → ", info.ParentChain) : "(无)"));
+            if (info.InteractionEvent != null)
+                Console.WriteLine($"  交互事件: {info.InteractionEvent.Name}{(info.InteractionEvent.Inherited ? "（继承自 " + info.InteractionEvent.OwnerObject + "）" : "")} 对白行={info.InteractionEvent.Lines.Count}");
+            int mscLines = info.Events.SelectMany(e => e.Lines).Count(l => l.MscNo > 0);
+            int argLines = info.Events.SelectMany(e => e.Lines).Count(l => l.RequiresArgs);
+            int unknownTruth = info.Events.SelectMany(e => e.Lines).Count(l => l.Truth == TriTruth.Unknown);
+            Console.WriteLine($"  msc 行={mscLines} 含参数行={argLines} 未知条件行={unknownTruth}");
+            foreach (var l in info.Events.SelectMany(e => e.Lines).Where(l => l.Truth != TriTruth.False).Take(30))
+            {
+                var shown = l.DisplayText;
+                var txt = shown.Length > 60 ? shown[..60] + "…" : shown;
+                Console.WriteLine($"  [{l.EventName}] msg[{l.MsgIndex}] msc={l.MscNo} truth={l.Truth} cond={(l.Condition.Length > 70 ? l.Condition[..70] + "…" : l.Condition)} :: {txt}");
+            }
+            if (args.Length > 6)
+            {
+                var outPath = Path.GetFullPath(args[6]);
+                var json = VanillaScanSelfTest.BuildScanJson(vc, info, args[1], roomIndex, sx, sy, roomName);
+                var dir = Path.GetDirectoryName(outPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(outPath, json + Environment.NewLine, new UTF8Encoding(false));
+                Console.WriteLine("  JSON: " + outPath + " (" + json.Length + " 字符)");
+            }
+            return 0;
+        }
+        if (args[0] == "settings-test")
+        {
+            Need("settings-test <workDir>", 2);
+            NoExtra("settings-test <workDir>", 2);
+            CheckSuiteWorkDir(args[1], "SETTINGS-TEST");
+            return StartupSettingsSelfTest.Run(args[1]);
         }
         if (args[0] == "native-tiles-test")
         {
-            if (args.Length < 3)
-            {
-                Console.WriteLine("用法: ntl-mapedit native-tiles-test <src data.win> <workDir>");
-                Console.WriteLine("  src 只读；fixture 只建在 workDir 下，workDir 不得位于真实游戏根内。");
-                return 2;
-            }
+            Need("native-tiles-test <src data.win> <workDir>", 3);
+            NoExtra("native-tiles-test <src data.win> <workDir>", 3);
+            Console.WriteLine("  src 只读；fixture 只建在 workDir 下，workDir 不得位于真实游戏根内。");
+            CheckSuiteSource(args[1], "NATIVE-TILES-TEST");
+            CheckSuiteWorkDir(args[2], "NATIVE-TILES-TEST");
             return NativeTilesSelfTest.Run(args[1], args[2]);
         }
         if (args[0] == "resource-browser-test")
         {
-            if (args.Length < 2)
-            {
-                Console.WriteLine("用法: ntl-mapedit resource-browser-test <data.win>");
-                Console.WriteLine("  只读：验证资源浏览器能列出全部资源类别（房间/对象/精灵/背景/字体/音效/脚本代码/着色器/序列/时间线/纹理页/路径）。");
-                return 2;
-            }
+            Need("resource-browser-test <data.win>", 2);
+            NoExtra("resource-browser-test <data.win>", 2);
+            Console.WriteLine("  只读：验证资源浏览器能列出全部资源类别（房间/对象/精灵/背景/字体/音效/脚本代码/着色器/序列/时间线/纹理页/路径）。");
+            CheckSuiteSource(args[1], "RESOURCE-BROWSER-TEST");
             return ResourceBrowserSelfTest.Run(args[1]);
         }
         if (args[0] == "room-stat")
         {
+            Need("room-stat <data.win> <room>", 3);
+            NoExtra("room-stat <data.win> <room>", 3);
             var gd = new GameData(args[1]);
             var room = gd.FindRoom(args[2]);
             if (room == null)
             {
                 Console.WriteLine($"ROOM-STAT FAIL: room '{args[2]}' not found");
                 gd.Dispose();
-                return 1;
+                throw new CliError(2);
             }
             int legacyTileCount = RoomEdit.AllTiles(room).Count();
             int nativeTileCount = room.Layers?.Sum(l => NativeTiles.CountNonZero(l)) ?? 0;
@@ -1000,13 +1362,15 @@ public static class Program
         }
         if (args[0] == "room-inst")
         {
+            Need("room-inst <data.win> <room>", 3);
+            NoExtra("room-inst <data.win> <room>", 3);
             var gd = new GameData(args[1]);
             var room = gd.FindRoom(args[2]);
             if (room == null)
             {
                 Console.WriteLine($"ROOM-INST FAIL: room '{args[2]}' not found");
                 gd.Dispose();
-                return 1;
+                throw new CliError(2);
             }
             var list = RoomEdit.AllInstances(room).ToList();
             Console.WriteLine($"room {GameData.Name(room.Name)} instances={list.Count}");
@@ -1019,8 +1383,11 @@ public static class Program
         }
         if (args[0] == "stress-test")
         {
+            Need("stress-test <src data.win> <dst data.win> [room]", 3);
+            NoExtra("stress-test <src data.win> <dst data.win> [room]", 4);
             var src = args[1];
-            var dst = args[2];
+            var dst = PrepareOutFile(args[2]);
+            string roomName = args.Length > 3 ? args[3] : "room_town_north";
             int fails = 0;
             void Check(bool ok, string label)
             {
@@ -1029,17 +1396,17 @@ public static class Program
             }
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var gd = new GameData(src);
-            var room = gd.FindRoom("room_town_north");
+            var room = gd.FindRoom(roomName);
             if (room == null)
             {
-                Console.WriteLine("STRESS-TEST FAIL: room_town_north not found");
+                Console.WriteLine("STRESS-TEST FAIL: room '" + roomName + "' not found（可用 rooms 命令查看房间名）");
                 gd.Dispose();
                 return 1;
             }
             int layerCount = room.Layers?.Count ?? 0;
             int inst0 = RoomEdit.AllInstances(room).Count();
             int tiles0 = RoomEdit.AllTiles(room).Count();
-            Console.WriteLine($"baseline: room_town_north {room.Width}x{room.Height} layers={layerCount} instances={inst0} tiles={tiles0}");
+            Console.WriteLine($"baseline: {GameData.Name(room.Name)} {room.Width}x{room.Height} layers={layerCount} instances={inst0} tiles={tiles0}");
 
             sw.Restart();
             using (var bmp = RoomRender.Render(gd, room))
@@ -1049,33 +1416,38 @@ public static class Program
 
             var layer = RoomEdit.TilesLayer(room);
             var seed = RoomEdit.AllTiles(room).Select(t => t.Tile).FirstOrDefault();
-            Check(layer != null && seed != null, "found tile layer and seed tile");
-            if (layer == null || seed == null) { gd.Dispose(); return 1; }
-            var brush = RoomEdit.CloneTile(seed);
-            var cell = RoomEdit.TileWorldSize(brush);
-            int cw = Math.Max(1, (int)Math.Ceiling(cell.Width));
-            int ch = Math.Max(1, (int)Math.Ceiling(cell.Height));
-            int cols = Math.Min(200, Math.Max(1, (int)room.Width / cw));
-            int rows = Math.Min(30, Math.Max(1, (int)room.Height / ch));
-            var cells = new List<Point>();
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    cells.Add(new Point(c, r));
-            sw.Restart();
-            int painted = RoomEdit.PaintTileCells(gd.Data, layer, brush, cells);
-            sw.Stop();
-            int tiles1 = RoomEdit.AllTiles(room).Count();
-            Console.WriteLine($"paint ms={sw.ElapsedMilliseconds} cells={cells.Count} changed={painted} tiles={tiles1}");
-            Check(painted > 0, "paint changed tiles");
-            Check(tiles1 > tiles0, $"paint grew tile count ({tiles0} -> {tiles1})");
+            bool canPaint = layer != null && seed != null;
+            if (canPaint) Console.WriteLine("PASS found tile layer and seed tile");
+            else Console.WriteLine("SKIP 房间没有 legacy 瓦片层/种子瓦片，跳过瓦片绘制与擦除检查（按 SKIP 计，不计失败）");
+            UndertaleRoom.Tile? brush = canPaint ? RoomEdit.CloneTile(seed!) : null;
+            int tiles1 = tiles0, tiles2 = tiles0, painted = 0, erased = 0;
+            if (canPaint)
+            {
+                var cell = RoomEdit.TileWorldSize(brush!);
+                int cw = Math.Max(1, (int)Math.Ceiling(cell.Width));
+                int ch = Math.Max(1, (int)Math.Ceiling(cell.Height));
+                int cols = Math.Min(200, Math.Max(1, (int)room.Width / cw));
+                int rows = Math.Min(30, Math.Max(1, (int)room.Height / ch));
+                var cells = new List<Point>();
+                for (int r = 0; r < rows; r++)
+                    for (int c = 0; c < cols; c++)
+                        cells.Add(new Point(c, r));
+                sw.Restart();
+                painted = RoomEdit.PaintTileCells(gd.Data, layer!, brush!, cells);
+                sw.Stop();
+                tiles1 = RoomEdit.AllTiles(room).Count();
+                Console.WriteLine($"paint ms={sw.ElapsedMilliseconds} cells={cells.Count} changed={painted} tiles={tiles1}");
+                Check(painted > 0, "paint changed tiles");
+                Check(tiles1 > tiles0, $"paint grew tile count ({tiles0} -> {tiles1})");
 
-            sw.Restart();
-            int erased = RoomEdit.EraseTileCells(layer, cells.Take(cells.Count / 2).ToList());
-            sw.Stop();
-            int tiles2 = RoomEdit.AllTiles(room).Count();
-            Console.WriteLine($"erase ms={sw.ElapsedMilliseconds} changed={erased} tiles={tiles2}");
-            Check(erased > 0, "erase changed tiles");
-            Check(tiles2 < tiles1, $"erase shrank tile count ({tiles1} -> {tiles2})");
+                sw.Restart();
+                erased = RoomEdit.EraseTileCells(layer!, cells.Take(cells.Count / 2).ToList());
+                sw.Stop();
+                tiles2 = RoomEdit.AllTiles(room).Count();
+                Console.WriteLine($"erase ms={sw.ElapsedMilliseconds} changed={erased} tiles={tiles2}");
+                Check(erased > 0, "erase changed tiles");
+                Check(tiles2 < tiles1, $"erase shrank tile count ({tiles1} -> {tiles2})");
+            }
 
             sw.Restart();
             using (var bmp2 = RoomRender.Render(gd, room)) Check(bmp2.Width >= (int)room.Width, "render after edits");
@@ -1090,7 +1462,7 @@ public static class Program
 
             sw.Restart();
             var gd2 = new GameData(dst);
-            var room2 = gd2.FindRoom("room_town_north")!;
+            var room2 = gd2.FindRoom(roomName)!;
             int tiles3 = RoomEdit.AllTiles(room2).Count();
             int inst2 = RoomEdit.AllInstances(room2).Count();
             Console.WriteLine($"reload ms={sw.ElapsedMilliseconds} tiles={tiles3} instances={inst2}");
@@ -1098,8 +1470,11 @@ public static class Program
             Check(inst2 == inst0, $"reload instances {inst2} == {inst0}");
             Check((room2.Layers?.Count ?? 0) == layerCount, "reload layer count");
             Check(gd2.Data.Rooms.Count == gd.Data.Rooms.Count, "reload room count");
-            int sameSize = RoomEdit.AllTiles(room2).Count(t => t.Tile.Width == brush.Width && t.Tile.Height == brush.Height);
-            Check(sameSize >= painted / 2, $"painted tiles keep source size ({sameSize} >= {painted / 2})");
+            if (canPaint)
+            {
+                int sameSize = RoomEdit.AllTiles(room2).Count(t => t.Tile.Width == brush!.Width && t.Tile.Height == brush!.Height);
+                Check(sameSize >= painted / 2, $"painted tiles keep source size ({sameSize} >= {painted / 2})");
+            }
             gd2.Dispose();
             gd.Dispose();
             Console.WriteLine(fails == 0 ? "STRESS-TEST PASS" : $"STRESS-TEST FAIL ({fails})");
@@ -1107,9 +1482,15 @@ public static class Program
         }
         if (args[0] == "battle-demo")
         {
-            // 生成一份可部署到 Neutraled/mods 的示例战斗 mod（真机取证用）。
+            // 生成一份可部署的示例战斗 mod（默认输出到当前目录，绝不默认写游戏根）。
+            NoExtra("battle-demo [data.win] [modsDir] [leaf]", 4);
             string? data = args.Length > 1 ? args[1] : DefaultBattleDataWin();
-            string modsDir = args.Length > 2 ? args[2] : Path.Combine(GameRootDir(), "Neutraled", "mods");
+            if (args.Length > 1 && !File.Exists(args[1]))
+            {
+                Console.Error.WriteLine("[battle-demo] data.win 不存在: " + args[1] + "（不传参数会自动查找原版 backup）");
+                return 1;
+            }
+            string modsDir = args.Length > 2 ? args[2] : Path.Combine(Directory.GetCurrentDirectory(), "battle-demo-mods");
             string leaf = args.Length > 3 ? args[3] : "chapter1";
             GameData? gd = null;
             try
@@ -1130,15 +1511,27 @@ public static class Program
         if (args[0] == "battle-test")
         {
             // 战斗编辑器离线自检：配置校验 -> sidecar 往返 -> 生成 mod -> 产物结构断言。
-            string? data = args.Length > 1 ? args[1] : DefaultBattleDataWin();
+            NoExtra("battle-test [data.win] [outDir]", 3);
+            string? data;
+            if (args.Length > 1)
+            {
+                if (!File.Exists(args[1]))
+                {
+                    Console.Error.WriteLine("[battle-test] data.win 不存在: " + args[1] + "（不传参数会自动查找原版 backup）");
+                    return 1;
+                }
+                data = args[1];
+            }
+            else data = DefaultBattleDataWin();
             string? outDir = args.Length > 2 ? args[2] : null;
-            return BattleSelfTest.Run(data != null && File.Exists(data) ? data : null, outDir);
+            return BattleSelfTest.Run(data, outDir);
         }
         if (args[0] == "manifest-test")
         {
-            // mods.json 整包清单：扫描 Neutraled/mods -> 校验 -> 保存/重读 -> 重复 id 检出（不依赖 GUI）。
+            // mods.json 整包清单：扫描 -> 校验 -> 保存/重读 -> 重复 id 检出（默认输出到当前目录，不写游戏根）。
+            NoExtra("manifest-test [modsDir] [outJson]", 3);
             string modsDir = args.Length > 1 ? args[1] : Path.Combine(GameRootDir(), "Neutraled", "mods");
-            string outJson = args.Length > 2 ? args[2] : Path.Combine(GameRootDir(), "Neutraled", "logs", "manifest-test.json");
+            string outJson = args.Length > 2 ? args[2] : Path.Combine(Directory.GetCurrentDirectory(), "manifest-test.json");
             int fails = 0;
             void Check(bool ok, string label)
             {
@@ -1182,6 +1575,8 @@ public static class Program
         }
         if (args[0] == "structure-test")
         {
+            Need("structure-test <src data.win> <dst data.win>", 3);
+            NoExtra("structure-test <src data.win> <dst data.win>", 3);
             var src = args[1];
             var dst = args[2];
             int fails = 0;
@@ -1192,7 +1587,7 @@ public static class Program
             }
             static void WriteFile(GameData g, string path)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                path = PrepareOutFile(path);
                 using var fs = File.Create(path);
                 UndertaleIO.Write(fs, g.Data, m => { });
             }
@@ -1304,23 +1699,48 @@ public static class Program
         }
         if (args[0] == "render")
         {
+            Need("render <data.win> <room> [scale] [out.png]", 3);
+            NoExtra("render <data.win> <room> [scale] [out.png]", 5);
             var gd = new GameData(args[1]);
-            var room = gd.FindRoom(args[2]);
-            if (room == null) { Console.Error.WriteLine("room not found: " + args[2]); return 2; }
-            int scale = args.Length > 3 ? int.Parse(args[3]) : 1;
+            var room = ResolveRoom(gd.Data.Rooms, args[2]);
+            int scale = 1;
+            if (args.Length > 3)
+            {
+                if (!int.TryParse(args[3], out scale))
+                {
+                    Console.Error.WriteLine("[错误] scale 需要整数（例如 1 / 2 / 4）：" + args[3]);
+                    return 2;
+                }
+                int clamped = Math.Clamp(scale, 1, 8);
+                if (clamped != scale)
+                    Console.Error.WriteLine("[提示] scale " + scale + " 超出范围 1..8，已按 " + clamped + " 渲染");
+                scale = clamped;
+            }
             var sw = System.Diagnostics.Stopwatch.StartNew();
             using var bmp = RoomRender.Render(gd, room, scale);
-            var outPath = args.Length > 4 ? args[4] : Path.Combine(Path.GetDirectoryName(args[1])!, "render-" + room.Name?.Content + ".png");
-            Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+            string outPath;
+            if (args.Length > 4)
+            {
+                outPath = args[4];
+                var outFull = Path.GetFullPath(outPath);
+                if (Directory.Exists(outFull))
+                    outPath = Path.Combine(outFull, "render-" + GameData.Name(room.Name) + ".png");
+            }
+            else
+            {
+                outPath = Path.Combine(Directory.GetCurrentDirectory(), "render-" + GameData.Name(room.Name) + ".png");
+            }
+            outPath = PrepareOutFile(outPath);
             bmp.Save(outPath, System.Drawing.Imaging.ImageFormat.Png);
-            Console.WriteLine($"rendered {room.Name?.Content} {room.Width}x{room.Height} scale={scale} -> {outPath} ({new FileInfo(outPath).Length} B) in {sw.ElapsedMilliseconds} ms, layers={room.Layers?.Count}");
+            Console.WriteLine($"rendered {GameData.Name(room.Name)} {room.Width}x{room.Height} scale={scale} -> {outPath} ({new FileInfo(outPath).Length} B) in {sw.ElapsedMilliseconds} ms, layers={room.Layers?.Count}");
             return 0;
         }
         if (args[0] == "asset-clone-test")
         {
+            Need("asset-clone-test <data.win> <room>", 3);
+            NoExtra("asset-clone-test <data.win> <room>", 3);
             var gd = new GameData(args[1]);
-            var room = gd.FindRoom(args[2]);
-            if (room == null) { Console.Error.WriteLine("room not found: " + args[2]); return 2; }
+            var room = ResolveRoom(gd.Data.Rooms, args[2]);
             try
             {
                 int CountAssets(UndertaleRoom.Layer l, string kind) => kind switch
@@ -1395,9 +1815,10 @@ public static class Program
         }
         if (args[0] == "render-stats")
         {
+            Need("render-stats <data.win> <room> [scale] [out.json]", 3);
+            NoExtra("render-stats <data.win> <room> [scale] [out.json]", 5);
             var gd = new GameData(args[1]);
-            var room = gd.FindRoom(args[2]);
-            if (room == null) { Console.Error.WriteLine("room not found: " + args[2]); return 2; }
+            var room = ResolveRoom(gd.Data.Rooms, args[2]);
             int scale = 1;
             if (args.Length > 3 && !int.TryParse(args[3], out scale))
             {
@@ -1411,16 +1832,18 @@ public static class Program
             Console.WriteLine($"render-stats done in {sw.ElapsedMilliseconds} ms");
             if (args.Length > 4)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[4]))!);
-                File.WriteAllText(args[4], System.Text.Json.JsonSerializer.Serialize(stats, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), System.Text.Encoding.UTF8);
-                Console.WriteLine("json -> " + args[4]);
+                var outJson = PrepareOutFile(args[4]);
+                File.WriteAllText(outJson, System.Text.Json.JsonSerializer.Serialize(stats, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), System.Text.Encoding.UTF8);
+                Console.WriteLine("json -> " + outJson);
             }
             return 0;
         }
         if (args[0] == "save-roundtrip")
         {
+            Need("save-roundtrip <src data.win> <dst data.win>", 3);
+            NoExtra("save-roundtrip <src data.win> <dst data.win>", 3);
             var srcPath = args[1];
-            var dstPath = args[2];
+            var dstPath = PrepareOutFile(args[2]);
             var gd = new GameData(srcPath);
             using var doc = new EditorDocument(gd, srcPath);
             var saved = doc.Save(dstPath);
@@ -1441,11 +1864,12 @@ public static class Program
         }
         if (args[0] == "roundtrip")
         {
+            Need("roundtrip <src data.win> <dst data.win>", 3);
+            NoExtra("roundtrip <src data.win> <dst data.win>", 3);
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var data = Load(args[1]);
             Console.WriteLine($"loaded {sw.ElapsedMilliseconds} ms");
-            var outPath = args[2];
-            Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+            var outPath = PrepareOutFile(args[2]);
             using (var fs = File.Create(outPath)) UndertaleIO.Write(fs, data, m => { });
             Console.WriteLine($"written {outPath} {new FileInfo(outPath).Length} B in {sw.ElapsedMilliseconds} ms (src {new FileInfo(args[1]).Length} B)");
             var sw2 = System.Diagnostics.Stopwatch.StartNew();
@@ -1460,9 +1884,10 @@ public static class Program
         }
         if (args[0] == "texture")
         {
+            Need("texture <data.win> <outDir>", 3);
+            NoExtra("texture <data.win> <outDir>", 3);
             var data = Load(args[1]);
-            var outDir = args[2];
-            Directory.CreateDirectory(outDir);
+            var outDir = PrepareOutDir(args[2]);
             foreach (var (t, i) in data.EmbeddedTextures.Select((t, i) => (t, i)).Take(8))
             {
                 var img = t.TextureData?.Image;
@@ -1476,8 +1901,9 @@ public static class Program
             }
             return 0;
         }
-        Console.WriteLine("unknown command: " + args[0]);
-        return 1;
+        Console.Error.WriteLine("[错误] 未知命令: " + args[0]);
+        Console.Error.WriteLine("  " + UsageHint);
+        return 2;
     }
 
     /// <summary>游戏根：优先环境变量，其次常见安装位置，最后退当前目录（CLI 生成 demo 用）。</summary>
@@ -1496,11 +1922,14 @@ public static class Program
         var candidates = new List<string>();
         var env = Environment.GetEnvironmentVariable("DELTARUNE_DIR");
         if (!string.IsNullOrWhiteSpace(env)) candidates.Add(env!);
-        candidates.Add(@"E:steamsteamappscommonDELTARUNE");
-        candidates.Add(@"C:Program Files (x86)SteamsteamappscommonDELTARUNE");
-        candidates.Add(@"D:SteamLibrarysteamappscommonDELTARUNE");
+        candidates.Add(@"E:\steam\steamapps\common\DELTARUNE");
+        candidates.Add(@"C:\Program Files (x86)\Steam\steamapps\common\DELTARUNE");
+        candidates.Add(@"D:\SteamLibrary\steamapps\common\DELTARUNE");
+        var root = GameRootDir();
+        if (!candidates.Contains(root, StringComparer.OrdinalIgnoreCase)) candidates.Add(root);
         foreach (var c in candidates)
         {
+            if (string.IsNullOrWhiteSpace(c)) continue;
             var p = Path.Combine(c, "backup", "chapter1_windows", "data.win");
             if (File.Exists(p)) return p;
         }

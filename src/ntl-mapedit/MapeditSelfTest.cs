@@ -120,11 +120,18 @@ public static class MapeditSelfTest
             Check(!File.Exists(baselineWin + ".bak"), "baseline: 未创建 data.win.bak");
             Check(!File.Exists(baselineWin + ".ntlsave.tmp"), "baseline: 未留下 .ntlsave.tmp");
 
-            // ---------------- baseline sidecar：不写、不覆盖、不建 .bak ----------------
-            var baselineSidecar = BattleProject.SidecarFor(baselineWin);
-            File.WriteAllText(baselineSidecar, "{\"sentinel\":\"untouched\"}");
-            var sideHashBefore = Sha256(baselineSidecar);
-            var bp = BattleProject.LoadOrNew(baselineSidecar);
+            // ---------------- baseline 编辑：sidecar 改道 Neutraled/editor（data.win 不动）----------------
+            // Round3 语义：打开原版基线就能直接编辑对话/战斗/剧情；编辑数据写 Neutraled/editor/，不碰 backup。
+            var editSidecar = BattleProject.SidecarForEdit(baselineWin, game);
+            Check(editSidecar.Contains(Path.Combine("Neutraled", "editor"), StringComparison.OrdinalIgnoreCase),
+                "baseline 编辑 sidecar: 落在 Neutraled/editor");
+            Check(FileRole.Classify(editSidecar, game) != FileKind.Baseline,
+                "baseline 编辑 sidecar: 目标不是基线路径（可写）");
+            Check(!editSidecar.StartsWith(Path.Combine(game, "backup"), StringComparison.OrdinalIgnoreCase),
+                "baseline 编辑 sidecar: 不在 backup/ 下");
+            Check(BattleProject.ChapterLeaf(baselineWin) == "chapter1",
+                "baseline 编辑 sidecar: 叶子名从路径推断为 chapter1");
+            var bp = BattleProject.LoadOrNew(editSidecar);
             bp.File.Battles.Add(new BattleDef
             {
                 Id = "fixture-battle",
@@ -133,17 +140,99 @@ public static class MapeditSelfTest
                 ObjectName = "obj_fixture",
                 InstanceId = 1,
             });
-            var sideRes = bp.Save(baselineSidecar, false, game);
-            Check(!sideRes.Ok, "baseline sidecar: Save 被拒绝");
-            Check(Sha256(baselineSidecar) == sideHashBefore, "baseline sidecar: 原内容未被覆盖");
-            Check(!File.Exists(baselineSidecar + ".bak"), "baseline sidecar: 未创建 .bak");
-            var sideRes2 = bp.Save(baselineSidecar); // 自动 gameRoot 兜底
-            Check(!sideRes2.Ok, "baseline sidecar: 默认 gameRoot 路径也拒绝");
+            var sideRes = bp.Save(editSidecar, true, game);
+            Check(sideRes.Ok, "baseline 编辑 sidecar: Save 成功（allowBaselineWrite=true）");
+            Check(File.Exists(editSidecar), "baseline 编辑 sidecar: 文件已创建");
+            Check(BattleProject.Load(editSidecar).File.Battles.Count == 1, "baseline 编辑 sidecar: 重读内容正确");
+            Check(Sha256(baselineWin) == baselineHashBefore, "baseline 编辑: 原版 data.win 仍未被改动");
+
+            // backup 内的 sidecar 仍受基线闸门保护（显式 allow 才会写）。
+            var baselineSidecar = BattleProject.SidecarFor(baselineWin);
+            File.WriteAllText(baselineSidecar, "{\"sentinel\":\"untouched\"}");
+            var sideHashBefore = Sha256(baselineSidecar);
+            var guarded = BattleProject.LoadOrNew(baselineSidecar);
+            guarded.File.Battles.Add(new BattleDef { Id = "fixture-guard", Name = "guard", Room = "room_krisroom", ObjectName = "obj_guard", InstanceId = 3 });
+            var guardedRes = guarded.Save(baselineSidecar, false, game);
+            Check(!guardedRes.Ok, "backup sidecar: 未显式放行时仍被拒绝");
+            Check(Sha256(baselineSidecar) == sideHashBefore, "backup sidecar: 原内容未被覆盖");
+            Check(!File.Exists(baselineSidecar + ".bak"), "backup sidecar: 未创建 .bak");
             var absentSidecar = Path.Combine(game, "backup", "chapter1_windows", "data.absent.ntlbattle.json");
             var bpAbsent = BattleProject.LoadOrNew(absentSidecar);
             bpAbsent.File.Battles.Add(new BattleDef { Id = "fixture-absent", Name = "absent", Room = "room_krisroom", ObjectName = "obj_absent", InstanceId = 2 });
             var absentRes = bpAbsent.Save(absentSidecar, false, game);
-            Check(!absentRes.Ok && !File.Exists(absentSidecar), "baseline sidecar: 不存在的 sidecar 也不会被创建");
+            Check(!absentRes.Ok && !File.Exists(absentSidecar), "backup sidecar: 不存在的 sidecar 也不会被创建");
+
+            // ---------------- 房间流程排序：每房一次、主线编号递增、支线紧随前置主线 ----------------
+            using (var gdFlow = new GameData(liveWin))
+            {
+                var rooms = gdFlow.Rooms.ToList();
+                var flow = RoomFlow.Build(rooms);
+                var members = flow.Where(e => !e.IsHeader).Select(e => e.Room!).ToList();
+                Check(members.Count == rooms.Count, $"roomflow: 房间不多不少（{members.Count}/{rooms.Count}）");
+                Check(members.Distinct().Count() == rooms.Count, "roomflow: 没有重复房间");
+                var mains = flow.Where(e => e.Section == RoomFlowSection.Main).ToList();
+                bool ascending = true;
+                for (int i = 0; i < mains.Count; i++)
+                    if (mains[i].Order != i + 1) ascending = false;
+                Check(ascending, "roomflow: 主线编号 1..N 连续递增");
+                Check(flow.Count(e => e.IsHeader) <= 1, "roomflow: 最多一个分组标题");
+                bool sideFollows = true;
+                for (int i = 0; i < flow.Count; i++)
+                {
+                    if (flow[i].Section != RoomFlowSection.Side) continue;
+                    if (i == 0)
+                    {
+                        if (flow[i].Order != 0) sideFollows = false;
+                        continue;
+                    }
+                    // 同一前置主线下的多条支线会连续排在一起：前一行可以是主线，也可以是同编号的支线。
+                    bool prevOk = (flow[i - 1].Section == RoomFlowSection.Main && flow[i - 1].Order == flow[i].Order)
+                                  || (flow[i - 1].Section == RoomFlowSection.Side && flow[i - 1].Order == flow[i].Order
+                                      && flow[i - 1].Depth == flow[i].Depth);
+                    if (!prevOk) sideFollows = false;
+                }
+                Check(sideFollows, "roomflow: 支线紧跟其前置主线（同编号、缩进）");
+                var dataOrder = RoomFlow.BuildDataOrder(rooms);
+                Check(dataOrder.Count == rooms.Count, "roomflow: 原始顺序模式房间数一致");
+                Check(dataOrder.Select(e => e.DataIndex).SequenceEqual(Enumerable.Range(0, rooms.Count)),
+                    "roomflow: 原始顺序模式保持 data.win 顺序");
+            }
+
+            // ---------------- 文本改写 / 原版代码步骤：sidecar 往返 ----------------
+            var roundtripPath = Path.Combine(fixture, "roundtrip.ntlbattle.json");
+            var rp = BattleProject.LoadOrNew(roundtripPath);
+            rp.File.TextOverrides.Add(new TextOverrideDef
+            {
+                Key = "obj_door_Draw_0_gml_5_0",
+                Text = "门锁上了。",
+                Room = "room_krisroom",
+                ObjectName = "obj_door",
+                EventName = "Draw_0",
+                Original = "The door is locked.",
+            });
+            rp.File.Cutscenes.Add(new CutsceneDef
+            {
+                Id = "cut-fixture",
+                Name = "fixture",
+                Room = "room_krisroom",
+                Steps =
+                {
+                    new CutsceneStep { Kind = "event", EvObject = "obj_door", Script = "gml_Script_scr_sideb_active", EvType = 3, EvSub = 0, Frames = 0, Note = "Step 0" },
+                    new CutsceneStep { Kind = "script", Script = "gml_Script_scr_84_get_lang_string", Frames = 2 },
+                },
+            });
+            rp.Normalize();
+            var rtRes = rp.Save(roundtripPath, true, game);
+            Check(rtRes.Ok, "roundtrip: sidecar 写出成功");
+            var rt = BattleProject.Load(roundtripPath);
+            Check(rt.File.TextOverrides.Count == 1 && rt.File.TextOverrides[0].Text == "门锁上了。",
+                "roundtrip: 文本改写 key/text 保留");
+            var rtSteps = rt.File.Cutscenes.FirstOrDefault()?.Steps ?? new List<CutsceneStep>();
+            Check(rtSteps.Count == 2 && rtSteps[0].Kind == "event" && rtSteps[0].Script == "gml_Script_scr_sideb_active"
+                  && rtSteps[0].EvType == 3 && rtSteps[0].EvSub == 0,
+                "roundtrip: event 步骤（对象/脚本/事件号）保留");
+            Check(rtSteps.Count == 2 && rtSteps[1].Kind == "script" && rtSteps[1].EvObject == "",
+                "roundtrip: script 步骤保留且不绑定对象");
 
             // ---------------- live data.win：允许原地保存并真正落盘 ----------------
             var liveHashBefore = Sha256(liveWin);

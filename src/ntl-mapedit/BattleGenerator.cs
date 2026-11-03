@@ -85,6 +85,21 @@ public static class BattleGenerator
         File.WriteAllText(Path.Combine(gmlDir, "ntlb_data.gml"), dataGml, new UTF8Encoding(false));
         result.GmlFiles++;
 
+        // 1.5) 原版文本改写：按 lang key 覆盖，不改 data.win。
+        var ov = new StringBuilder();
+        ov.AppendLine("/// 由 ntl-battle 生成：原版文本改写（覆盖 global.lang_map，不改 data.win）。");
+        ov.AppendLine("/// 每一条对应编辑器里「编辑本房间原版对话」保存的文本；返回覆盖条数。");
+        ov.AppendLine("function ntlb_apply_text_overrides()");
+        ov.AppendLine("{");
+        if (file.TextOverrides.Count == 0)
+            ov.AppendLine("    // 没有配置原版文本改写。");
+        foreach (var t in file.TextOverrides)
+            ov.AppendLine("    ntl_set_lang_string(" + JsonStr(t.Key) + ", " + JsonStr(t.Text.TrimEnd('\r', '\n')) + ");");
+        ov.AppendLine("    return " + file.TextOverrides.Count + ";");
+        ov.AppendLine("}");
+        File.WriteAllText(Path.Combine(gmlDir, "ntlb_apply_text_overrides.gml"), ov.ToString(), new UTF8Encoding(false));
+        result.GmlFiles++;
+
         // 2) 运行时 GML
         foreach (var kv in RuntimeTemplates.Files)
         {
@@ -113,6 +128,8 @@ public static class BattleGenerator
         main.AppendLine("/// 由 ntl-battle 生成的战斗 mod 入口：Neutraled 在启动时执行一次。");
         main.AppendLine("/// 配置存在 gml/ntlb_data.gml（内嵌 JSON），运行时用 json_parse 读成 struct。");
         main.AppendLine("ntlb_init();");
+        main.AppendLine("var _ntlb_text_n = ntlb_apply_text_overrides();");
+        main.AppendLine("if (_ntlb_text_n > 0) ntl_log(\"ntlb\", \"[文本] 原版文本改写 \" + string(_ntlb_text_n) + \" 条（lang key 覆盖）\");");
         File.WriteAllText(Path.Combine(gmlDir, "main.gml"), main.ToString(), new UTF8Encoding(false));
 
         // 4) 对象事件
@@ -301,6 +318,14 @@ public static class BattleGenerator
                           + (s.Feature == "none" ? "" : " → feature=" + s.Feature)
                           + (string.IsNullOrWhiteSpace(s.Label) ? "" : " " + s.Label));
         }
+        sb.AppendLine();
+        sb.AppendLine("## 原版对话/剧情文本改写（不动 data.win）");
+        sb.AppendLine();
+        sb.AppendLine("gml/ntlb_apply_text_overrides.gml 在启动时逐条调用 ntl_set_lang_string(key, 文本)，"
+                      + "直接覆盖 global.lang_map —— 原版台词/剧情文字随之变化，无需重打包 data.win。"
+                      + "共 " + file.TextOverrides.Count + " 条：");
+        foreach (var t in file.TextOverrides)
+            sb.AppendLine("- " + t.Key + (string.IsNullOrWhiteSpace(t.Room) ? "" : "（房间 " + t.Room + "）"));
         return sb.ToString();
     }
 }

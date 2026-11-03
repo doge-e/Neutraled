@@ -49,8 +49,8 @@ public static class BattleSelfTest
                 "validate: choice 缺选项会报错");
             Check(project.File.Dialogues.Count == 1 && project.File.Settings.Count == 4,
                 "validate: 自检工程带 1 段对话 + 4 个设置项");
-            Check(project.File.Cutscenes.Count == 1 && project.File.Cutscenes[0].Steps.Count == 8,
-                "validate: 自检工程带 1 段剧情（8 步，含 sound/shake/waitinput）");
+            Check(project.File.Cutscenes.Count == 1 && project.File.Cutscenes[0].Steps.Count == 9,
+                "validate: 自检工程带 1 段剧情（9 步，含 sound/shake/waitinput/原版代码）");
 
             // 1) sidecar 往返
             string winPath = Path.Combine(dir, "ch1-edit.win");
@@ -63,8 +63,15 @@ public static class BattleSelfTest
             Check(reloaded.File.Battles[0].Turns[0].Barrages[0].RandomTypes.Count == 2, "sidecar: 随机弹幕 type 列表保留");
             Check(reloaded.File.Dialogues.Count == 1, "sidecar: 对话配置持久化");
             Check(reloaded.File.Settings.Count == 4, "sidecar: 设置项持久化");
-            Check(reloaded.File.Cutscenes.Count == 1 && reloaded.File.Cutscenes[0].Steps.Count == 8,
-                "sidecar: 剧情步骤持久化（8 步）");
+            Check(reloaded.File.Cutscenes.Count == 1 && reloaded.File.Cutscenes[0].Steps.Count == 9,
+                "sidecar: 剧情步骤持久化（9 步，含原版代码步骤）");
+            Check(reloaded.File.Cutscenes[0].Steps.Any(s => s.Kind == "event" && s.Script == "gml_Script_scr_sideb_active"
+                        && s.EvObject == "obj_readable" && s.EvType == 3 && s.EvSub == 0),
+                "sidecar: 剧情 event 步骤保留对象/脚本/事件号");
+            Check(reloaded.File.TextOverrides.Count == 1
+                  && reloaded.File.TextOverrides[0].Key == "obj_readable_Step_0_gml_5_0"
+                  && reloaded.File.TextOverrides[0].Text == "自检文本改写",
+                "sidecar: 原版文本改写持久化");
             Check(reloaded.File.Cutscenes[0].Steps.Any(s => s.Kind == "sound" && s.Sound == "snd_text" && Math.Abs(s.Gain - 0.5) < 0.001),
                 "sidecar: 剧情音效步骤保留 sound/gain");
             Check(reloaded.File.Cutscenes[0].Steps.Any(s => s.Kind == "shake" && s.Frames == 20),
@@ -108,6 +115,15 @@ public static class BattleSelfTest
             Check(gmlFiles.Contains("ntlb_in_interact_zone.gml"), "generate: ntlb_in_interact_zone.gml（原版交互矩形）");
             Check(gmlFiles.Contains("ntlb_show_text.gml"), "generate: ntlb_show_text.gml（屏幕文本）");
             Check(gmlFiles.Contains("ntlb_text_draw.gml"), "generate: ntlb_text_draw.gml（文本绘制）");
+            Check(gmlFiles.Contains("ntlb_apply_text_overrides.gml"), "generate: ntlb_apply_text_overrides.gml（原版文本覆盖）");
+            string overridesGml = File.ReadAllText(Path.Combine(gmlDir, "ntlb_apply_text_overrides.gml"));
+            Check(overridesGml.Contains("function ntlb_apply_text_overrides()")
+                  && overridesGml.Contains("ntl_set_lang_string")
+                  && overridesGml.Contains("obj_readable_Step_0_gml_5_0")
+                  && overridesGml.Contains("自检文本改写"),
+                "generate: 文本覆盖脚本写入 key/文本并调用 ntl_set_lang_string");
+            Check(File.ReadAllText(Path.Combine(gmlDir, "main.gml")).Contains("ntlb_apply_text_overrides()"),
+                "generate: main.gml 调用文本覆盖（保存即有覆盖）");
             var settingActions = gmlFiles.Where(f => System.Text.RegularExpressions.Regex.IsMatch(f, @"_setting_\d+\.gml$")).ToList();
             Check(settingActions.Count == project.File.Settings.Count,
                 "generate: 每个设置项一个面板动作脚本（" + settingActions.Count + "/" + project.File.Settings.Count + "）");
@@ -132,8 +148,12 @@ public static class BattleSelfTest
             Check(parsed != null && parsed.Settings.Count == 4 &&
                   parsed.Settings.Any(s => string.Equals(s.Feature, "battlesEnabled", StringComparison.OrdinalIgnoreCase)),
                 "generate: 内嵌 JSON 保留设置项与 feature 绑定");
-            Check(parsed != null && parsed.Cutscenes.Count == 1 && parsed.Cutscenes[0].Steps.Count == 8,
-                "generate: 内嵌 JSON 保留剧情 8 步");
+            Check(parsed != null && parsed.Cutscenes.Count == 1 && parsed.Cutscenes[0].Steps.Count == 9,
+                "generate: 内嵌 JSON 保留剧情 9 步");
+            Check(parsed != null && parsed.Cutscenes[0].Steps.Any(s => s.Kind == "event" && s.Script == "gml_Script_scr_sideb_active"),
+                "generate: 内嵌 JSON 保留原版代码步骤");
+            Check(parsed != null && parsed.TextOverrides.Count == 1 && parsed.TextOverrides[0].Text == "自检文本改写",
+                "generate: 内嵌 JSON 保留原版文本改写");
             Check(parsed != null && parsed.Cutscenes[0].Steps.Any(s => s.Kind == "sound" && !string.IsNullOrEmpty(s.Sound)),
                 "generate: 内嵌 JSON 保留音效步骤");
             Check(parsed != null && parsed.Battles.First(b => b.Kind == "encounter").TriggerMode == "interact",
@@ -179,6 +199,11 @@ public static class BattleSelfTest
             string cutTick = File.ReadAllText(Path.Combine(gmlDir, "ntlb_cutscene_tick.gml"));
             Check(cutTick.Contains("[剧情] 音效") && cutTick.Contains("[剧情] 震动") && cutTick.Contains("等待按键"),
                 "generate: 剧情音效/震动/等待按键三个分支齐全");
+            Check(cutTick.Contains("_kind == \"event\" || _kind == \"script\"")
+                && cutTick.Contains("script_execute(_si)")
+                && cutTick.Contains("[剧情] 已执行原版代码")
+                && cutTick.Contains("instance_find(_oi, 0)"),
+                "generate: 剧情 event/script 步骤执行原版代码（就近实例 → with script_execute）");
             Check(project.File.Mod.Leaf == "chapter1" && result.ModDir.Replace('\\','/').EndsWith("/chapter1", StringComparison.Ordinal),
                 "generate: 生成目录 = mods/<id>/<author>/<leaf>（leaf=" + project.File.Mod.Leaf + "）");
 
@@ -369,9 +394,31 @@ public static class BattleSelfTest
         cutscene.Steps.Add(new CutsceneStep { Kind = "sound", Sound = "snd_text", Gain = 0.5 });
         cutscene.Steps.Add(new CutsceneStep { Kind = "shake", Frames = 20, X = 4 });
         cutscene.Steps.Add(new CutsceneStep { Kind = "waitinput", Frames = 30 });
+        // 非简单剧情：直接引用原版事件（对象 Step 事件），在最近的该对象实例上执行。
+        cutscene.Steps.Add(new CutsceneStep
+        {
+            Kind = "event",
+            EvObject = "obj_readable",
+            Script = "gml_Script_scr_sideb_active",
+            EvType = 3,
+            EvSub = 0,
+            Frames = 0,
+            Note = "Step 0",
+        });
         cutscene.Steps.Add(new CutsceneStep { Kind = "flag", SetFlags = { 904 } });
         cutscene.End.Message = "自检剧情结束";
         project.File.Cutscenes.Add(cutscene);
+
+        // 原版对话文本改写：按 lang key 覆盖，生成 mod 时由 ntl_set_lang_string 生效。
+        project.File.TextOverrides.Add(new TextOverrideDef
+        {
+            Key = "obj_readable_Step_0_gml_5_0",
+            Text = "自检文本改写",
+            Room = roomName,
+            ObjectName = "obj_readable",
+            EventName = "Step_0",
+            Original = "原文（自检）",
+        });
 
         // Mod 设置项：bool 两个（战斗/对话开关）、int（弹幕伤害 %）、choice（演示难度）。
         project.File.Settings.Add(new SettingDef

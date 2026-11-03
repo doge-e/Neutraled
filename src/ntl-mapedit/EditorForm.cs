@@ -25,15 +25,24 @@ public sealed class EditorForm : Form
     private readonly Label _statusLeft = new();
     private readonly Label _statusCoords = new();
     private readonly Label _statusZoom = new();
+    private readonly Label _statusTool = new();
     private readonly Button _pickTileSourceBtn = new();
     private readonly Button _paletteBtn = new();
     private TilePaletteDialog? _palette;
+    private ContextMenuStrip? _canvasMenu;
     /// <summary>与当前 data.win 同目录的战斗配置（&lt;win&gt;.ntlbattle.json）。</summary>
     private BattleProject? _battles;
+    /// <summary>当前 data.win 的原版代码扫描器（懒反编译，只读）。</summary>
+    private VanillaCode? _vanilla;
+    private readonly Dictionary<string, VanillaObjectInfo> _vanillaCache = new();
+    /// <summary>无参数/双击启动时的来源说明（显示在状态栏）。</summary>
+    private string _startupNote = "";
 
     private readonly List<UndertaleGameObject> _objects = new();
     private readonly Dictionary<UndertaleGameObject, Bitmap?> _thumbs = new();
     private readonly List<RoomRow> _roomRows = new();
+    /// <summary>上次真正打开的房间里对应的 _roomRows 下标（用于跳过流程分组标题行）。</summary>
+    private int _lastRoomIndex = -1;
     private readonly List<LayerRow> _layerRows = new();
     private int _pasteSerial;
     private readonly List<ObjectRow> _objRows = new();
@@ -43,6 +52,10 @@ public sealed class EditorForm : Form
     private ToolStripMenuItem? _gridItem;
     private ToolStripMenuItem? _snapItem;
     private ToolStripMenuItem? _helperItem;
+    private ToolStripMenuItem? _flowItem;
+    private ToolStripMenuItem? _autoGenItem;
+    /// <summary>启动/行为设置（房间流程排序、保存时自动生成 mod…）。</summary>
+    private readonly StartupSettings _settings = StartupSettings.Load();
     private Button? _undoBtn;
     private Button? _redoBtn;
     private Label? _zoomLabel;
@@ -57,6 +70,15 @@ public sealed class EditorForm : Form
         public UndertaleRoom Room = null!;
         public string Name = "";
         public string SizeText = "";
+        /// <summary>流程排序时的分组标题行（不是房间；选中它不切房间）。</summary>
+        public bool IsHeader;
+        /// <summary>支线缩进层级（0=主线，1=支线）。</summary>
+        public int Depth;
+        /// <summary>流程序号（主线 1..N；支线跟随前置主线）。</summary>
+        public int Order;
+        /// <summary>"支线" / "分组" 等角标。</summary>
+        public string Tag = "";
+        public override string ToString() => Name;
     }
 
     private sealed class LayerRow
@@ -64,6 +86,7 @@ public sealed class EditorForm : Form
         public UndertaleRoom.Layer Layer = null!;
         public string Name = "";
         public string Detail = "";
+        public override string ToString() => Name;
     }
 
     private sealed class ObjectRow
@@ -71,6 +94,7 @@ public sealed class EditorForm : Form
         public UndertaleGameObject Obj = null!;
         public string Name = "";
         public string Sprite = "";
+        public override string ToString() => Name;
     }
 
     private sealed class TileRow
@@ -79,6 +103,7 @@ public sealed class EditorForm : Form
         public string Name = "";
         public string Detail = "";
         public Bitmap? Thumb;
+        public override string ToString() => Name;
     }
 
     public EditorForm(string? initialPath)
@@ -117,10 +142,23 @@ public sealed class EditorForm : Form
         root.Controls.Add(BuildStatusBar(), 0, 3);
 
         _canvas.CursorMoved += w => _statusCoords.Text = $"x {(int)MathF.Round(w.X)}   y {(int)MathF.Round(w.Y)}";
-        _canvas.ZoomChanged += () => { if (_zoomLabel != null) _zoomLabel.Text = $"{_canvas.Zoom * 100:0}%"; };
+        _canvas.ZoomChanged += () =>
+        {
+            if (_zoomLabel != null) _zoomLabel.Text = $"{_canvas.Zoom * 100:0}%";
+            _statusZoom.Text = $"{_canvas.Zoom * 100:0}%";
+        };
         _canvas.Edited += () => { RebuildLayers(); RebuildInspector(); UpdateTitle(); UpdateUndoState(); };
         _canvas.Hint += msg => _statusLeft.Text = msg;
+        _canvas.ContextRequested += (inst, screen) =>
+        {
+            _canvasMenu ??= BuildCanvasContextMenu();
+            _canvasMenu.Show(_canvas, _canvas.PointToClient(screen));
+        };
 
+        WireFileDrop(this);
+        FormClosing += OnEditorFormClosing;
+
+        UpdateToolStatus();
         if (!string.IsNullOrEmpty(initialPath)) OpenPath(initialPath!, false);
     }
 
@@ -142,6 +180,7 @@ public sealed class EditorForm : Form
         var file = TopMenu("文件(&F)");
         file.DropDownItems.Add(Theme.Item("打开 data.win…", (s, e) => OpenDialog(), Keys.Control | Keys.O));
         file.DropDownItems.Add(BuildChapterMenu());
+        file.DropDownItems.Add(BuildDefaultChapterMenu());
         file.DropDownItems.Add(new ToolStripSeparator());
         file.DropDownItems.Add(Theme.Item("保存", (s, e) => Save(false), Keys.Control | Keys.S));
         file.DropDownItems.Add(Theme.Item("另存为…", (s, e) => Save(true), Keys.Control | Keys.Shift | Keys.S));
@@ -166,6 +205,8 @@ public sealed class EditorForm : Form
         edit.DropDownItems.Add(Theme.Item("复制", (s, e) => CopySelection(), Keys.Control | Keys.C));
         edit.DropDownItems.Add(Theme.Item("粘贴", (s, e) => PasteClipboard(), Keys.Control | Keys.V));
         edit.DropDownItems.Add(Theme.Item("再制", (s, e) => DuplicateSelection(), Keys.Control | Keys.D));
+        edit.DropDownItems.Add(new ToolStripSeparator());
+        edit.DropDownItems.Add(Theme.Item("编辑本房间原版对话（文本覆盖）…", (s, e) => EditVanillaDialogue(), Keys.Control | Keys.Shift | Keys.E));
 
         var room = TopMenu("房间(&R)");
         room.DropDownItems.Add(Theme.Item("新建房间（复制当前）…", (s, e) => NewRoomDialog(true), Keys.Control | Keys.N));
@@ -198,12 +239,12 @@ public sealed class EditorForm : Form
         zoomOutItem.ShortcutKeyDisplayString = "－";
         view.DropDownItems.Add(zoomOutItem);
         view.DropDownItems.Add(new ToolStripSeparator());
-        _gridItem = Theme.Item("显示网格", (s, e) => { if (_gridItem != null) _canvas.ShowGrid = _gridItem.Checked; });
+        _gridItem = Theme.Item("显示网格", (s, e) => { if (_gridItem != null) _canvas.ShowGrid = _gridItem.Checked; UpdateToolStatus(); });
         _gridItem.Checked = true;
         view.DropDownItems.Add(_gridItem);
-        _snapItem = Theme.Item("吸附网格", (s, e) => { if (_snapItem != null) _canvas.SnapGrid = _snapItem.Checked; });
+        _snapItem = Theme.Item("吸附网格", (s, e) => { if (_snapItem != null) _canvas.SnapGrid = _snapItem.Checked; UpdateToolStatus(); });
         view.DropDownItems.Add(_snapItem);
-        _helperItem = Theme.Item("显示辅助对象", (s, e) => { if (_helperItem != null) _canvas.ShowHelpers = _helperItem.Checked; });
+        _helperItem = Theme.Item("显示辅助对象", (s, e) => { if (_helperItem != null) _canvas.ShowHelpers = _helperItem.Checked; UpdateToolStatus(); });
         _helperItem.Checked = true;
         view.DropDownItems.Add(_helperItem);
         view.DropDownItems.Add(new ToolStripSeparator());
@@ -211,22 +252,31 @@ public sealed class EditorForm : Form
         rerenderItem.ShortcutKeyDisplayString = "F5";
         view.DropDownItems.Add(rerenderItem);
         view.DropDownItems.Add(new ToolStripSeparator());
+        _flowItem = Theme.Item("房间按剧情流程排序", (s, e) => ToggleFlowSort());
+        _flowItem.Checked = _settings.SortRoomsByFlow;
+        view.DropDownItems.Add(_flowItem);
+        view.DropDownItems.Add(new ToolStripSeparator());
         view.DropDownItems.Add(Theme.Item("资源浏览器（只读）…", (s, e) => ShowResourceBrowser(), Keys.F4));
 
         var battleMenu = TopMenu("战斗(&B)");
         battleMenu.DropDownItems.Add(Theme.Item("编辑选中实体的战斗…", (s, e) => EditSelectedBattle(), Keys.Control | Keys.B));
         battleMenu.DropDownItems.Add(Theme.Item("编辑选中实体的对话…", (s, e) => EditSelectedDialogue(), Keys.Control | Keys.Shift | Keys.B));
         battleMenu.DropDownItems.Add(Theme.Item("编辑选中实体的剧情…", (s, e) => EditSelectedCutscene(), Keys.Control | Keys.Shift | Keys.K));
+        battleMenu.DropDownItems.Add(Theme.Item("编辑本房间原版对话…", (s, e) => EditVanillaDialogue(), Keys.Control | Keys.Shift | Keys.E));
+        battleMenu.DropDownItems.Add(new ToolStripSeparator());
         battleMenu.DropDownItems.Add(Theme.Item("全部战斗…", (s, e) => ShowBattleList()));
         battleMenu.DropDownItems.Add(Theme.Item("全部对话…", (s, e) => ShowDialogueList()));
         battleMenu.DropDownItems.Add(Theme.Item("全部剧情…", (s, e) => ShowCutsceneList()));
         battleMenu.DropDownItems.Add(new ToolStripSeparator());
         battleMenu.DropDownItems.Add(Theme.Item("Mod 设置项…", (s, e) => EditSettings()));
         battleMenu.DropDownItems.Add(new ToolStripSeparator());
-        battleMenu.DropDownItems.Add(Theme.Item("生成战斗 mod…", (s, e) => GenerateBattleMod()));
+        _autoGenItem = Theme.Item("保存时自动生成 Mod", (s, e) => ToggleAutoGenerate());
+        _autoGenItem.Checked = _settings.AutoGenerateMod;
+        battleMenu.DropDownItems.Add(_autoGenItem);
+        battleMenu.DropDownItems.Add(Theme.Item("立即重新生成 Mod…", (s, e) => GenerateBattleMod()));
         battleMenu.DropDownItems.Add(Theme.Item("mods 清单（mods.json）…", (s, e) => ShowModsManifest()));
         battleMenu.DropDownItems.Add(new ToolStripSeparator());
-        battleMenu.DropDownItems.Add(Theme.Item("保存战斗配置", (s, e) => SaveBattles(true)));
+        battleMenu.DropDownItems.Add(Theme.Item("保存战斗配置（仅写 sidecar）", (s, e) => SaveBattles(true)));
 
         var help = TopMenu("帮助(&H)");
         help.DropDownItems.Add(Theme.Item("快捷键…", (s, e) => ShowHelp()));
@@ -271,6 +321,53 @@ public sealed class EditorForm : Form
         root.DropDownItems.Add(baseline);
         if (gameRoot == null) root.DropDownItems.Add(Theme.Item("（未找到游戏目录：设置 DELTARUNE_DIR）"));
         return root;
+    }
+
+    private ToolStripMenuItem BuildDefaultChapterMenu()
+    {
+        var root = Theme.Item("默认启动章节（双击 exe 时打开）");
+        var auto = Theme.Item("自动（最近打开，其次 chapter1）");
+        auto.Click += (s, e) => SetDefaultChapter("auto");
+        root.DropDownItems.Add(auto);
+        for (int ch = 1; ch <= 5; ch++)
+        {
+            int n = ch;
+            var item = Theme.Item("Chapter " + n);
+            item.Click += (s, e) => SetDefaultChapter("chapter" + n);
+            root.DropDownItems.Add(item);
+        }
+        root.DropDownItems.Add(new ToolStripSeparator());
+        var note = Theme.Item("说明: 双击 exe / 无参数启动时打开该章节；也可用 ntl-mapedit default-chapter 设置");
+        note.Enabled = true;
+        root.DropDownItems.Add(note);
+        root.DropDownOpening += (s, e) =>
+        {
+            var st = StartupSettings.Load();
+            for (int i = 0; i < root.DropDownItems.Count; i++)
+            {
+                if (root.DropDownItems[i] is ToolStripMenuItem mi && mi != note)
+                {
+                    string want = i == 0 ? "auto" : "chapter" + i;
+                    mi.Checked = st.DefaultChapter == want;
+                }
+            }
+        };
+        return root;
+    }
+
+    private void SetDefaultChapter(string chapter)
+    {
+        try
+        {
+            var st = StartupSettings.Load();
+            st.DefaultChapter = StartupSettings.NormalizeChapter(chapter);
+            st.Save();
+            _statusLeft.Text = "默认启动章节已设为 " + StartupSettings.Describe(st.DefaultChapter) + "（下次双击 / 无参数启动生效；设置文件 " + StartupSettings.DefaultFile + "）";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "保存默认启动章节失败：\n" + ex.Message, "设置失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private static string? FindGameRoot() => FileRole.FindGameRoot();
@@ -350,6 +447,29 @@ public sealed class EditorForm : Form
             b.BackColor = active ? Theme.Accent : Theme.Bg2;
             b.FlatAppearance.BorderColor = active ? Theme.Accent : Theme.Line;
         }
+        UpdateToolStatus();
+    }
+
+    private static string ToolDisplayName(EditorTool tool) => tool switch
+    {
+        EditorTool.Select => "选择 (V)",
+        EditorTool.Pan => "平移 (H)",
+        EditorTool.Place => "放置 (B)",
+        EditorTool.Erase => "擦除 (X)",
+        EditorTool.Tile => "瓦片 (T)",
+        EditorTool.TileRect => "矩形 (R)",
+        EditorTool.TileLine => "直线 (L)",
+        EditorTool.TileCircle => "圆形 (C)",
+        EditorTool.TileEllipse => "椭圆 (E)",
+        EditorTool.TileFill => "油漆桶 (K)",
+        EditorTool.TileSelect => "瓦片选择 (S)",
+        _ => tool.ToString(),
+    };
+
+    /// <summary>状态栏右侧显示当前工具与显示开关（矩阵 MG-020/024/053..055 的可读状态来源）。</summary>
+    private void UpdateToolStatus()
+    {
+        _statusTool.Text = $"工具：{ToolDisplayName(_canvas.Tool)} ｜ 网格 {(_canvas.ShowGrid ? "开" : "关")} ｜ 吸附 {(_canvas.SnapGrid ? "开" : "关")} ｜ 辅助 {(_canvas.ShowHelpers ? "开" : "关")}";
     }
 
     // ------------------------------------------------------------ left panel
@@ -378,6 +498,15 @@ public sealed class EditorForm : Form
             if (_syncingLists || _doc == null) return;
             int i = _roomList.SelectedIndex;
             if (i < 0 || i >= _roomRows.Count) return;
+            if (_roomRows[i].IsHeader)
+            {
+                // 分组标题只是视觉分隔：选中它不切房间，直接回退到上一个真实房间。
+                _syncingLists = true;
+                _roomList.SelectedIndex = (_lastRoomIndex >= 0 && _lastRoomIndex < _roomRows.Count) ? _lastRoomIndex : -1;
+                _syncingLists = false;
+                return;
+            }
+            _lastRoomIndex = i;
             _doc.OpenRoom(_roomRows[i].Room);
             _canvas.FitToView();
         };
@@ -453,6 +582,16 @@ public sealed class EditorForm : Form
         if (e.Index < 0 || e.Index >= _roomRows.Count) return;
         var row = _roomRows[e.Index];
         bool sel = (e.State & DrawItemState.Selected) != 0;
+        if (row.IsHeader)
+        {
+            // 分组标题：更深一点的底 + 粗体小号字，不可选中。
+            using var hbg = new SolidBrush(Theme.Bg2);
+            e.Graphics.FillRectangle(hbg, e.Bounds);
+            TextRenderer.DrawText(e.Graphics, row.Name, SectionFont,
+                new Rectangle(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 20, e.Bounds.Height),
+                Theme.TextDim, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            return;
+        }
         using var bg = new SolidBrush(sel ? Theme.Bg3 : Theme.Bg1);
         e.Graphics.FillRectangle(bg, e.Bounds);
         if (sel)
@@ -460,9 +599,18 @@ public sealed class EditorForm : Form
             using var accent = new SolidBrush(Theme.Accent);
             e.Graphics.FillRectangle(accent, e.Bounds.X, e.Bounds.Y + 2, 3, e.Bounds.Height - 4);
         }
-        TextRenderer.DrawText(e.Graphics, row.Name, RowFont,
-            new Rectangle(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 78, e.Bounds.Height),
-            sel ? Theme.Text : Theme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        int textX = e.Bounds.X + 10 + row.Depth * 14;
+        string prefix = row.Order > 0 ? row.Order.ToString("00") + "  " : "";
+        // 右侧要给「支线」角标 + 尺寸留位，否则长房间名会压到角标上（实测 room_flowershop）。
+        int rightReserve = row.Tag.Length > 0 ? 116 : 72;
+        int nameWidth = Math.Max(20, e.Bounds.Right - rightReserve - textX);
+        TextRenderer.DrawText(e.Graphics, prefix + row.Name, RowFont,
+            new Rectangle(textX, e.Bounds.Y, nameWidth, e.Bounds.Height),
+            Theme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        if (row.Tag.Length > 0)
+            TextRenderer.DrawText(e.Graphics, row.Tag, RowFontSmall,
+                new Rectangle(e.Bounds.Right - 112, e.Bounds.Y, 42, e.Bounds.Height),
+                Theme.Orange, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
         TextRenderer.DrawText(e.Graphics, row.SizeText, RowMono,
             new Rectangle(e.Bounds.Right - 68, e.Bounds.Y, 62, e.Bounds.Height),
             Theme.TextDim, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
@@ -551,9 +699,14 @@ public sealed class EditorForm : Form
             if (i < 0 || i >= _objRows.Count) return;
             _canvas.PlaceObject = _objRows[i].Obj;
             SetTool(EditorTool.Place);
-            _statusLeft.Text = $"放置对象：{_objRows[i].Name}（B 键回到放置工具）";
+            _statusLeft.Text = $"放置对象：{_objRows[i].Name}（B 键回到放置工具）" + DescribeObjectVanilla(_objRows[i].Obj);
             _canvas.Invalidate();
         };
+        var objMenu = new ContextMenuStrip { BackColor = Theme.Bg1, ForeColor = Theme.Text };
+        var objVanillaItem = new ToolStripMenuItem("查看原版交互 / 事件…");
+        objVanillaItem.Click += (s, e) => ShowObjectVanillaViewer(SelectedObjectRow()?.Obj);
+        objMenu.Items.Add(objVanillaItem);
+        _objList.ContextMenuStrip = objMenu;
         _objFilter.TextChanged += (s, e) => RebuildObjectList();
         panel.Controls.Add(_objList, 0, 4);
 
@@ -856,11 +1009,18 @@ public sealed class EditorForm : Form
         _statusCoords.Font = Theme.Mono(8.5f);
         _statusZoom.Dock = DockStyle.Right;
         _statusZoom.Width = 70;
+        _statusZoom.Text = "100%";
         _statusZoom.TextAlign = ContentAlignment.MiddleRight;
         _statusZoom.ForeColor = Theme.TextDim;
         _statusZoom.Font = Theme.Mono(8.5f);
         _statusZoom.Padding = new Padding(0, 0, 10, 0);
+        _statusTool.Dock = DockStyle.Right;
+        _statusTool.Width = 330;
+        _statusTool.TextAlign = ContentAlignment.MiddleRight;
+        _statusTool.ForeColor = Theme.TextDim;
+        _statusTool.Font = Theme.UI(8.5f);
         bar.Controls.Add(_statusLeft);
+        bar.Controls.Add(_statusTool);
         bar.Controls.Add(_statusCoords);
         bar.Controls.Add(_statusZoom);
         return bar;
@@ -889,6 +1049,40 @@ public sealed class EditorForm : Form
             UpdateTitle();
             UpdateStatus();
         };
+    }
+
+    /// <summary>整窗接受把 data.win / *.win 拖进来直接打开（矩阵 MG-006）。</summary>
+    private void WireFileDrop(Control root)
+    {
+        root.AllowDrop = true;
+        root.DragEnter += OnFileDragEnter;
+        root.DragDrop += OnFileDragDrop;
+        foreach (Control child in root.Controls) WireFileDrop(child);
+    }
+
+    private static bool IsDroppedWin(DragEventArgs e)
+    {
+        var data = e.Data;
+        if (data is null || !data.GetDataPresent(DataFormats.FileDrop)) return false;
+        if (data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0) return false;
+        string first = files[0];
+        return first.EndsWith(".win", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Path.GetFileName(first), "data.win", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnFileDragEnter(object? sender, DragEventArgs e)
+    {
+        e.Effect = IsDroppedWin(e) ? DragDropEffects.Copy : DragDropEffects.None;
+    }
+
+    private void OnFileDragDrop(object? sender, DragEventArgs e)
+    {
+        if (!IsDroppedWin(e)) return;
+        var data = e.Data;
+        if (data is null) return;
+        if (data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0) return;
+        OpenPath(files[0], false);
+        Activate();
     }
 
     private void OpenDialog()
@@ -929,7 +1123,15 @@ public sealed class EditorForm : Form
             var game = new GameData(path);
             _doc?.Dispose();
             _doc = new EditorDocument(game, path);
-            _battles = BattleProject.LoadOrNew(BattleProject.SidecarFor(path));
+            // 原版基线：sidecar 写到 Neutraled/editor/（不碰 backup），因此「打开原版 data 就能直接编辑对话/战斗/剧情」。
+            var gameRootForSidecar = FindGameRoot();
+            string sidecarPath = BattleProject.SidecarForEdit(path, gameRootForSidecar);
+            bool sidecarFresh = !File.Exists(sidecarPath);
+            _battles = BattleProject.LoadOrNew(sidecarPath);
+            if (sidecarFresh) _battles.File.Mod.Leaf = BattleProject.ChapterLeaf(path);
+            _vanilla = new VanillaCode(game.Data, path);
+            _vanillaCache.Clear();
+            _startupNote = "";
             _objects.Clear();
             _objects.AddRange(game.Data.GameObjects);
             _thumbs.Clear();
@@ -944,12 +1146,14 @@ public sealed class EditorForm : Form
             RebuildLayers();
             RebuildInspector();
             RebuildTileList();
-            if (_roomRows.Count > 0)
+            int firstRoom = _roomRows.FindIndex(r => !r.IsHeader);
+            if (firstRoom >= 0)
             {
+                _lastRoomIndex = firstRoom;
                 _syncingLists = true;
-                _roomList.SelectedIndex = 0;
+                _roomList.SelectedIndex = firstRoom;
                 _syncingLists = false;
-                _doc.OpenRoom(_roomRows[0].Room);
+                _doc.OpenRoom(_roomRows[firstRoom].Room);
                 _canvas.FitToView();
             }
             UpdateTitle();
@@ -957,7 +1161,7 @@ public sealed class EditorForm : Form
             UpdateStatus();
             _statusLeft.Text = $"已加载 {Path.GetFileName(path)} — {_roomRows.Count} 个房间 / {_objects.Count} 个对象";
             if (_fileRole == FileKind.Baseline)
-                _statusLeft.Text += $"  ·  {FileRole.BaselineBadge}（Ctrl+S 会被拦截，请用「另存为」或打开游戏文件）";
+                _statusLeft.Text += $"  ·  {FileRole.BaselineBadge}（data.win 不改；对话/战斗/剧情保存到 Neutraled/editor 并生成 mod）";
             else if (FileRole.IsLive(_fileRole))
                 _statusLeft.Text += $"  ·  {FileRole.LiveBadge}";
             RecentStore.Record(path);
@@ -981,21 +1185,40 @@ public sealed class EditorForm : Form
         try
         {
             _roomRows.Clear();
-            foreach (var room in _doc.Game.Rooms)
+            bool searching = filter.Length > 0;
+            var rooms = _doc.Game.Rooms.ToList();
+            var entries = _settings.SortRoomsByFlow
+                ? RoomFlow.Build(rooms)
+                : RoomFlow.BuildDataOrder(rooms);
+            foreach (var ent in entries)
             {
-                string name = GameData.Name(room.Name);
-                if (filter.Length > 0 && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
-                _roomRows.Add(new RoomRow { Room = room, Name = name, SizeText = $"{room.Width}×{room.Height}" });
+                if (ent.IsHeader)
+                {
+                    if (searching) continue; // 搜索时平铺，不显示分组标题
+                    _roomRows.Add(new RoomRow { IsHeader = true, Name = ent.Name, SizeText = "", Tag = ent.Tag });
+                    continue;
+                }
+                if (searching && !ent.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+                var room = ent.Room!;
+                _roomRows.Add(new RoomRow
+                {
+                    Room = room,
+                    Name = ent.Name,
+                    SizeText = $"{room.Width}×{room.Height}",
+                    Depth = searching ? 0 : ent.Depth,
+                    Order = searching ? 0 : ent.Order,
+                    Tag = searching ? "" : ent.Tag,
+                });
             }
             _roomList.BeginUpdate();
             _roomList.Items.Clear();
             foreach (var r in _roomRows) _roomList.Items.Add(r);
             _roomList.EndUpdate();
-            if (_doc.Room != null)
-            {
-                int idx = _roomRows.FindIndex(r => ReferenceEquals(r.Room, _doc.Room));
-                if (idx >= 0) _roomList.SelectedIndex = idx;
-            }
+            int idx = -1;
+            if (_doc.Room != null) idx = _roomRows.FindIndex(r => ReferenceEquals(r.Room, _doc.Room));
+            if (idx < 0) idx = _roomRows.FindIndex(r => !r.IsHeader);
+            _lastRoomIndex = idx;
+            _roomList.SelectedIndex = idx;
             _roomList.Refresh();
         }
         finally { _syncingLists = false; }
@@ -1057,8 +1280,13 @@ public sealed class EditorForm : Form
                 string name = GameData.Name(obj.Name);
                 string sprite = GameData.Name(obj.Sprite?.Name);
                 if (filter.Length > 0 && !name.Contains(filter, StringComparison.OrdinalIgnoreCase) && !sprite.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
-                _objRows.Add(new ObjectRow { Obj = obj, Name = name, Sprite = string.IsNullOrEmpty(sprite) ? "（无 sprite）" : sprite });
-                if (_objRows.Count >= 800) break;
+                string meta = (string.IsNullOrEmpty(sprite) ? "（无 sprite）" : sprite)
+                    + " · 深度 " + obj.Depth
+                    + (obj.Visible ? "" : " · 不可见")
+                    + (obj.Solid ? " · solid" : "")
+                    + (obj.Persistent ? " · persistent" : "");
+                _objRows.Add(new ObjectRow { Obj = obj, Name = name, Sprite = meta });
+                if (_objRows.Count >= 4000) break;   // 只是防御性上限；ch1..ch5 的对象总数都远低于此
             }
             _objList.BeginUpdate();
             _objList.Items.Clear();
@@ -1079,6 +1307,7 @@ public sealed class EditorForm : Form
         int instances = RoomEdit.AllInstances(_doc.Room).Count();
         int tiles = _doc.Room.Layers?.Sum(l => (l.AssetsData?.LegacyTiles?.Count ?? 0) + NativeTiles.CountNonZero(l)) ?? 0;
         _statusLeft.Text = $"{_doc.RoomName()} — {_doc.Room.Width}×{_doc.Room.Height} · {instances} 个实例 · {tiles} 个图块";
+        if (_startupNote.Length > 0) _statusLeft.Text += "  ·  " + _startupNote;
     }
 
     private void UpdateTitle()
@@ -1223,7 +1452,8 @@ public sealed class EditorForm : Form
             AddSection("实例");
             AddReadonly("对象", GameData.Name(inst.ObjectDefinition?.Name));
             AddReadonly("实例 ID", inst.InstanceID.ToString());
-            AddSection("战斗");
+            AddVanillaSection(inst);
+            AddSection("Mod 战斗（可编辑）");
             var instRoom = _doc.RoomName();
             var instBattle = _battles?.ForInstance(instRoom, inst.InstanceID);
             if (instBattle == null)
@@ -1244,7 +1474,7 @@ public sealed class EditorForm : Form
                     RebuildInspector();
                 });
             }
-            AddSection("剧情");
+            AddSection("Mod 剧情（可编辑）");
             var instCutscene = _battles?.CutsceneForInstance(instRoom, inst.InstanceID);
             if (instCutscene == null)
             {
@@ -1264,7 +1494,7 @@ public sealed class EditorForm : Form
                     RebuildInspector();
                 });
             }
-            AddSection("对话");
+            AddSection("Mod 对话（可编辑）");
             var instDialogue = _battles?.DialogueForInstance(instRoom, inst.InstanceID);
             if (instDialogue == null)
             {
@@ -1342,6 +1572,28 @@ public sealed class EditorForm : Form
             }
         }
 
+        AddSection("原版房间（只读）");
+        if (_vanilla == null)
+        {
+            AddReadonly("状态", "（未加载）");
+        }
+        else
+        {
+            int pathLayers = room.Layers?.Count(l => l.LayerType is UndertaleRoom.LayerType.Path or UndertaleRoom.LayerType.Path2) ?? 0;
+            int effectLayers = room.Layers?.Count(l => l.LayerType == UndertaleRoom.LayerType.Effect) ?? 0;
+            AddReadonly("原版属性", "speed=" + room.Speed + " · persistent=" + (room.Persistent ? "是" : "否") + " · flags=" + room.Flags
+                + " · views=" + (room.Views?.Count ?? 0) + " · 旧版背景=" + (room.Backgrounds?.Count ?? 0)
+                + " · 创建顺序=" + (room.InstanceCreationOrderIDs?.InstanceIDs?.Count ?? 0)
+                + " · 路径层=" + pathLayers + " · 效果层=" + effectLayers);
+            var roomCode = room.CreationCodeId;
+            AddReadonly("房间创建代码", roomCode == null ? "（无）" : "有（点下方按钮反编译查看）");
+            if (roomCode != null)
+            {
+                var codeRef = roomCode;
+                AddButtonRow("", "查看房间创建代码…", () => VanillaCodeDialog.ShowCode(this, "房间创建代码（只读） — " + _doc.RoomName(), _vanilla.Decompile(codeRef) ?? "（反编译不可用）"));
+            }
+        }
+
         AddSection("统计");
         int instances = RoomEdit.AllInstances(room).Count();
         int tiles = room.Layers?.Sum(l => (l.AssetsData?.LegacyTiles?.Count ?? 0) + NativeTiles.CountNonZero(l)) ?? 0;
@@ -1403,6 +1655,185 @@ public sealed class EditorForm : Form
             _inspectorGrid.Controls.Remove(field);
             _inspectorGrid.Controls.Add(field, 1, row);
         }
+    }
+
+    private string DescribeObjectVanilla(UndertaleGameObject obj)
+    {
+        if (_vanilla == null || _doc?.Room == null) return "";
+        var hit = RoomEdit.AllInstances(_doc.Room).FirstOrDefault(x => ReferenceEquals(x.Inst.ObjectDefinition, obj));
+        var inst = hit.Inst;
+        float instX = inst?.X ?? float.NaN, instY = inst?.Y ?? float.NaN;
+        string key = "obj:" + GameData.Name(obj.Name) + "@" + _doc.RoomName() + "@" + instX + "," + instY;
+        if (!_vanillaCache.TryGetValue(key, out var info))
+        {
+            try
+            {
+                int ri = _vanilla.RoomIndex(_doc.Room);
+                info = _vanilla.ScanObject(obj, ri, instX, instY);
+            }
+            catch
+            {
+                return "  ·  原版：扫描失败";
+            }
+            _vanillaCache[key] = info;
+        }
+        int reach = info.Events.SelectMany(e => e.Lines).Count(l => l.Truth != TriTruth.False);
+        var all = info.Events.SelectMany(e => e.Lines).ToList();
+        int mscCount = all.Count(l => l.MscNo > 0);
+        int argCount = all.Count(l => l.RequiresArgs);
+        bool truncated = info.Events.Any(e => e.Truncated);
+        string inter;
+        if (info.InteractionEvent == null) inter = "无 Other_10";
+        else if (info.InteractionEvent.Inherited) inter = "交互 " + info.InteractionEvent.Name + "（继承自 " + info.InteractionEvent.OwnerObject + "）";
+        else inter = "交互 " + info.InteractionEvent.Name;
+        string inh = info.InheritedDialogueLineCount > 0 ? "，其中继承 " + info.InheritedDialogueLineCount + " 行" : "";
+        string extra = (mscCount > 0 ? "，msc " + mscCount + " 行" : "") + (argCount > 0 ? "，带参数 " + argCount + " 行" : "")
+                     + (truncated ? "，已截断" : "");
+        string props = " · 对象: 深度 " + obj.Depth + " · visible " + (obj.Visible ? "是" : "否") + " · solid " + (obj.Solid ? "是" : "否")
+                     + " · persistent " + (obj.Persistent ? "是" : "否") + (obj.ParentId != null ? " · 父 " + GameData.Name(obj.ParentId.Name) : "");
+        return $"  ·  原版：{inter}，对白 {info.DialogueLineCount} 行（可阅读 {info.DisplayableLineCount} 行；当前房间/坐标可达 {reach}{inh}{extra}）{props}";
+    }
+
+    private ObjectRow? SelectedObjectRow()
+    {
+        int i = _objList.SelectedIndex;
+        return i >= 0 && i < _objRows.Count ? _objRows[i] : null;
+    }
+
+    private void ShowObjectVanillaViewer(UndertaleGameObject? obj)
+    {
+        if (obj == null || _vanilla == null || _doc?.Room == null) return;
+        string objName = GameData.Name(obj.Name);
+        string key = "objview:" + objName + "@" + _doc.RoomName();
+        if (!_vanillaCache.TryGetValue(key, out var info))
+        {
+            try { info = _vanilla.ScanObject(obj, _vanilla.RoomIndex(_doc.Room), float.NaN, float.NaN); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "扫描该对象的原版事件失败：\n" + ex.Message, "扫描失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            _vanillaCache[key] = info;
+        }
+        try
+        {
+            using var dlg = new VanillaCodeDialog(this, _vanilla, obj, _vanilla.RoomIndex(_doc.Room), float.NaN, float.NaN, info, null, null);
+            dlg.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "打开原版事件查看器失败：\n" + ex.Message, "查看失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private VanillaObjectInfo? GetVanillaInfo(UndertaleRoom.GameObject inst)
+    {
+        if (_vanilla == null || _doc?.Room == null || inst.ObjectDefinition == null) return null;
+        // 坐标进 key：可达对白行是按当前坐标判定条件算的，实例一移动缓存就得失效。
+        string key = _doc.RoomName() + "#" + inst.InstanceID + "@" + inst.X + "," + inst.Y;
+        if (_vanillaCache.TryGetValue(key, out var cached)) return cached;
+        try
+        {
+            var info = _vanilla.ScanObject(inst.ObjectDefinition, _vanilla.RoomIndex(_doc.Room), inst.X, inst.Y);
+            _vanillaCache[key] = info;
+            return info;
+        }
+        catch
+        {
+            _vanillaCache[key] = new VanillaObjectInfo { ObjectName = GameData.Name(inst.ObjectDefinition.Name), Note = "扫描失败" };
+            return _vanillaCache[key];
+        }
+    }
+
+    private void AddVanillaSection(UndertaleRoom.GameObject inst)
+    {
+        AddSection("原版交互（只读）");
+        if (_vanilla == null)
+        {
+            AddReadonly("状态", "（未加载）");
+            return;
+        }
+        var info = GetVanillaInfo(inst);
+        if (info == null)
+        {
+            AddReadonly("状态", "（该实例没有对象定义）");
+            return;
+        }
+        var inter = info.InteractionEvent;
+        string interText;
+        if (inter == null) interText = "（未发现 Other_10）";
+        else if (inter.Inherited) interText = inter.Friendly + " · 继承自 " + inter.OwnerObject;
+        else interText = inter.Friendly;
+        AddReadonly("交互事件", interText);
+        if (info.ParentChain.Count > 0) AddReadonly("父对象", string.Join(" → ", info.ParentChain));
+        var allLines = info.Events.SelectMany(e => e.Lines).ToList();
+        int reachable = allLines.Count(l => l.Truth != TriTruth.False);
+        int mscTotal = allLines.Count(l => l.MscNo > 0);
+        int argTotal = allLines.Count(l => l.RequiresArgs);
+        int unknownTotal = allLines.Count(l => l.Truth == TriTruth.Unknown);
+        bool truncated = info.Events.Any(e => e.Truncated);
+        string inhNote = info.InheritedDialogueLineCount > 0 ? "；其中继承 " + info.InheritedDialogueLineCount + " 行" : "";
+        AddReadonly("对白行", info.DialogueLineCount + " 行（可阅读 " + info.DisplayableLineCount + " 行；运行期文本/控制码 " + info.RuntimeTextLineCount + " 行；当前房间/坐标可达 " + reachable + " 行" + inhNote + "）"
+            + (truncated ? "  ⚠ 超过 " + VanillaCode.MaxLines + " 行已截断" : ""));
+        AddReadonly("文本统计", "msc 旧式文本 " + mscTotal + " 行 · 含参数替换 " + argTotal + " 行 · 未知条件 " + unknownTotal + " 行");
+        AddReadonly("文本来源", _vanilla.LangPath == null
+            ? "未找到 lang 文件（只显示 key）：" + _vanilla.LangStatus
+            : "lang: " + _vanilla.LangPath + "（" + _vanilla.LangEntryCount + " 条）");
+        if (!string.IsNullOrEmpty(info.Note)) AddHint(info.Note);
+        var previews = allLines
+            .Where(l => l.Truth != TriTruth.False && !l.RuntimeText && !string.IsNullOrWhiteSpace(l.DisplayText))
+            .Take(3).Select(l => "· " + (l.MscNo > 0 ? "[msc " + l.MscNo + "] " : "") + (l.RequiresArgs ? "[参数] " : "") + ShortOneLine(l.DisplayText, 46)).ToList();
+        if (previews.Count > 0) AddHint("当前条件下的对白预览（点下方按钮看全部）：\n" + string.Join("\n", previews));
+        else if (info.DialogueLineCount == 0) AddHint("没有解析到对白：交互事件可能只有非文本逻辑，或文本走未识别的函数（见下方「原版事件…」里的完整反编译代码）。");
+        AddButtonRow3("查看原版对话…", () => ShowVanillaViewer(inst, info),
+                     "原版事件…", () => ShowVanillaViewer(inst, info),
+                     "创建代码…", () => ShowInstanceCode(inst));
+    }
+
+    private void ShowVanillaViewer(UndertaleRoom.GameObject inst, VanillaObjectInfo info)
+    {
+        if (_vanilla == null || _doc?.Room == null || inst.ObjectDefinition == null) return;
+        try
+        {
+            using var dlg = new VanillaCodeDialog(this, _vanilla, inst.ObjectDefinition, _vanilla.RoomIndex(_doc.Room), inst.X, inst.Y, info, inst.CreationCode, inst.PreCreateCode);
+            dlg.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "打开原版事件查看器失败：\n" + ex.Message, "查看失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ShowInstanceCode(UndertaleRoom.GameObject inst)
+    {
+        if (_vanilla == null) return;
+        string objName = GameData.Name(inst.ObjectDefinition?.Name);
+        if (inst.CreationCode != null)
+        {
+            VanillaCodeDialog.ShowCode(this, "实例创建代码（只读） — " + objName, _vanilla.Decompile(inst.CreationCode) ?? "（反编译不可用）");
+            return;
+        }
+        if (inst.PreCreateCode != null)
+        {
+            VanillaCodeDialog.ShowCode(this, "实例预创建代码（只读） — " + objName, _vanilla.Decompile(inst.PreCreateCode) ?? "（反编译不可用）");
+            return;
+        }
+        if (_doc?.Room?.CreationCodeId != null)
+        {
+            var rc = _doc.Room.CreationCodeId;
+            if (rc != null)
+            {
+                VanillaCodeDialog.ShowCode(this, "房间创建代码（只读） — " + _doc.RoomName(), _vanilla.Decompile(rc) ?? "（反编译不可用）");
+                return;
+            }
+        }
+        MessageBox.Show(this, "此实例没有创建代码或预创建代码，房间也没有创建代码。", "创建代码", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private static string ShortOneLine(string s, int max)
+    {
+        s = (s ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+        return s.Length <= max ? s : s.Substring(0, max) + "…";
     }
 
     private void AddSection(string text)
@@ -1488,6 +1919,36 @@ public sealed class EditorForm : Form
         Theme.StyleButton(b);
         b.Click += (s, e) => onClick();
         AddField(label, b);
+    }
+
+    /// <summary>把三个按钮放进同一行（属性面板窄，三行按钮会把后两个挤到 AutoScroll 之下）。</summary>
+    private void AddButtonRow3(string t1, Action a1, string t2, Action a2, string t3, Action a3)
+    {
+        var row = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            BackColor = Theme.Bg1,
+            Margin = new Padding(0),
+            Height = 30,
+        };
+        for (int i = 0; i < 3; i++) row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34f));
+        var buttons = new[]
+        {
+            new Button { Text = t1, Dock = DockStyle.Fill, Height = 26, Margin = new Padding(0, 0, 3, 0) },
+            new Button { Text = t2, Dock = DockStyle.Fill, Height = 26, Margin = new Padding(3, 0, 3, 0) },
+            new Button { Text = t3, Dock = DockStyle.Fill, Height = 26, Margin = new Padding(3, 0, 0, 0) },
+        };
+        var actions = new Action[] { a1, a2, a3 };
+        for (int i = 0; i < 3; i++)
+        {
+            Theme.StyleButton(buttons[i]);
+            int idx = i;
+            buttons[i].Click += (s, e) => actions[idx]();
+            row.Controls.Add(buttons[i], i, 0);
+        }
+        AddSpan(row);
     }
 
     private void AddColorField(string label, uint value, Action<uint> commit)
@@ -2035,6 +2496,39 @@ public sealed class EditorForm : Form
     /// <summary>Layer that placement tools draw into: canvas target, else first layer in the list.</summary>
     private UndertaleRoom.Layer? TargetLayer => _canvas.TargetLayer ?? (_layerRows.Count > 0 ? _layerRows[0].Layer : null);
 
+    /// <summary>选择工具下右键画布：直接进入战斗/对话/剧情编辑（不用先去菜单栏）。</summary>
+    private ContextMenuStrip BuildCanvasContextMenu()
+    {
+        var menu = Theme.CreateMenu();
+        var battle = Theme.Item("编辑此实体的战斗…", (s, e) => EditSelectedBattle());
+        var dialogue = Theme.Item("编辑此实体的对话…", (s, e) => EditSelectedDialogue());
+        var cutscene = Theme.Item("编辑此实体的剧情…", (s, e) => EditSelectedCutscene());
+        var vanillaText = Theme.Item("编辑本房间原版对话（文本覆盖）…", (s, e) => EditVanillaDialogue());
+        var copy = Theme.Item("复制", (s, e) => CopySelection());
+        var paste = Theme.Item("粘贴", (s, e) => PasteClipboard());
+        var del = Theme.Item("删除", (s, e) => DeleteSelection());
+        menu.Items.AddRange(new ToolStripItem[]
+        {
+            battle, dialogue, cutscene,
+            new ToolStripSeparator(),
+            vanillaText,
+            new ToolStripSeparator(),
+            copy, paste, del,
+        });
+        menu.Opening += (s, e) =>
+        {
+            bool hasSelection = _doc != null && _doc.Selection.Count > 0;
+            battle.Enabled = hasSelection;
+            dialogue.Enabled = hasSelection;
+            cutscene.Enabled = hasSelection;
+            vanillaText.Enabled = _doc?.Room != null;
+            copy.Enabled = hasSelection;
+            paste.Enabled = _doc?.Room != null;
+            del.Enabled = hasSelection;
+        };
+        return menu;
+    }
+
     private ContextMenuStrip BuildRoomContextMenu()
     {
         var m = Theme.CreateMenu();
@@ -2061,14 +2555,75 @@ public sealed class EditorForm : Form
         return m;
     }
 
+    /// <summary>房间名必须是合法 GML 资源名（字母/数字/下划线，不以数字开头），且不与现有房间重名。</summary>
+    private static bool IsValidRoomIdentifier(string name)
+    {
+        if (name.Length == 0) return false;
+        for (int i = 0; i < name.Length; i++)
+        {
+            char c = name[i];
+            bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+            if (!ok) return false;
+            if (i == 0 && c >= '0' && c <= '9') return false;
+        }
+        return true;
+    }
+
+    private bool RoomNameExists(string name, UndertaleRoom? except = null)
+    {
+        var rooms = _doc?.Game?.Rooms;
+        if (rooms == null) return false;
+        foreach (var r in rooms)
+        {
+            if (except != null && ReferenceEquals(r, except)) continue;
+            if (string.Equals(GameData.Name(r.Name), name, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>矩阵 MG-105：非法/重复/空房间名要弹提示且不写入。</summary>
+    private bool ValidateRoomName(string name, UndertaleRoom? except, out string error)
+    {
+        name = name.Trim();
+        if (name.Length == 0)
+        {
+            error = "房间名不能为空。";
+            return false;
+        }
+        if (!IsValidRoomIdentifier(name))
+        {
+            error = "房间名不合法：只能用字母、数字和下划线，且不能以数字开头（GML 资源名规则）。";
+            return false;
+        }
+        if (RoomNameExists(name, except))
+        {
+            error = "已有同名房间：" + name + "。请换一个名字。";
+            return false;
+        }
+        error = "";
+        return true;
+    }
+
     private void NewRoomDialog(bool withContent)
     {
         if (_doc?.Room == null) return;
         string baseName = _doc.RoomName() + (withContent ? "_copy" : "_new");
+        if (RoomNameExists(baseName))
+        {
+            // 默认名也可能已被占用（连续新建）：先找个空的默认名。
+            int n = 2;
+            while (RoomNameExists(baseName + "_" + n)) n++;
+            baseName = baseName + "_" + n;
+        }
         string? name = PromptDialog.Show(this, withContent ? "新建房间" : "新建空白房间",
             withContent ? "新房间名称（会复制当前房间的图层与内容）：" : "新房间名称（只复制图层结构，内容为空）：", baseName);
         if (name == null) return;
-        if (name.Length == 0) name = baseName;
+        if (!ValidateRoomName(name, null, out string error))
+        {
+            MessageBox.Show(this, error, "房间名不合法", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        name = name.Trim();
         var room = _doc.NewRoom(name, withContent);
         if (room == null) return;
         _canvas.FitToView();
@@ -2089,10 +2644,17 @@ public sealed class EditorForm : Form
         if (_doc?.Room == null) return;
         string old = _doc.RoomName();
         string? name = PromptDialog.Show(this, "重命名房间", "房间名称：", old);
-        if (string.IsNullOrWhiteSpace(name)) return;
-        if (!_doc.RenameRoom(name!)) return;
-        _statusLeft.Text = $"已重命名房间：{old} → {name}";
+        if (name == null) return;
+        name = name.Trim();
+        if (string.Equals(name, old, StringComparison.Ordinal)) return;
+        if (!ValidateRoomName(name, _doc.Room, out string error))
+        {
+            MessageBox.Show(this, error, "房间名不合法", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (!_doc.RenameRoom(name)) return;
         UpdateStatus();
+        _statusLeft.Text = $"已重命名房间：{old} → {name}";
     }
 
     private void DeleteRoomAction()
@@ -2174,6 +2736,24 @@ public sealed class EditorForm : Form
         _statusLeft.Text = $"已删除图层：{name}";
     }
 
+    /// <summary>有未保存修改时拦截关闭：保存/不保存/取消（矩阵 MG-143 / MG-144）。</summary>
+    private void OnEditorFormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (_doc?.Dirty != true) return;
+        if (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.TaskManagerClosing) return;
+        var r = MessageBox.Show(this,
+            "当前文件有未保存的修改。\n\n退出前要保存吗？",
+            "未保存的修改", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+        if (r == DialogResult.Cancel)
+        {
+            e.Cancel = true;
+            return;
+        }
+        if (r == DialogResult.No) return;
+        Save(false);
+        if (_doc?.Dirty == true) e.Cancel = true;
+    }
+
     private void Save(bool saveAs)
     {
         if (_doc == null) return;
@@ -2192,40 +2772,58 @@ public sealed class EditorForm : Form
         }
 
         var root = FindGameRoot();
-        // 原版基线只读：Ctrl+S / 另存为到 backup 都在写盘前拦下，给出可操作去处。
-        if (FileRole.Classify(path, root) == FileKind.Baseline)
+        var targetKind = FileRole.Classify(path, root);
+        if (targetKind == FileKind.Baseline && saveAs)
         {
-            var r = MessageBox.Show(this,
-                "这是原版基线（backup/），只读，不能原地保存。\n\n" +
-                "点「是」另存为…（可存成 Neutraled mod 的 ref/data.win 或任意工作副本）。\n" +
-                "要编辑游戏实际读取的文件，请用 文件 → 打开游戏章节 → 游戏文件（可保存）。\n\n" +
-                "点「否」取消；原文件不会被改动。",
-                FileRole.BaselineBadge, MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-            if (r != DialogResult.Yes)
-            {
-                _statusLeft.Text = "保存已拦截：原版基线只读，原文件未改动";
-                return;
-            }
-            using var dlg = new SaveFileDialog
-            {
-                Title = "另存为（原版基线只读）",
-                Filter = "data.win|*.win|所有文件|*.*",
-                FileName = Path.GetFileName(path),
-            };
-            try { dlg.InitialDirectory = Path.GetDirectoryName(path); } catch { }
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-            path = dlg.FileName;
-            if (FileRole.Classify(path, root) == FileKind.Baseline)
-            {
-                MessageBox.Show(this,
-                    "目标仍在原版基线目录（backup/）里，已拒绝写入。请选择 backup 之外的位置。",
-                    FileRole.BaselineBadge, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            MessageBox.Show(this,
+                "目标仍在原版基线目录（backup/）里，已拒绝写入。请选择 backup 之外的位置。",
+                FileRole.BaselineBadge, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
         }
 
-        var targetKind = FileRole.Classify(path, root);
-        if (FileRole.IsLive(targetKind) && !_warnedDeployed)
+        // 原版基线：data.win 只读，但对话 / 战斗 / 剧情 / 文本改写可以照常编辑并生成 mod。
+        bool writeData = true;
+        if (targetKind == FileKind.Baseline)
+        {
+            if (_doc.Dirty)
+            {
+                var r = MessageBox.Show(this,
+                    "这是原版基线（backup/），data.win 本身不能原地保存。\n\n" +
+                    "对话 / 战斗 / 剧情 / 文本改写会保存到 Neutraled/editor/ 并生成 Neutraled mod，原版文件不受影响。\n" +
+                    "地图 / 房间 / 实例的改动只能另存为到 backup 之外。\n\n" +
+                    "点「是」另存为 data.win（保存地图改动）；点「否」只保存对话/战斗/剧情配置；点「取消」放弃。",
+                    FileRole.BaselineBadge, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information);
+                if (r == DialogResult.Cancel)
+                {
+                    _statusLeft.Text = "保存已取消";
+                    return;
+                }
+                if (r == DialogResult.Yes)
+                {
+                    using var dlg = new SaveFileDialog
+                    {
+                        Title = "另存为（原版基线 data.win 只读）",
+                        Filter = "data.win|*.win|所有文件|*.*",
+                        FileName = Path.GetFileName(path),
+                    };
+                    try { dlg.InitialDirectory = Path.GetDirectoryName(path); } catch { }
+                    if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                    path = dlg.FileName;
+                    if (FileRole.Classify(path, root) == FileKind.Baseline)
+                    {
+                        MessageBox.Show(this,
+                            "目标仍在原版基线目录（backup/）里，已拒绝写入。请选择 backup 之外的位置。",
+                            FileRole.BaselineBadge, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    targetKind = FileRole.Classify(path, root);
+                }
+                else writeData = false;
+            }
+            else writeData = false; // 没有地图改动：不写 data.win，只落 sidecar + 生成 mod
+        }
+
+        if (writeData && FileRole.IsLive(targetKind) && !_warnedDeployed)
         {
             var r = MessageBox.Show(this,
                 "你正在覆盖 Neutraled 的部署产物。\n\nNeutraled 重新部署时会用原版备份 + mods 重建这个文件，这次修改会被覆盖。\n\n仍要保存吗？",
@@ -2234,24 +2832,36 @@ public sealed class EditorForm : Form
             _warnedDeployed = true;
         }
         Cursor = Cursors.WaitCursor;
-        _statusLeft.Text = "正在写回 data.win …";
+        _statusLeft.Text = writeData ? "正在写回 data.win …" : "正在写回编辑配置 …";
         Application.DoEvents();
         try
         {
-            var saved = _doc.Save(path, false, root);
-            if (!saved.Ok)
+            if (writeData)
             {
-                MessageBox.Show(this, saved.Error ?? "保存被拒绝。", "保存已拦截",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                _statusLeft.Text = "保存已拦截：" + (saved.Error ?? "");
-                return;
+                var saved = _doc.Save(path, false, root);
+                if (!saved.Ok)
+                {
+                    MessageBox.Show(this, saved.Error ?? "保存被拒绝。", "保存已拦截",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    _statusLeft.Text = "保存已拦截：" + (saved.Error ?? "");
+                    return;
+                }
             }
-            var side = _battles?.Save(BattleProject.SidecarFor(path), false, root);
+            // sidecar：原版基线写 Neutraled/editor/baseline_<leaf>.ntlbattle.json（不碰 backup），其余写在 data.win 旁边。
+            string sidecarPath = BattleProject.SidecarForEdit(path, root);
+            var side = _battles?.Save(sidecarPath, true, root);
             if (side.HasValue && !side.Value.Ok)
-                throw new InvalidOperationException(side.Value.Error ?? "战斗配置保存被拒绝");
+                throw new InvalidOperationException(side.Value.Error ?? "编辑配置保存被拒绝");
             _fileRole = FileRole.Classify(path, root);
-            _statusLeft.Text = $"已保存 {path}（战斗配置 {_battles?.File.Battles.Count ?? 0} 场 / {_battles?.File.Dialogues.Count ?? 0} 段对话 / {_battles?.File.Cutscenes.Count ?? 0} 段剧情 / {_battles?.File.Settings.Count ?? 0} 个设置项）";
+            string stats = $"战斗 {_battles?.File.Battles.Count ?? 0} 场 / 对话 {_battles?.File.Dialogues.Count ?? 0} 段 / 剧情 {_battles?.File.Cutscenes.Count ?? 0} 段 / 设置 {_battles?.File.Settings.Count ?? 0} 项 / 文本改写 {_battles?.File.TextOverrides.Count ?? 0} 条";
+            if (writeData) _statusLeft.Text = $"已保存 {path}（{stats}）";
+            else _statusLeft.Text = $"已保存编辑配置（原版 data.win 未改动；{stats}）→ {sidecarPath}";
             UpdateTitle();
+            if (_settings.AutoGenerateMod)
+            {
+                var gen = AutoGenerateModNow(false);
+                if (gen != null) _statusLeft.Text += $"；已生成 mod: {gen.ModDir}";
+            }
         }
         catch (Exception ex)
         {
@@ -2285,21 +2895,25 @@ public sealed class EditorForm : Form
             "  E 椭圆：拖出包围盒两角整片填充；右键为整片擦除\n" +
             "  K 油漆桶：左键替换连通同图块区域，右键整片擦除（点空白处填满连通空白）\n\n" +
             "视图\n  滚轮 以光标为中心缩放\n  F 适应窗口 · Ctrl+0 实际大小 · G 网格 · F5 重新渲染\n  F4 资源浏览器（只读：房间/对象/精灵/背景/字体/音效/脚本代码/着色器/序列/时间线/纹理页/路径）\n\n" +
-            "编辑\n  拖动 移动选中实例 · 方向键 微移 1px（Shift 8px）\n  框选 空白处拖出矩形 · Shift 加选 · Ctrl+A 全选 · Ctrl+I 反选\n  Delete 删除 · Ctrl+C/X/V 复制/剪切/粘贴 · Ctrl+D 再制\n  Ctrl+Z 撤销 · Ctrl+Y 重做\n" +
+            "编辑\n  选择工具下右键画布：编辑此实体的战斗/对话/剧情、编辑本房间原版对话、复制/粘贴/删除\n  拖动 移动选中实例 · 方向键 微移 1px（Shift 8px）\n  框选 空白处拖出矩形 · Shift 加选 · Ctrl+A 全选 · Ctrl+I 反选\n  Delete 删除 · Ctrl+C/X/V 复制/剪切/粘贴 · Ctrl+D 再制\n  Ctrl+Z 撤销 · Ctrl+Y 重做\n" +
             "  S 瓦片选择：拖框选图块（Shift 加选/反选）· 拖动已选图块移动 · 右键删单块\n     Ctrl+A/C/X/V/D 对图块同样有效（粘贴落在光标处）\n\n" +
-            "文件\n  Ctrl+O 打开 · Ctrl+S 保存 · Ctrl+Shift+S 另存为\n\n" +
-            "战斗\n  选中地图上的一个实例 → 属性面板「战斗」→「为此实体新建战斗…」（或 Ctrl+B）\n" +
-            "  encounter = 进战斗界面（敌人/每回合弹幕/回合上限/胜负效果）；overworld = 地图上直接躲弹幕\n" +
+            "文件\n  Ctrl+O 打开 · Ctrl+S 保存（保存即自动生成 mod）· Ctrl+Shift+S 另存为\n" +
+            "  原版基线（backup/）也能直接编辑：data.win 不改，对话/战斗/剧情/文本改写存到 Neutraled/editor/ 并生成 mod\n\n" +
+            "原版内容直接编辑\n  打开原版 data.win（文件 → 打开游戏章节 → 原版基线）即可编辑，不需要先复制\n" +
+            "  对话：编辑菜单/战斗菜单 → 编辑本房间原版对话…（Ctrl+Shift+E，或右键画布）按 lang key 覆盖原版文本，保存后由生成的 mod 调 ntl_set_lang_string 生效\n" +
+            "  战斗：选中原版实体 → Ctrl+B 新建/编辑战斗（敌人/回合弹幕/胜负效果）\n" +
+            "  剧情：选中实体 → Ctrl+Shift+K；步骤=wait/move/face/action/dialogue/flag/message/sound/shake/waitinput\n" +
+            "  非简单剧情用代码引用：步骤类型 event / script —— event 在最近的该对象实例上执行原版事件，script 全局执行原版脚本\n" +
+            "    （剧情对话框工具条「插入原版代码…」可直接从当前房间的原版事件里挑）\n\n" +
+            "战斗\n  encounter = 进战斗界面；overworld = 地图上直接躲弹幕\n" +
             "  弹幕 type 用目标章节原版 obj_dbulletcontroller 模板编号；跨章节最稳是 0（环形）与 1（上下边缘）\n" +
-            "  菜单 战斗 → 生成战斗 mod… 把当前战斗配置导出成可部署的 Neutraled mod\n" +
-            "  菜单 战斗 → mods 清单（mods.json）… 编辑整包清单（类似 Everest.yaml：id/名称/作者/版本/启停/依赖/加载顺序）\n\n" +
+            "  「保存时自动生成 Mod」默认开：Ctrl+S 存盘后立即刷新 mods/<id>/<author>/<leaf>\n" +
+            "  菜单 战斗 → 立即重新生成 Mod… / 保存战斗配置（仅写 sidecar）/ mods 清单（mods.json）…\n\n" +
             "对话与 Mod 设置项\n  选中实例 → 属性面板「对话」→「为此实体新建纯对话…」（或 Ctrl+Shift+B）：多行文本 + 触发半径/flag + 结束 effects\n" +
             "  菜单 战斗 → Mod 设置项…：注册进游戏内 Neutraled「Mod 设置」面板的项（bool/choice/int）\n" +
             "  功能绑定 feature：battlesEnabled / overworldEnabled / dialoguesEnabled / cutscenesEnabled / barrageDamagePercent，切换后实时生效（存档持久化）\n\n" +
-            "简单剧情\n  选中实例 → 属性面板「剧情」→「为此实体新建剧情…」（或 Ctrl+Shift+K）：mode=interact 按 Z 触发 / area 进入半径自动播放\n" +
-            "  步骤：wait 等帧 / move 移动(帧数内插值到 X,Y) / face 转向 / action 换精灵与帧 / dialogue 播放对话 / flag 设清 flag / message 写日志\n" +
-            "  actor=player 玩家，actor=trigger 本段剧情绑定的地图实体；结束后按「结束效果」设 flag/治疗/传送/提示\n" +
-            "  控制台：cutscene list / cutscene start <id> / cutscene stop\n\n" +
+            "房间列表\n  默认按剧情线性流程排序：主线 01..N，支线缩进跟在最近的前置主线后，测试/调试/占位/旧版集中置底\n" +
+            "  视图 → 房间按剧情流程排序 可切回 data.win 原始顺序（记在启动设置里）；筛选框搜索时平铺、不缩进\n\n" +
             "左侧列表点图层圆点可显示/隐藏该图层。",
             "快捷键与用法", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
@@ -2312,24 +2926,43 @@ public sealed class EditorForm : Form
         Theme.EnableDarkTitleBar(this);
         if (_doc == null)
         {
-            string? def = FindDefaultDataWin();
-            if (def != null)
+            var target = StartupSettings.ResolveTarget(FindGameRoot(), RecentStore.LastPath);
+            if (target.Path != null && File.Exists(target.Path))
             {
-                OpenPath(def, false);
-                if (_doc != null && _fileRole == FileKind.Baseline)
-                    _statusLeft.Text = "最近文件是原版基线 · 只读 — Ctrl+S 会被拦截；要编辑 live 请用 文件 → 打开游戏章节 → 游戏文件（可保存）";
+                OpenPath(target.Path, false);
+                if (_doc != null)
+                {
+                    _startupNote = target.FromDefault ? "默认启动: " + target.Source : "启动: " + target.Source;
+                    if (_fileRole == FileKind.Baseline)
+                        _statusLeft.Text = "原版基线 — data.win 只读；对话/战斗/剧情可直接编辑（存到 Neutraled/editor 并生成 mod）";
+                    else UpdateStatus();
+                }
             }
-            else _statusLeft.Text = "就绪 — 文件 → 打开 data.win（也可从菜单打开游戏章节）";
+            else
+            {
+                _statusLeft.Text = "就绪 — 文件 → 打开 data.win（也可从菜单打开游戏章节；默认启动章节见 文件 菜单）";
+            }
         }
     }
-
-    /// <summary>启动目标：最近文件（可能是 baseline，打开后标只读）→ live chapter1；不再默认 backup。</summary>
-    private static string? FindDefaultDataWin() =>
-        StartupTarget.Resolve(FindGameRoot(), RecentStore.LastPath);
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         bool editingText = ActiveControl is TextBoxBase;
+        // 焦点在筛选框/属性输入框时，文本框会吃掉 Ctrl+S 等组合键 —— 但「保存即生成 mod」这类全局动作
+        // 必须仍然生效（否则用户输完筛选条件按 Ctrl+S 会静默什么都不发生）。
+        if (editingText)
+        {
+            switch (keyData)
+            {
+                case Keys.Control | Keys.S: Save(false); return true;
+                case Keys.Control | Keys.Shift | Keys.S: Save(true); return true;
+                case Keys.Control | Keys.O: OpenDialog(); return true;
+                case Keys.Control | Keys.B: EditSelectedBattle(); return true;
+                case Keys.Control | Keys.Shift | Keys.B: EditSelectedDialogue(); return true;
+                case Keys.Control | Keys.Shift | Keys.K: EditSelectedCutscene(); return true;
+                case Keys.Control | Keys.Shift | Keys.E: EditVanillaDialogue(); return true;
+            }
+        }
         if (_doc != null && !editingText)
         {
             switch (keyData)
@@ -2349,6 +2982,7 @@ public sealed class EditorForm : Form
                 case Keys.Control | Keys.B: EditSelectedBattle(); return true;
                 case Keys.Control | Keys.Shift | Keys.B: EditSelectedDialogue(); return true;
                 case Keys.Control | Keys.Shift | Keys.K: EditSelectedCutscene(); return true;
+                case Keys.Control | Keys.Shift | Keys.E: EditVanillaDialogue(); return true;
                 case Keys.Control | Keys.D0: _canvas.SetZoom(1f); return true;
                 case Keys.Delete: DeleteSelection(); return true;
                 case Keys.Control | Keys.Delete: DeleteRoomAction(); return true;
@@ -2361,7 +2995,7 @@ public sealed class EditorForm : Form
                 case Keys.Control | Keys.Shift | Keys.T: AddLayerAction(true); return true;
                 case Keys.Control | Keys.Shift | Keys.Up: MoveLayerAction(-1); return true;
                 case Keys.Control | Keys.Shift | Keys.Down: MoveLayerAction(1); return true;
-                case Keys.Escape: _doc.ClearSelection(); return true;
+                case Keys.Escape: _doc.ClearSelection(); UpdateStatus(); return true;
             }
         }
         if (ActiveControl == _canvas && _doc != null)
@@ -2386,6 +3020,7 @@ public sealed class EditorForm : Form
                         _gridItem.Checked = !_gridItem.Checked;
                         _canvas.ShowGrid = _gridItem.Checked;
                         _canvas.Invalidate();
+                        UpdateToolStatus();
                     }
                     return true;
                 case Keys.F5: _canvas.RefreshRoom(); return true;
@@ -2444,7 +3079,12 @@ public sealed class EditorForm : Form
             {
                 _battles.Normalize();
                 SaveBattles(false);
-                _statusLeft.Text = "已保存战斗 " + battle.Id + "；生成 mod 请用「战斗 → 生成战斗 mod…」";
+                _statusLeft.Text = "已保存战斗 " + battle.Id;
+                if (_settings.AutoGenerateMod)
+                {
+                    var gen = AutoGenerateModNow(false);
+                    if (gen != null) _statusLeft.Text += "；已生成 mod: " + gen.ModDir;
+                }
                 RebuildInspector();
             }
             else if (!existed)
@@ -2457,17 +3097,20 @@ public sealed class EditorForm : Form
     private void SaveBattles(bool notify)
     {
         if (_battles == null || _doc == null) return;
-        var sidecar = BattleProject.SidecarFor(_doc.FilePath);
-        var result = _battles.Save(sidecar, false, FindGameRoot());
+        var root = FindGameRoot();
+        // 原版基线的编辑数据写到 Neutraled/editor/（不碰 backup），所以 sidecar 永远允许写；
+        // 真正被保护的只有 data.win 本身（EditorDocument.Save 的基线闸门）。
+        var sidecar = BattleProject.SidecarForEdit(_doc.FilePath, root);
+        var result = _battles.Save(sidecar, true, root);
         if (!result.Ok)
         {
-            _statusLeft.Text = "战斗配置未保存：" + (result.Error ?? "原版基线只读");
+            _statusLeft.Text = "编辑配置未保存：" + (result.Error ?? "写入被拒绝");
             if (notify)
-                MessageBox.Show(this, result.Error ?? "战斗配置未保存。", "原版基线 · 只读",
+                MessageBox.Show(this, result.Error ?? "编辑配置未保存。", "保存编辑配置",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        if (notify) _statusLeft.Text = "已保存战斗配置 " + sidecar;
+        if (notify) _statusLeft.Text = "已保存编辑配置 " + sidecar;
     }
 
     /// <summary>列出全部战斗；双击跳到绑定房间并进入编辑。</summary>
@@ -2539,7 +3182,12 @@ public sealed class EditorForm : Form
                 dlg.SaveToDialogue();
                 _battles.Normalize();
                 SaveBattles(false);
-                _statusLeft.Text = "已保存对话 " + dialogue.Id + "；生成 mod 请用「战斗 → 生成战斗 mod…」";
+                _statusLeft.Text = "已保存对话 " + dialogue.Id;
+                if (_settings.AutoGenerateMod)
+                {
+                    var gen = AutoGenerateModNow(false);
+                    if (gen != null) _statusLeft.Text += "；已生成 mod: " + gen.ModDir;
+                }
                 RebuildInspector();
             }
             else if (!existed)
@@ -2611,14 +3259,19 @@ public sealed class EditorForm : Form
         var cutscene = _battles.GetOrCreateCutsceneForInstance(roomName, inst.InstanceID, objectName);
         cutscene.InstanceX = inst.X;
         cutscene.InstanceY = inst.Y;
-        using (var dlg = new CutsceneEditDialog(cutscene, roomName, inst.InstanceID, objectName))
+        using (var dlg = new CutsceneEditDialog(cutscene, roomName, inst.InstanceID, objectName, CurrentRoomVanillaEvents()))
         {
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
                 dlg.SaveToCutscene();
                 _battles.Normalize();
                 SaveBattles(false);
-                _statusLeft.Text = "已保存剧情 " + cutscene.Id + "（" + cutscene.Steps.Count + " 步）；生成 mod 请用「战斗 → 生成战斗 mod…」";
+                _statusLeft.Text = "已保存剧情 " + cutscene.Id + "（" + cutscene.Steps.Count + " 步）";
+                if (_settings.AutoGenerateMod)
+                {
+                    var gen = AutoGenerateModNow(false);
+                    if (gen != null) _statusLeft.Text += "；已生成 mod: " + gen.ModDir;
+                }
                 RebuildInspector();
             }
             else if (!existed)
@@ -2688,48 +3341,151 @@ public sealed class EditorForm : Form
         RebuildInspector();
     }
 
-    /// <summary>把配置生成成可部署的 Neutraled mod（mods/ 目录下）。</summary>
+    /// <summary>把配置生成成可部署的 Neutraled mod（mods/ 目录下）；保存文档时也会自动调用。</summary>
     private void GenerateBattleMod()
     {
         if (_battles == null)
         {
-            MessageBox.Show(this, "战斗配置尚未加载。", "生成战斗 mod", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "编辑配置尚未加载。", "生成 Mod", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        if (_battles.File.Battles.Count == 0 && _battles.File.Dialogues.Count == 0 && _battles.File.Cutscenes.Count == 0)
+        if (!HasAnyContent(_battles))
         {
-            MessageBox.Show(this, "还没有任何战斗、对话或剧情配置。先在地图上选实体并新建。", "生成战斗 mod",
+            MessageBox.Show(this, "还没有任何战斗、对话、剧情或文本改写。先在地图上选实体并新建，或用「编辑本房间原版对话…」。", "生成 Mod",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        var issues = _battles.Validate(_doc?.Game);
-        var errors = issues.Where(i => i.IsError).ToList();
-        if (errors.Count > 0)
-        {
-            MessageBox.Show(this, "战斗配置有错误，先修好：\n\n" + string.Join("\n", errors.Select(i => "· " + i.Message)),
-                "生成战斗 mod", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
         var leaf = PromptLeaf(_battles.File.Mod.Leaf);
         if (leaf == null) return; // 取消生成
         _battles.File.Mod.Leaf = leaf;
-        var modsDir = Path.Combine(GameRoot(), "Neutraled", "mods");
         try
         {
             SaveBattles(false);
-            var r = BattleGenerator.Generate(_battles, modsDir, _doc?.Game);
-            var warns = issues.Where(i => !i.IsError).ToList();
-            var msg = "已生成 mod：\n" + r.ModDir + "\n\nGML " + r.GmlFiles + " 个 / 对象事件 " + r.ObjectFiles + " 个 / 数据 " + r.DataFiles + " 个"
-                + "\n战斗 " + _battles.File.Battles.Count + " 场 / 对话 " + _battles.File.Dialogues.Count + " 段 / 剧情 "
-                + _battles.File.Cutscenes.Count + " 段 / 设置项 " + _battles.File.Settings.Count + " 个";
-            if (warns.Count > 0) msg += "\n\n警告：\n" + string.Join("\n", warns.Select(i => "· " + i.Message));
-            _statusLeft.Text = "已生成战斗 mod " + r.ModDir;
-            MessageBox.Show(this, msg, "生成战斗 mod", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var r = AutoGenerateModNow(true);
+            if (r != null) _statusLeft.Text = "已生成 Mod " + r.ModDir;
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "生成失败：" + ex.Message, "生成战斗 mod", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "生成失败：" + ex.Message, "生成 Mod", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            _statusLeft.Text = "生成失败：" + ex.Message;
         }
+    }
+
+    private static bool HasAnyContent(BattleProject battles) =>
+        battles.File.Battles.Count > 0 || battles.File.Dialogues.Count > 0
+        || battles.File.Cutscenes.Count > 0 || battles.File.TextOverrides.Count > 0;
+
+    /// <summary>
+    /// 按当前 sidecar 重新生成 Neutraled mod（不弹叶子选择，用 Mod.Leaf；未设置时按打开的章节推断）。
+    /// notify=false 时只写状态栏，不打断保存流程。
+    /// </summary>
+    private GenerateResult? AutoGenerateModNow(bool notify)
+    {
+        if (_battles == null || _doc == null) return null;
+        if (!HasAnyContent(_battles))
+        {
+            if (notify)
+                MessageBox.Show(this, "还没有任何战斗、对话、剧情或文本改写配置。", "生成 Mod",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            else _statusLeft.Text += "；没有可生成的配置，已跳过";
+            return null;
+        }
+        if (string.IsNullOrWhiteSpace(_battles.File.Mod.Leaf))
+            _battles.File.Mod.Leaf = BattleProject.ChapterLeaf(_doc.FilePath);
+        var issues = _battles.Validate(_doc.Game);
+        var errors = issues.Where(i => i.IsError).ToList();
+        if (errors.Count > 0)
+        {
+            string detail = string.Join("\n", errors.Select(i => "· " + i.Message));
+            if (notify)
+                MessageBox.Show(this, "配置有错误，先修好：\n\n" + detail, "生成 Mod",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            else _statusLeft.Text += "；配置有 " + errors.Count + " 个错误，未生成 mod";
+            return null;
+        }
+        var r = BattleGenerator.Generate(_battles, Path.Combine(GameRoot(), "Neutraled", "mods"), _doc.Game);
+        if (notify)
+        {
+            var warns = issues.Where(i => !i.IsError).ToList();
+            var msg = "已生成 mod：\n" + r.ModDir + "\n\nGML " + r.GmlFiles + " 个 / 对象事件 " + r.ObjectFiles + " 个 / 数据 " + r.DataFiles + " 个"
+                + "\n战斗 " + _battles.File.Battles.Count + " 场 / 对话 " + _battles.File.Dialogues.Count + " 段 / 剧情 "
+                + _battles.File.Cutscenes.Count + " 段 / 设置项 " + _battles.File.Settings.Count + " 项 / 文本改写 "
+                + _battles.File.TextOverrides.Count + " 条";
+            if (warns.Count > 0) msg += "\n\n警告：\n" + string.Join("\n", warns.Select(i => "· " + i.Message));
+            MessageBox.Show(this, msg, "生成 Mod", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        return r;
+    }
+
+    /// <summary>当前房间内所有实例对象的原版事件（供剧情步骤「插入原版代码…」/ 对话文本编辑用）。</summary>
+    private List<VanillaEventInfo> CurrentRoomVanillaEvents()
+    {
+        var list = new List<VanillaEventInfo>();
+        if (_vanilla == null || _doc?.Room == null) return list;
+        int roomIndex = _vanilla.RoomIndex(_doc.Room);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var t in RoomEdit.AllInstances(_doc.Room))
+        {
+            var obj = t.Inst.ObjectDefinition;
+            if (obj == null) continue;
+            foreach (var ev in _vanilla.EnumerateEvents(obj))
+            {
+                if (ev.Code == null) continue;
+                if (!seen.Add(ev.OwnerObject + "|" + ev.Name)) continue;
+                list.Add(ev);
+            }
+        }
+        return list;
+    }
+
+    /// <summary>编辑当前房间原版对话文本（按 lang key 覆盖，不改 data.win；保存后写进 sidecar 并生成 mod）。</summary>
+    private void EditVanillaDialogue()
+    {
+        if (_doc == null) return;
+        if (_battles == null || _vanilla == null)
+        {
+            MessageBox.Show(this, "编辑配置或原版扫描器尚未加载。", "原版对话", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        if (_doc.Room == null)
+        {
+            MessageBox.Show(this, "请先在左侧打开一个房间。", "原版对话", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        using var dlg = new VanillaDialogueEditDialog(_vanilla, _doc.Room, _battles);
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        _battles.Normalize();
+        SaveBattles(false);
+        string room = _doc.RoomName();
+        int mine = _battles.File.TextOverrides.Count(t => t.Room == room);
+        _statusLeft.Text = $"已保存原版对话文本改写（本房间 {mine} 条 / 全部 {_battles.File.TextOverrides.Count} 条）";
+        if (_settings.AutoGenerateMod)
+        {
+            var gen = AutoGenerateModNow(false);
+            if (gen != null) _statusLeft.Text += "；已生成 mod: " + gen.ModDir;
+        }
+        RebuildInspector();
+    }
+
+    private void ToggleFlowSort()
+    {
+        _settings.SortRoomsByFlow = !_settings.SortRoomsByFlow;
+        if (_flowItem != null) _flowItem.Checked = _settings.SortRoomsByFlow;
+        try { _settings.Save(); } catch { }
+        RebuildRoomList();
+        _statusLeft.Text = _settings.SortRoomsByFlow
+            ? "房间列表：按剧情流程排序（支线缩进跟在主线后，特殊/测试/旧版置底）"
+            : "房间列表：按 data.win 原始顺序";
+    }
+
+    private void ToggleAutoGenerate()
+    {
+        _settings.AutoGenerateMod = !_settings.AutoGenerateMod;
+        if (_autoGenItem != null) _autoGenItem.Checked = _settings.AutoGenerateMod;
+        try { _settings.Save(); } catch { }
+        _statusLeft.Text = _settings.AutoGenerateMod
+            ? "保存时自动生成 Mod：开（保存文档即刷新 Neutraled mod）"
+            : "保存时自动生成 Mod：关（用 战斗 → 立即重新生成 Mod…）";
     }
 
     /// <summary>生成前选部署叶子（root / chapter1..5）；取消返回 null。</summary>

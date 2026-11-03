@@ -10,7 +10,11 @@ namespace NtlMapEdit;
 /// </summary>
 public sealed class CutsceneEditDialog : Form
 {
-    private static readonly string[] Kinds = { "wait", "move", "face", "action", "dialogue", "flag", "message", "sound", "shake", "waitinput" };
+    private static readonly string[] Kinds =
+    {
+        "wait", "move", "face", "action", "dialogue", "flag", "message", "sound", "shake", "waitinput",
+        "event", "script",
+    };
     private static readonly string[] Actors = { "player", "trigger" };
     private static readonly string[] Dirs = { "down", "right", "up", "left" };
 
@@ -32,14 +36,19 @@ public sealed class CutsceneEditDialog : Form
     private readonly TextBox _endMessage = new();
     private readonly Label _issues = new();
 
-    public CutsceneEditDialog(CutsceneDef cutscene, string room, uint instanceId, string objectName)
+    /// <summary>「插入原版代码」可选的事件清单（由 EditorForm 传入当前房间/对象的原版事件）。</summary>
+    private readonly IReadOnlyList<VanillaEventInfo> _vanillaEvents;
+
+    public CutsceneEditDialog(CutsceneDef cutscene, string room, uint instanceId, string objectName,
+        IReadOnlyList<VanillaEventInfo>? vanillaEvents = null)
     {
         _target = cutscene;
         _room = room;
+        _vanillaEvents = vanillaEvents ?? Array.Empty<VanillaEventInfo>();
         Text = $"剧情编辑 —— {room} / {objectName} #{instanceId}";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(1360, 780);
-        MinimumSize = new Size(1180, 680);
+        ClientSize = new Size(1720, 800);
+        MinimumSize = new Size(1500, 700);
         BackColor = Theme.Bg1;
         ForeColor = Theme.Text;
         Font = Theme.UI(9f);
@@ -64,6 +73,8 @@ public sealed class CutsceneEditDialog : Form
         head.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
         head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         AddPair(head, "剧情 ID", _id, "名称", _name);
+        _id.Text = cutscene.Id;
+        _name.Text = cutscene.Name;
         _mode.DropDownStyle = ComboBoxStyle.DropDownList;
         _mode.Items.AddRange(new object[] { "interact（靠近按 Z 触发）", "area（进入触发半径自动播放）" });
         _mode.SelectedIndex = cutscene.Mode == "area" ? 1 : 0;
@@ -88,14 +99,18 @@ public sealed class CutsceneEditDialog : Form
         var del = new Button { Text = "删除选中", Width = 88, Height = 26 };
         var up = new Button { Text = "上移", Width = 68, Height = 26 };
         var down = new Button { Text = "下移", Width = 68, Height = 26 };
-        foreach (var b in new[] { add, del, up, down }) { Theme.StyleButton(b); tools.Controls.Add(b); }
+        var vanilla = new Button { Text = "插入原版代码…", Width = 128, Height = 26 };
+        foreach (var b in new[] { add, del, up, down, vanilla }) { Theme.StyleButton(b); tools.Controls.Add(b); }
+        vanilla.Enabled = _vanillaEvents.Count > 0;
+        vanilla.Click += (_, _) => InsertVanillaCode();
         add.Click += (_, _) => AddRow(new CutsceneStep { Kind = "wait" });
         del.Click += (_, _) => { if (_grid.CurrentRow != null) _grid.Rows.Remove(_grid.CurrentRow); };
         up.Click += (_, _) => MoveRow(-1);
         down.Click += (_, _) => MoveRow(1);
         var tip = new Label
         {
-            Text = "  步骤按顺序播放；actor: player=玩家，trigger=本段剧情绑定的实体；对话行用 | 分隔；sound 填音效名、shake 用「帧数=持续 / X=强度」、waitinput 等玩家按 Z/Enter",
+            Text = "  步骤按顺序播放；actor: player=玩家，trigger=本段剧情绑定的实体；对话行用 | 分隔；sound 填音效名、shake 用「帧数=持续 / X=强度」、waitinput 等玩家按 Z/Enter；"
+                   + "event/script = 执行原版事件/脚本（「插入原版代码…」按对象事件挑，帧数=执行后等待）",
             AutoSize = false,
             Height = 26,
             Width = 900,
@@ -263,6 +278,9 @@ public sealed class CutsceneEditDialog : Form
         _grid.Columns.Add(TextCol("text", "文本（对话用 | 分隔；message 也写这里）", 300));
         _grid.Columns.Add(TextCol("setFlags", "设置 flag", 90));
         _grid.Columns.Add(TextCol("clearFlags", "清除 flag", 90));
+        _grid.Columns.Add(TextCol("evObject", "对象（event）", 150));
+        _grid.Columns.Add(TextCol("script", "原版脚本 / 事件", 230));
+        _grid.Columns.Add(TextCol("note", "说明", 150));
         _grid.CurrentCellDirtyStateChanged += (_, _) =>
         {
             // kind 是下拉列：改了就立刻提交，好让 ApplyKindRules 立即生效。
@@ -293,8 +311,22 @@ public sealed class CutsceneEditDialog : Form
 
     private void AddRow(CutsceneStep st)
     {
-        int i = _grid.Rows.Add();
-        var row = _grid.Rows[i];
+        var row = _grid.Rows[_grid.Rows.Add()];
+        FillRow(row, st);
+    }
+
+    private void InsertRow(int index, CutsceneStep st)
+    {
+        var row = new DataGridViewRow();
+        row.CreateCells(_grid);
+        if (index < 0 || index > _grid.Rows.Count) index = _grid.Rows.Count;
+        _grid.Rows.Insert(index, row);
+        FillRow(row, st);
+    }
+
+    private void FillRow(DataGridViewRow row, CutsceneStep st)
+    {
+        int i = row.Index;
         row.Cells["kind"].Value = Kinds.Contains(st.Kind) ? st.Kind : "wait";
         row.Cells["actor"].Value = Actors.Contains(st.Actor) ? st.Actor : "player";
         row.Cells["frames"].Value = st.Frames.ToString();
@@ -309,7 +341,88 @@ public sealed class CutsceneEditDialog : Form
         row.Cells["text"].Value = st.Kind == "dialogue" ? string.Join(" | ", st.Lines) : st.Message;
         row.Cells["setFlags"].Value = Join(st.SetFlags);
         row.Cells["clearFlags"].Value = Join(st.ClearFlags);
+        row.Cells["evObject"].Value = st.EvObject;
+        row.Cells["script"].Value = st.Script;
+        row.Cells["note"].Value = st.Note;
+        row.Tag = st.EvType >= 0 ? (st.EvType, st.EvSub) : null;
         ApplyKindRules(i);
+    }
+
+    /// <summary>从当前房间/对象的原版事件里挑一个，插入一条 event 步骤。</summary>
+    private void InsertVanillaCode()
+    {
+        if (_vanillaEvents.Count == 0) return;
+        using var dlg = new Form
+        {
+            Text = "插入原版代码 —— 选择要执行的原版事件",
+            StartPosition = FormStartPosition.CenterParent,
+            ClientSize = new Size(860, 560),
+            MinimumSize = new Size(640, 400),
+            BackColor = Theme.Bg1,
+            ForeColor = Theme.Text,
+            Font = Theme.UI(9f),
+            FormBorderStyle = FormBorderStyle.Sizable,
+            MaximizeBox = false,
+            MinimizeBox = false,
+        };
+        var list = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Theme.Bg2,
+            ForeColor = Theme.Text,
+            BorderStyle = BorderStyle.None,
+            IntegralHeight = false,
+            ItemHeight = 22,
+        };
+        foreach (var ev in _vanillaEvents)
+        {
+            var tag = ev.IsInteraction ? "（交互事件）" : ev.Inherited ? "（继承）" : "";
+            list.Items.Add($"{ev.OwnerObject} · {ev.Friendly}{tag}    {ev.CodeName}");
+        }
+        if (list.Items.Count > 0) list.SelectedIndex = 0;
+        var bottom = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 44,
+            FlowDirection = FlowDirection.RightToLeft,
+            BackColor = Theme.Bg1,
+            Padding = new Padding(0, 8, 10, 0),
+        };
+        var cancel = new Button { Text = "取消", Width = 78, Height = 26, DialogResult = DialogResult.Cancel };
+        var ok = new Button { Text = "插入", Width = 78, Height = 26, DialogResult = DialogResult.OK };
+        Theme.StyleButton(ok, true);
+        Theme.StyleButton(cancel);
+        bottom.Controls.Add(cancel);
+        bottom.Controls.Add(ok);
+        var hint = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 26,
+            Text = "  运行时会在最近的该对象实例上执行这条原版事件代码（剧情里也能触发原版对话/演出）。",
+            ForeColor = Theme.TextDim,
+        };
+        Theme.StyleLabel(hint, Theme.TextDim);
+        dlg.Controls.Add(list);
+        dlg.Controls.Add(bottom);
+        dlg.Controls.Add(hint);
+        dlg.AcceptButton = ok;
+        dlg.CancelButton = cancel;
+        list.DoubleClick += (_, _) => { if (list.SelectedIndex >= 0) dlg.DialogResult = DialogResult.OK; };
+        if (dlg.ShowDialog(this) != DialogResult.OK || list.SelectedIndex < 0) return;
+
+        var picked = _vanillaEvents[list.SelectedIndex];
+        int at = _grid.CurrentRow != null ? _grid.CurrentRow.Index + 1 : _grid.Rows.Count;
+        InsertRow(at, new CutsceneStep
+        {
+            Kind = "event",
+            EvObject = picked.OwnerObject,
+            Script = picked.CodeName,
+            Note = picked.Friendly,
+            EvType = picked.EventType,
+            EvSub = picked.EventSub,
+            Frames = 0,
+        });
+        _grid.CurrentCell = _grid.Rows[at].Cells["script"];
     }
 
     /// <summary>按步骤 kind 决定哪些列可编辑（其余列只读并置灰，避免填了不生效的值）。</summary>
@@ -329,6 +442,8 @@ public sealed class CutsceneEditDialog : Form
             "message" => new[] { "text" },
             "sound" => new[] { "sound", "gain" },
             "shake" => new[] { "frames", "x" },
+            "event" => new[] { "evObject", "script", "frames", "note" },
+            "script" => new[] { "script", "frames", "note" },
             _ => Array.Empty<string>(), // waitinput：等玩家按键，不需要参数
         };
         foreach (DataGridViewColumn col in _grid.Columns)
@@ -408,6 +523,11 @@ public sealed class CutsceneEditDialog : Form
                 Fail("sound 步骤需要在「音效」列填资源名（例如 snd_heal_c）");
                 return false;
             }
+            if ((kind == "event" || kind == "script") && Cell(row, "script").Trim().Length == 0)
+            {
+                Fail("event/script 步骤需要填「原版脚本 / 事件」（可用工具条的「插入原版代码…」挑选）");
+                return false;
+            }
             if (text.Contains('%')) { Fail("文本不能包含 %（原版对话分页符）"); return false; }
         }
         Fail("");
@@ -457,7 +577,23 @@ public sealed class CutsceneEditDialog : Form
                 Gain = ParseDouble(Cell(row, "gain"), 1),
                 SetFlags = ParseFlags(Cell(row, "setFlags")),
                 ClearFlags = ParseFlags(Cell(row, "clearFlags")),
+                EvObject = Cell(row, "evObject").Trim(),
+                Script = Cell(row, "script").Trim(),
+                Note = Cell(row, "note").Trim(),
             };
+            if (row.Tag is ValueTuple<int, int> evPair)
+            {
+                st.EvType = evPair.Item1;
+                st.EvSub = evPair.Item2;
+            }
+            else if (kind != "event" && kind != "script")
+            {
+                st.EvObject = "";
+                st.Script = "";
+                st.Note = "";
+                st.EvType = -1;
+                st.EvSub = -1;
+            }
             var text = Cell(row, "text").Trim();
             if (kind == "dialogue")
             {

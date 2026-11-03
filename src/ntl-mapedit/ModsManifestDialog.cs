@@ -420,9 +420,12 @@ public sealed class ModsManifestDialog : Form
     /// <summary>保存清单（.bak 备份 + 建目录 + UTF-8，不依赖 GUI）。</summary>
     public static void SaveTo(ManifestFile file, string path)
     {
-        if (File.Exists(path)) File.Copy(path, path + ".bak", true);
-        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
-        File.WriteAllText(path, JsonSerializer.Serialize(file, JsonOptions));
+        var full = Path.GetFullPath(path);
+        if (Directory.Exists(full)) throw new IOException("输出路径是目录，请指定文件名: " + full);
+        if (File.Exists(full)) File.Copy(full, full + ".bak", true);
+        var dir = Path.GetDirectoryName(full);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        File.WriteAllText(full, JsonSerializer.Serialize(file, JsonOptions));
     }
 
     /// <summary>读取清单（不存在返回空清单）。</summary>

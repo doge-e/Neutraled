@@ -18,6 +18,25 @@ public sealed class BattlesFile
     public List<CutsceneDef> Cutscenes { get; set; } = new();
     /// <summary>mod 设置项：生成后注册到游戏内 Neutraled「Mod 设置」面板，可实时影响 mod 功能。</summary>
     public List<SettingDef> Settings { get; set; } = new();
+    /// <summary>原版对话文本覆盖：按 lang key 改写原版台词（不改 data.win，生成 mod 后由 ntl_set_lang_string 生效）。</summary>
+    public List<TextOverrideDef> TextOverrides { get; set; } = new();
+}
+
+/// <summary>
+/// 一条原版文本覆盖。key 是原版 lang key（如 obj_dialoguer_... 或 stringsetloc 的第二个参数）；
+/// 生成 mod 时写成 ntl_set_lang_string(key, text)，运行时直接改 global.lang_map。
+/// </summary>
+public sealed class TextOverrideDef
+{
+    public string Key { get; set; } = "";
+    public string Text { get; set; } = "";
+    /// <summary>来源房间（便于在编辑器里按房间过滤；生成时不使用）。</summary>
+    public string Room { get; set; } = "";
+    /// <summary>来源对象/事件（只作记录）。</summary>
+    public string ObjectName { get; set; } = "";
+    public string EventName { get; set; } = "";
+    /// <summary>编辑前的原版文本（只作记录，方便恢复/对比）。</summary>
+    public string Original { get; set; } = "";
 }
 
 public sealed class BattleModInfo
@@ -226,6 +245,17 @@ public sealed class CutsceneStep
     public string Sound { get; set; } = "";
     /// <summary>sound 步骤的音量/增益（0-1，默认 1）。shake 步骤复用 Frames=持续帧数、X=强度。</summary>
     public double Gain { get; set; } = 1;
+
+    // ---------------- 原版代码引用（kind = event / script）
+    /// <summary>event 步骤：要在哪个对象的实例上执行（对象名；留空 = 在触发点/玩家上执行）。</summary>
+    public string EvObject { get; set; } = "";
+    /// <summary>原版脚本名（如 gml_Object_obj_x_Step_0）；运行时 asset_get_index + script_execute。</summary>
+    public string Script { get; set; } = "";
+    /// <summary>事件类型 / 子类型（仅作记录与选择器回显；真正执行靠 Script 名）。</summary>
+    public int EvType { get; set; } = -1;
+    public int EvSub { get; set; } = -1;
+    /// <summary>给用户看的说明（如「obj_x 的 Step」）。</summary>
+    public string Note { get; set; } = "";
 }
 
 /// <summary>游戏内 Mod 设置项（注册到 Neutraled「Mod 设置」面板，开关实时影响生成 mod 的功能）。</summary>
@@ -291,6 +321,32 @@ public sealed class BattleProject
 {
     /// <summary>sidecar 文件名：与 data.win 同目录，<win 文件名>.ntlbattle.json。</summary>
     public static string SidecarFor(string winPath) => winPath + ".ntlbattle.json";
+
+    /// <summary>
+    /// 编辑用的 sidecar 路径。live data.win 仍放同目录；原版基线（backup/…）不放存档备份目录，
+    /// 统一收到 &lt;gameRoot&gt;\Neutraled\editor\baseline_&lt;章节&gt;.ntlbattle.json，
+    /// 这样「打开原版 data 直接编辑对话/战斗/剧情」不会往 backup 里写任何东西，也不会丢。
+    /// </summary>
+    public static string SidecarForEdit(string winPath, string? gameRoot)
+    {
+        if (FileRole.Classify(winPath, gameRoot) != FileKind.Baseline) return SidecarFor(winPath);
+        var root = gameRoot ?? FileRole.FindGameRoot();
+        if (string.IsNullOrWhiteSpace(root)) return SidecarFor(winPath);
+        var leaf = ChapterLeaf(winPath);
+        var dir = Path.Combine(root, "Neutraled", "editor");
+        return Path.Combine(dir, "baseline_" + leaf + ".ntlbattle.json");
+    }
+
+    /// <summary>从 data.win 路径推断部署叶子：…\chapter3_windows\data.win → chapter3；其余 → root。</summary>
+    public static string ChapterLeaf(string winPath)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(winPath ?? "", @"chapter(\d+)_windows",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return m.Success ? "chapter" + m.Groups[1].Value : "root";
+    }
+
+    public TextOverrideDef? TextOverrideFor(string key) =>
+        File.TextOverrides.FirstOrDefault(t => string.Equals(t.Key, key, StringComparison.Ordinal));
 
     public static BattleProject LoadOrNew(string sidecarPath)
     {
@@ -535,6 +591,15 @@ public sealed class BattleProject
                 st.ClearFlags ??= new List<int>();
                 st.Sprite ??= "";
                 st.Message ??= "";
+                st.EvObject = (st.EvObject ?? "").Trim();
+                st.Script = (st.Script ?? "").Trim();
+                st.Note = (st.Note ?? "").Trim();
+                if (st.Kind == "script") st.EvObject = "";
+                // 原版代码引用步骤：Frames 是「执行后额外等待的帧数」，0 = 立即继续。
+                if (st.Kind == "event" || st.Kind == "script")
+                {
+                    if (st.Frames < 0) st.Frames = 0;
+                }
             }
             if (c.Steps.Count == 0)
                 c.Steps.Add(new CutsceneStep { Kind = "dialogue", Lines = { "" } });
@@ -587,6 +652,22 @@ public sealed class BattleProject
             }
             s.Description ??= "";
         }
+
+        // 原版文本覆盖：去掉空 key/空文本，同一个 key 只保留最后一条（用户最后一次编辑生效）。
+        File.TextOverrides ??= new List<TextOverrideDef>();
+        var seenTextKeys = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = File.TextOverrides.Count - 1; i >= 0; i--)
+        {
+            var t = File.TextOverrides[i];
+            t.Key = (t.Key ?? "").Trim();
+            t.Text ??= "";
+            t.Room = (t.Room ?? "").Trim();
+            t.ObjectName = (t.ObjectName ?? "").Trim();
+            t.EventName = (t.EventName ?? "").Trim();
+            t.Original ??= "";
+            if (t.Key.Length == 0 || t.Text.Length == 0 || !seenTextKeys.Add(t.Key))
+                File.TextOverrides.RemoveAt(i);
+        }
     }
 
     public List<ValidationIssue> Validate(GameData? assets = null)
@@ -605,8 +686,9 @@ public sealed class BattleProject
             Err("mod.leaf 必须是 root 或 chapter1..chapter7");
         if (string.IsNullOrWhiteSpace(m.Author)) Warn("mod.author 为空，会生成到 mods/<id>/Neutraled/ 下");
 
-        if (File.Battles.Count == 0 && File.Dialogues.Count == 0 && File.Cutscenes.Count == 0)
-            Err("至少需要一场战斗、一段对话或一段剧情（否则生成的 mod 没有任何内容）");
+        if (File.Battles.Count == 0 && File.Dialogues.Count == 0 && File.Cutscenes.Count == 0
+            && File.TextOverrides.Count == 0)
+            Err("至少需要一场战斗、一段对话、一段剧情或一条原版文本改写（否则生成的 mod 没有任何内容）");
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var b in File.Battles)
         {
@@ -691,8 +773,13 @@ public sealed class BattleProject
                 var prefix = $"{c.Id} 第 {si + 1} 步";
                 if (st.Kind != "wait" && st.Kind != "move" && st.Kind != "face" && st.Kind != "action"
                     && st.Kind != "dialogue" && st.Kind != "flag" && st.Kind != "message"
-                    && st.Kind != "sound" && st.Kind != "shake" && st.Kind != "waitinput")
-                    Err($"{prefix}: 未知步骤类型 {st.Kind}（wait/move/face/action/dialogue/flag/message/sound/shake/waitinput）");
+                    && st.Kind != "sound" && st.Kind != "shake" && st.Kind != "waitinput"
+                    && st.Kind != "event" && st.Kind != "script")
+                    Err($"{prefix}: 未知步骤类型 {st.Kind}（wait/move/face/action/dialogue/flag/message/sound/shake/waitinput/event/script）");
+                if ((st.Kind == "event" || st.Kind == "script") && string.IsNullOrWhiteSpace(st.Script))
+                    Err($"{prefix}: 原版代码步骤需要指定要执行的脚本（事件名，如 gml_Object_obj_x_Step_0）");
+                if ((st.Kind == "event" || st.Kind == "script") && st.Frames > 3600)
+                    Warn($"{prefix}: 原版代码步骤执行后等待 {st.Frames} 帧（>1 分钟），确认不是误填");
                 if (st.Kind == "sound" && string.IsNullOrWhiteSpace(st.Sound))
                     Err($"{prefix}: 音效步骤需要填写音效资源名");
                 if (st.Kind == "sound" && (st.Gain < 0 || st.Gain > 4))
@@ -735,6 +822,19 @@ public sealed class BattleProject
                     Warn($"{s.Id}: barrageDamagePercent 建议用 int 类型（0..200）");
             }
             if (string.IsNullOrWhiteSpace(s.Description)) Warn($"{s.Id}: 没有说明文字（面板上第二行会空着）");
+        }
+
+        // ---------------- 原版文本覆盖
+        var textKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var t in File.TextOverrides)
+        {
+            var key = (t.Key ?? "").Trim();
+            if (key.Length == 0) { Err("原版文本改写：lang key 不能为空"); continue; }
+            if (!textKeys.Add(key)) Err($"原版文本改写：key 重复 {key}（同一个 key 只能有一条覆盖）");
+            if (string.IsNullOrEmpty(t.Text)) Err($"原版文本改写 {key}: 覆盖文本为空（要恢复原文请删掉这一条）");
+            else if (t.Text.Contains('%')) Warn($"原版文本改写 {key}: 文本里的 % 是原版对话翻页符，会被运行时删掉");
+            if (key.StartsWith("gml_", StringComparison.Ordinal) || key.Contains(' '))
+                Warn($"原版文本改写 {key}: 不像 lang key（原版 key 一般形如 obj_xxx_Draw_0_gml_12_0）");
         }
         return list;
     }

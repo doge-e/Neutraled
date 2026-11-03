@@ -46,6 +46,8 @@ public sealed class CanvasPanel : Control
     public event Action? Edited;
     public event Action? ZoomChanged;
     public event Action<string>? Hint;
+    /// <summary>选择工具下的右键菜单请求（参数：命中的实例，屏幕坐标）。</summary>
+    public event Action<UndertaleRoom.GameObject?, Point>? ContextRequested;
 
     private enum DragMode { None, Pan, MoveInstances, Rubber, TilePaint, TileShape, TileRubber, MoveTiles }
 
@@ -1159,6 +1161,21 @@ public sealed class CanvasPanel : Control
                     default: BeginTileShape(_dragStartWorld, false); break;
                 }
             }
+            return;
+        }
+        if (Tool == EditorTool.Select && e.Button == MouseButtons.Right)
+        {
+            var hitRight = Pick(_dragStartWorld);
+            if (hitRight != null)
+            {
+                if (_doc != null && !_doc.IsSelected(hitRight)) _doc.SelectOnly(hitRight);
+            }
+            else
+            {
+                _doc?.ClearSelection();
+            }
+            Invalidate();
+            ContextRequested?.Invoke(hitRight, PointToScreen(e.Location));
             return;
         }
         if (e.Button != MouseButtons.Left) return;
