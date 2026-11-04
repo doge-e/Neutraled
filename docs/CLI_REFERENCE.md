@@ -30,6 +30,7 @@
 | `--cache-dedup` | 合并重复的缓存条目 — merge duplicate cache entries |  | 开发 / dev | 缓存 / Cache |
 | `--cache-list` | 列出缓存条目与占用 — list cache entries and their sizes |  | 进阶 / advanced | 缓存 / Cache |
 | `--cache-max` | 设置启动时缓存上限 MB — set the cache size limit in MB for launch | 是 / yes | 开发 / dev | 缓存 / Cache |
+| `--cache-max-set` | 只写 config.json 的缓存上限 MB（不部署、不启动） — write the cache size limit in MB to config.json only (no deploy, no launch) | 是 / yes | 进阶 / advanced | 缓存 / Cache |
 | `--no-cache` | 禁用读取部署缓存 — disable reading the deploy cache |  | 进阶 / advanced | 缓存 / Cache |
 | `--chapter` | 指定目标章节 — select the target chapter | 是 / yes | 常用 / common | 章节 / Chapters |
 | `--fork` | 复制一个已安装章节作为基底 — copy an installed chapter as the base | 是 / yes | 开发 / dev | 章节 / Chapters |
@@ -91,7 +92,7 @@
 | `--gb-files` | 列出 GameBanana 条目的文件 — list files of a GameBanana entry |  | 进阶 / advanced | GameBanana / GameBanana |
 | `--gb-install` | 旧名（已弃用）：请改用 --install-id — legacy alias (deprecated): use --install-id |  | 进阶 / advanced | GameBanana / GameBanana |
 | `--gb-search` | 旧名（已弃用）：请改用 --search — legacy alias (deprecated): use --search |  | 进阶 / advanced | GameBanana / GameBanana |
-| `--gb-type` | 指定 GameBanana 条目类型 — set the GameBanana entry type |  | 开发 / dev | GameBanana / GameBanana |
+| `--gb-type` | 指定 GameBanana 条目类型 — set the GameBanana entry type | 是 / yes | 开发 / dev | GameBanana / GameBanana |
 | `--install-id` | 统一入口：按 GameBanana 条目下载并自动路由导入 — unified entry: download a GameBanana entry and route it to the right importer | 是 / yes | 常用 / common | GameBanana / GameBanana |
 | `--install-url` | 统一入口：从直链下载并自动路由导入 — unified entry: download from a direct URL and route it to the right importer | 是 / yes | 进阶 / advanced | GameBanana / GameBanana |
 | `--model` | 指定 GameBanana 条目类型 Mod 或 Wip — set the GameBanana model to Mod or Wip | 是 / yes | 开发 / dev | GameBanana / GameBanana |

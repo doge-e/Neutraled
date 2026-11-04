@@ -20,6 +20,9 @@ public static class Localizer
         ["打开"] = "Open",
         ["保存"] = "Save",
         ["部署当前章节"] = "Deploy Current Chapter",
+        ["章节"] = "Chapter",
+        ["部署章节"] = "Deploy chapter",
+        ["部署章节: {0}"] = "Deploy chapter: {0}",
         ["启动游戏"] = "Launch Game",
         ["热重载 live"] = "Hot Reload live",
         ["补全 (Ctrl+Space)"] = "Complete (Ctrl+Space)",
@@ -45,7 +48,7 @@ public static class Localizer
         ["已保存: {0}"] = "Saved: {0}",
         ["===== 部署中（先关闭游戏）====="] = "===== Deploying (close the game first) =====",
         ["部署完成 ✓"] = "Deploy done ✓",
-        ["部署失败 (exit={0})"] = "Deploy failed (exit={0})",
+        ["部署失败（退出码 {0}）"] = "Deploy failed (exit code {0})",
         ["已请求热重载（游戏内下帧生效；若未运行请先启动游戏）"] =
             "Hot reload requested (applies on the next frame; launch the game first if it is not running)",
         ["符号表已加载: {0} 项（Ctrl+Space 触发补全）"] = "Symbol table loaded: {0} entries (Ctrl+Space for completion)",
@@ -59,6 +62,12 @@ public static class Localizer
         ["mods（编译期 mod）"] = "mods (compile-time mods)",
         ["docs（文档）"] = "docs (documentation)",
         ["文件树已刷新（live: {0}）"] = "File tree refreshed (live: {0})",
+        ["当前文件有未保存修改，是否保存？"] = "The current file has unsaved changes. Save?",
+        ["当前文件未保存。\n\n是 = 保存并退出\n否 = 不保存退出\n取消 = 返回编辑器"] =
+            "The current file is not saved.\n\nYes = save and exit\nNo = exit without saving\nCancel = return to editor",
+        ["目录不存在: {0}"] = "Directory not found: {0}",
+        ["无法打开目录: {0}"] = "Failed to open folder: {0}",
+        ["[错误] 无法打开目录 {0}: {1}"] = "[Error] Failed to open folder {0}: {1}",
 
         // ---- 新建模板 / 文件对话框 ----
         ["// 新的 NTL Script\n// 保存到 Neutraled/live/<ModName>/*.ntl 即可被运行时加载\n\nlog(\"hello from NTL Script\");\n"] =

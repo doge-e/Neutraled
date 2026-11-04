@@ -23,7 +23,7 @@ DELTARUNE 的 Everest 式 mod 管理器 / API：mod 平等叠加、**绝不修�
 | 能力 | 现状 |
 |---|---|
 | 核心注入 / 资源导入 / patches | 引导 prepend + 控制器 `obj_ntl_core` + 事件总线 |
-| GML API | 289 个脚本通过冒烟测试 |
+| GML API | `api/*.gml` 380 个文件；`--smoke` **379/379 正常**（0 可疑） |
 | Lua 解释器 | 词法/语法/求值/元表/OOP/require/标准库 |
 | 函数 Hook | pre/post/override；**多 mod 可 hook 同一函数并共存** |
 | Live 运行时 | 改 `.lua`/`.ntl` 重启即生效，0 部署 |
@@ -111,11 +111,11 @@ GameMaker 的字符串 `+=` **每次复制整个累积串（O(n²)）**，20480 
 - 部署慢的大头在 UTMT 内核（载入/写盘/编译），不是可向量化的计算；**2026-09-28 复核**：单产物内最贵的是
   `Import #1`（21%）与「控制台屏蔽 + 增强补丁 + 引导注入」（16%），但**整章墙钟的最大项是产物个数**——
   1 个主产物 + 3 个平行时间线子产物，时间线一度每次部署全量重建（见 PIPELINE.md「产物个数优化」）
-- **11 个 API 函数已实现但无调用点**（`ntl_skip_intro` / `ntl_console_line_pass` / `ntl_mod_data_load` /
-  `ntl_set_lang_string` / `ntl_get_lang_string` / `ntl_api_version_check` / `ntl_hotreload_check` /
-  `ntl_sprite_resolve` / `ntl_res_untrack` / `ntl_res_report` / `ntl_console_help_lookup`）——
-  对应地，`config.json` 的 `skip_legend` / `skip_logo` / `intro_delay` 三键与控制台 `filter` 指令目前是空转；
-  `ntl_call_host` 的 119 条分派里也没有 lang 条目，mod 够不到 `ntl_*_lang_string`。
+- **历史上 11 个「已实现但无调用点」的 API 与 3 个空转配置键已全部接线**（2026-09-26 第六/七批）：
+  `ntl_skip_intro` / `ntl_console_line_pass` / `ntl_mod_data_load` / `ntl_set_lang_string` / `ntl_get_lang_string` /
+  `ntl_api_version_check` / `ntl_hotreload_check` / `ntl_sprite_resolve` / `ntl_res_untrack` / `ntl_res_report` /
+  `ntl_console_help_lookup`；`skip_legend` / `skip_logo` 已迁移到 `skip_intro`，`intro_delay` 与控制台 `filter` 指令均已生效。
+  现在 `--lint` / `--smoke` / 真机日志都没有相关告警。
 
 ### 已修事故（工程笔记）
 
@@ -151,32 +151,38 @@ GameMaker 的字符串 `+=` **每次复制整个累积串（O(n²)）**，20480 
 ### 🚀 最快上手
 
 ```
-双击  neutraled\test.bat
+双击  Neutraled\test.bat
 ```
 
 或者命令行：
 
 ```powershell
 cd E:\steam\steamapps\common\DELTARUNE\Neutraled
-.\test.bat                  # 快速检查（不启动游戏，约 30 秒）
-.\test.bat --deploy          # 含部署
-.\test.bat --full            # 完整测试（含启动游戏 + mod 联动验收，约 2 分钟）
+.\test.bat                      # 静态套件（不启动游戏）
+.\test.bat -SkipPackage         # 跳过打包与安装往返（更快）
+.\test.bat -OutDir E:\tmp\ft     # 结果目录（默认 E:\aiwork\out\Neutraled2\fulltest）
 ```
+
+> `test.bat` 只是 `_test/fulltest-static.ps1` 的薄转发。它接受的参数是 `-OutDir` / `-ImportDir` / `-RelOut` / `-SkipPackage`；**没有** `--deploy` / `--full`（旧文档写错过）。
 
 ---
 
-### 📋 测试包含什么
+### 📋 静态套件包含什么
 
-| # | 检查 | 说明 |
-|---|---|---|
-| 1 | **lint** | 静态检查（17 条规则，分 `Lint.cs` / `LintRules2/3/4/5.cs` 五批） |
-| 2 | **doctor** | 7 类自检（见下） |
-| 3 | **smoke** | 289 个 API 冒烟测试 |
-| 4 | mod 列表 | 已安装 mod |
-| 5 | 存档快照 | 备份状态 |
-| 6 | Kristal 验证 | 780 个脚本的兼容性 |
-| 7 | 部署（可选） | `--deploy` |
-| 8 | 游戏内测试（可选） | `--full` |
+| 阶段 | 检查 |
+|---|---|
+| 构建 | builder / gui / studio 三个工程 `dotnet build -c Release` |
+| lint | 静态检查（`Lint.cs` / `LintRules2/3/4/5.cs` 五批规则） |
+| doctor | 7 类自检（见下） |
+| smoke | 全部 API 冒烟（379 项） |
+| conflicts / mod-list | mod 冲突扫描与安装清单 |
+| deploy-all --force | 并行部署 root + chapter1..chapter5 |
+| verify-* / content-check-all | 逐章结构 + 内容级校验（文本 × 字形） |
+| cache / import | 缓存签名与幂等、`--import-all` 幂等 |
+| package / install-sandbox | 打包 + 沙箱里安装/卸载往返（`tools/verify-install.ps1`） |
+| selftest / 只读取证 / 字体 / CLI 守卫 | 端到端自检、只读查询矩阵、字体回归、未知开关必须响亮失败 |
+
+> 会启动游戏的真机套件是 `_test/fulltest-game.ps1`；外部章节是 `_test/fulltest-external.ps1`；安装器往返在 `tools/verify-install.ps1`（静态套件里也会跑一遍）。**这三套 `test.bat` 都不会跑。**
 
 ---
 
@@ -224,7 +230,7 @@ doctor:  ✅ 0 错误 / 3 警告 / 4 提示
          [不可达] ✅ 没有发现 return 后代码
          [变量] ✅ 未发现明显的未定义变量
          [mod] ✅ 25 个 mod，3 个有脚本
-smoke:   ✅ 所有 API 都健康  289/289
+smoke:   ✅ 所有 API 都健康  379/379（api/*.gml 380 个文件）
 ```
 
 #### 已知的 3 个警告（都不阻塞）

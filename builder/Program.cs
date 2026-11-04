@@ -36,15 +36,17 @@ public static class Program
         return 0;
     }
 
-    private static int KristalValidateCli(string src)
+    private static int KristalValidateCli(string gameRoot, string src)
     {
-        KristalValidate.Validate(src);
+        // builder-cli-005：显式 --game 必须生效（以前用 Paths.DetectGameRoot()，在沙箱里测却写真实游戏根）
+        KristalValidate.Validate(src, gameRoot);
         return 0;
     }
 
-    private static int KristalConvertCli(string src)
+    private static int KristalConvertCli(string gameRoot, string src)
     {
-        var outDir = Path.Combine(Paths.NeutraledRoot(Paths.DetectGameRoot()), "kristal-converted");
+        // builder-cli-005：同上 —— 输出目录跟随 --game，不再写 DetectGameRoot() 推出来的真机目录
+        var outDir = Path.Combine(Paths.NeutraledRoot(gameRoot), "kristal-converted");
         KristalConvert.Convert(src, outDir);
         return 0;
     }
@@ -151,8 +153,19 @@ public static class Program
         // C4 P1-1：这里也要走 CliHelp，否则 --help all / --help <开关> / --help --audit 到不了分层逻辑。
         if (args.Contains("--help") || args.Contains("-h")) return CliHelp.Dispatch(args, PrintHelp);
 
-        var scanCmd = CliCatalog.MainCommandSwitch(args);
         var scanFeature = Array.Find(args, CliCatalog.IsFeatureSwitch);
+        // builder-cli-004：--version 也是功能命令的具名选项（--snapshot-create <id> --version 1.0.0），
+        // 有功能开关时它不再算「主命令」，否则会被误判成「功能开关 + 主命令」混用。
+        var ignoreVersionForFeature = scanFeature != null;
+        var scanCmd = CliCatalog.MainCommandSwitch(args, ignoreVersionForFeature);
+        var mainCmds = CliCatalog.MainCommandsDistinct(args, ignoreVersionForFeature);
+        // UX-24：多个主命令以前是 last-wins 静默（--deploy --info 只剩 info）；这里一次说清。
+        if (mainCmds.Count > 1)
+        {
+            Console.WriteLine(L("[错误] 一次只能运行一个主命令：{0} + {1}（共 {2} 个）；用 --help 查看用法",
+                mainCmds[0], mainCmds[1], mainCmds.Count));
+            return 2;
+        }
         if (scanCmd != null && scanFeature != null)
         {
             // 以前 CliFeatures 抢先扫描并直接 return ⇒ `--deploy --gb-search x` 会静默丢掉 --deploy（A3 F03）。
@@ -463,6 +476,8 @@ public static class Program
                 case "--accept-base-drift": AcceptBaseDrift = true; break;
                 case "--fetch-mod" when i + 1 < args.Length: cmd = "fetch-mod"; fetchId = args[++i]; break;
                 case "--model" when i + 1 < args.Length: gbModel = args[++i]; break;
+                // builder-cli-017：--gb-type 以前不在主 switch 白名单里 → --install-id 123 --gb-type Mod 被当未知开关拒绝
+                case "--gb-type" when i + 1 < args.Length: gbModel = args[++i]; break;
                 case "--mod-list": cmd = "mod-list"; break;
                 case "--mod-force": modForce = true; break;
                 case "--uninstall": cmd = "uninstall"; break;
@@ -490,6 +505,8 @@ public static class Program
                     if (i + 1 < args.Length && !args[i + 1].StartsWith("-")) { chapter = args[++i]; chapterExplicit = true; }
                     break;
                 case "--cache-max" when i + 1 < args.Length: cacheMaxMb = args[++i]; break;
+                // GUI-M07 / B3：只写 config.json 的 cache_max_mb，不部署、不启动（GUI 设置项的专用入口）
+                case "--cache-max-set" when i + 1 < args.Length: cmd = "cache-max-set"; cacheMaxMb = args[++i]; break;
                 case "--map-out" when i + 1 < args.Length: mapOut = args[++i]; break;
                     case "--make-bside": cmd = "make-bside"; break;
                     case "--slot" when i + 1 < args.Length: bsideSlot = chapSlot = int.Parse(args[++i]); slotExplicit = true; break;
@@ -548,13 +565,23 @@ public static class Program
             // P0-2：--chapter 取值合法性（缺值已由 P0-4 预扫描覆盖）：非法值 exit 2，不再静默落到错误路径。
             if (chapterExplicit && !IsChapterTarget(chapter))
             {
-                Console.WriteLine(L("[错误] 无效章节: {0}（可用 root / chapter1 .. chapter9 / all）", chapter));
+                Console.WriteLine(L("[错误] 无效章节: {0}（可用 root / chapter1 .. chapter5 / all）", chapter));
                 return 2;
             }
 
             var gameRoot = EffectiveGameRoot(args);
+            // builder-cli-011：显式 --game 指向不存在的目录时，以前只读命令也会静默 exit0（空数据 / 全 missing）。
+            if (!string.IsNullOrWhiteSpace(gameRootArg) && !Directory.Exists(gameRootArg))
+            {
+                Console.WriteLine(L("[错误] --game 指定的游戏目录不存在: {0}", gameRootArg));
+                Console.WriteLine(L("       请确认路径（应包含 DELTARUNE.exe 或 data.win）。"));
+                return 2;
+            }
+            // builder-cli-012：--json 只对一部分命令生效；其余命令以前静默忽略，现在明确提示（stderr，不污染 stdout）。
+            if (jsonOut && !JsonCapable(cmd))
+                Console.Error.WriteLine(L("[提示] --json 对 {0} 不生效，已忽略；用 --help 查看支持 --json 的命令。", cmd ?? L("（无主命令）")));
             // 纯 JSON 命令：stdout 不能混进「游戏根」这类人读行（GUI / 外部脚本直接 JsonDocument.Parse）。
-            if (!(jsonOut && cmd is "mod-list" or "search" or "route-probe" or "install-id" or "install-url" or "fetch" or "fetch-mod"))
+            if (!(jsonOut && PureJson(cmd)))
                 Console.WriteLine(L("游戏根: {0}", gameRoot));
 
             return cmd switch
@@ -608,8 +635,8 @@ public static class Program
                 "save-list" => SaveGuardListCli(gameRoot),
                 "restore-save" => SaveGuard.Restore(gameRoot, string.IsNullOrEmpty(saveName) ? null : saveName),
                 "install" => Installer.Install(string.IsNullOrEmpty(gameRootArg) ? null : gameRootArg, string.IsNullOrEmpty(srcArg) ? null : srcArg),
-                "convert-kristal" => KristalConvertCli(importPath),
-                "validate-kristal" => KristalValidateCli(importPath),
+                "convert-kristal" => KristalConvertCli(gameRoot, importPath!),
+                "validate-kristal" => KristalValidateCli(gameRoot, importPath!),
                 "mod-install" => ModInstall.Install(gameRoot, importPath, modForce),
                 "import-mod" => ModdingImport.Import(gameRoot, importPath!, modName, author, dryRun, modForce, chapterExplicit ? chapter : null),
                 "extract-diff" => DiffLayer.Extract(gameRoot, importPath!, chapterExplicit ? chapter : null, modName, author, baseArg, dryRun, diffOverride, diffVerbose, modForce),
@@ -628,7 +655,10 @@ public static class Program
                 "watch-external" => WatchExternal(gameRoot),
                 "ensure-watcher" => WatchAutostart.EnsureRunningCli(gameRoot),
                 "watch-autostart" => WatchAutostart.Cli(gameRoot, watchMode),
-                "focus-test" => WinFocus.FocusTest(importPath!, sendF2 || sendText != null || sendKeys != null, keepProc, sendText, sendKeys),
+                // UX-24 别名（--send-keys/--send-text 映射到 focus-test）缺少 exe 时不再让空路径异常冒到顶层 catch 打印栈
+                "focus-test" => string.IsNullOrEmpty(importPath)
+                    ? FocusTestUsage()
+                    : WinFocus.FocusTest(importPath!, sendF2 || sendText != null || sendKeys != null, keepProc, sendText, sendKeys),
                 "kristal-console" => KristalConsoleCli(gameRoot, importPath),
                 "kristal-ensure" => KristalEnsureCli(gameRoot, importPath),
                 "kristal-console-restore" => FuseZip.Restore(importPath ?? ExternalExeDefault(gameRoot) ?? ""),
@@ -640,6 +670,7 @@ public static class Program
                 "cache-clear" => CacheClear(gameRoot),
                 "cache-applied" => CacheApplied(gameRoot, ReadChapter(chapter, chapterExplicit)),
                 "launch" => LaunchWithCache(gameRoot, chapter, cacheMaxMb),
+                "cache-max-set" => CacheMaxSetCli(gameRoot, cacheMaxMb),
                 "verify" => Verify(gameRoot, ReadChapter(chapter, chapterExplicit)),
                 "update-check" => GameUpdate.CheckCli(gameRoot),
                 "adopt-current" => GameUpdate.AdoptCurrent(gameRoot, Yes, ForceDeploy),
@@ -661,6 +692,7 @@ public static class Program
                 {
                     FromUrl = false,
                     Value = fetchId!,
+                    Type = gbModel,
                     FileIndex = fileIndex,
                     AsDelta = asDelta,
                     As = asKind,
@@ -676,6 +708,7 @@ public static class Program
                 {
                     FromUrl = true,
                     Value = installUrl!,
+                    Type = gbModel,
                     AsDelta = asDelta,
                     As = asKind,
                     DryRun = dryRun,
@@ -686,7 +719,7 @@ public static class Program
                     ModName = modName,
                     Author = author,
                 }),
-                "restore" => RestoreTarget(gameRoot, chapter, dryRun),
+                "restore" => RestoreTarget(gameRoot, chapter, dryRun, jsonOut),
                 "restore-session" => DeploySession.Cli(gameRoot, dryRun, jsonOut),
                 "verify-backup" => Baseline.VerifyCli(gameRoot, chapterExplicit ? chapter : "all", jsonOut),
                 "repair-backup" => Baseline.RepairCli(gameRoot, chapterExplicit ? chapter : "all", backupFrom, Yes),
@@ -710,6 +743,7 @@ public static class Program
                 {
                     FromUrl = false,
                     Value = fetchId!,
+                    Type = gbModel,
                     FileIndex = fileIndex,
                     AsDelta = asDelta,
                     As = asKind,
@@ -770,10 +804,12 @@ public static class Program
     /// <summary>合法目标：root / all / chapter1..chapterN（P0-2 校验用）。</summary>
     private static bool IsChapterTarget(string chapter)
     {
+        // UX-02 / builder-cli-006：以前接受 chapter1..chapter9 任意数字 ⇒ --deploy --chapter chapter9
+        // 会先完整部署 root、再报「找不到 chapter9_windows\data.win」exit 1（半途写盘）。
+        // 合法目标收敛为「root / all / 磁盘上真实存在的官方章（AllChapters）」。
         if (chapter.Equals("root", StringComparison.OrdinalIgnoreCase)) return true;
         if (chapter.Equals("all", StringComparison.OrdinalIgnoreCase)) return true;
-        if (!chapter.StartsWith("chapter", StringComparison.OrdinalIgnoreCase)) return false;
-        return int.TryParse(chapter.Substring(7), out var n) && n >= 1;
+        return AllChapters.Contains(chapter, StringComparer.OrdinalIgnoreCase);
     }
 
     private static int DeployTarget(string gameRoot, string chapter, bool explicitChapter, bool noRoot)
@@ -799,6 +835,25 @@ public static class Program
         return DeployAll(gameRoot, chapter);
     }
 
+    /// <summary>builder-cli-012：支持 --json 的主命令（会输出机器可读段）。不在这里的命令加 --json 时明确提示忽略。</summary>
+    private static bool JsonCapable(string? cmd) => cmd is
+        "mod-list" or "search" or "route-probe" or "install-id" or "install-url" or "fetch" or "fetch-mod"
+        or "deploy-state" or "verify-backup" or "backup-status" or "baseline" or "frontend-matrix"
+        or "config-keys" or "config-get" or "config-set" or "config-migrate" or "lang-resolve" or "lang-migrate"
+        or "restore" or "restore-session";
+
+    /// <summary>stdout 必须是纯 JSON（不能混「游戏根」这类人读行）的命令。</summary>
+    private static bool PureJson(string? cmd) => cmd is
+        "mod-list" or "search" or "route-probe" or "install-id" or "install-url" or "fetch" or "fetch-mod" or "restore" or "restore-session";
+
+    /// <summary>--focus-test 缺 exe 时的用法提示（--send-keys/--send-text 是它的选项，必须同时给 exe）。</summary>
+    private static int FocusTestUsage()
+    {
+        Console.WriteLine(L("[错误] --focus-test 需要 exe 路径（--send-keys / --send-text / --send-f2 / --keep 是它的选项）"));
+        Console.WriteLine(L("       用法: ntl-builder --focus-test <exe> [--send-f2] [--send-keys 按键] [--send-text 文本] [--keep]"));
+        return 2;
+    }
+
     private static int Unknown(string[] args)
     {
         // 计划（C4 P0-4）：未知命令/缺命令不再打 125 行 help，最多 5 行 + 最常用命令提示。
@@ -809,158 +864,215 @@ public static class Program
         return 2;
     }
 
+    private static List<string> HelpLines()
+    {
+        var lines = new List<string>();
+        lines.Add("Neutraled builder");
+        lines.Add(L("  --lang zh|en                    设置输出语言（默认跟随 config.json 的 lang，缺省 zh；也可用环境变量 NTL_LANG）"));
+        lines.Add(L("  --deploy                         部署 root（写命令默认 root；显式 --chapter chapterN 会连带 root）"));
+        lines.Add(L("  --deploy --chapter chapter1     部署 root + 第 1 章（加 --no-root 只部署该章）"));
+        lines.Add(L("  --deploy --chapter all           串行部署 root + chapter1..5（兼容写法；推荐 --deploy-all 并行）"));
+        lines.Add(L("  --info   --chapter chapter1     显示 data.win 概要（只读命令默认 chapter1）"));
+        lines.Add(L("  --verify --chapter chapter1     校验注入结果（只读命令默认 chapter1）"));
+        lines.Add(L("  --launch [章节]                 部署（命中缓存则硬链接秒开）并交给 Steam 启动；裸 --launch = root"));
+        lines.Add(L("  --launch --no-start             同上但不拉起 Steam（只部署；Studio/自动化用这个）"));
+        lines.Add(L("  --cache-max-set <MB>            只把缓存上限写进 config.json（不部署、不启动；GUI 设置项用）"));
+        lines.Add(L("  --launch all                     先全量部署 root + chapter1..5，再走 Steam 启动（等价 --deploy-all 后启动）"));
+        lines.Add("");
+        lines.Add(L("  游戏更新后（检测**只提示**，绝不自动改本体；详见 docs/UPDATE.md）:"));
+        lines.Add(L("  --update-check                  只读检测：游戏是否更新 / 有没有新章节（0=没变 2=要处理 3=检测失败）"));
+        lines.Add(L("  --adopt-current [--yes]         把当前原版采纳为新基线（旧备份移进 Neutraled/backup/history/，不删）"));
+        lines.Add(L("  --deploy-all --yes              检测到更新时先采纳再部署（不加 --yes 会停下并打印处置步骤）"));
+        lines.Add(L("  --base-mod none                 不用整包 mod 的 data.win（游戏更新了而该 mod 还没更新时用）"));
+        lines.Add(L("  --accept-base-drift             明知整包基底与游戏版本不匹配仍继续（确认过差异才用）"));
+        lines.Add(L("  --no-update-check               跳过更新检测（并行 worker 内部用）"));
+        lines.Add("");
+        lines.Add(L("  从零做自己的章节（GML 模板 + 脚手架，详见 docs/CHAPTER_DEV.md）:"));
+        lines.Add(L("  --new-chapter <名字>            生成一个**能进、能走、能看**的自定义章节（默认独立章节）"));
+        lines.Add(L("      --author <作者>             作者名（默认 Player）→ mods/<名字>/<作者>/"));
+        lines.Add("      --mode independent|overlay|fork");
+        lines.Add(L("                                  independent=自带 data.win 的独立章节（默认）"));
+        lines.Add(L("                                  overlay    =只叠加到官方某章，不产生新章节条目"));
+        lines.Add(L("                                  fork       =复制一个已安装 mod 章节当基底（配合 --fork）"));
+        lines.Add(L("      --chapter <chapterN>        基底官方章节（默认 chapter1）"));
+        lines.Add(L("      --slot <N>                  章节排序号（默认自动排在最后，最小 6）"));
+        lines.Add(L("      --fork <mod>[:作者[:chapterN]]  被 fork 的源章节（--new-chapter help 可列清单）"));
+        lines.Add(L("      --template room|empty       模板：room=带一个可走房间（默认）/ empty=空骨架"));
+        lines.Add(L("  例: ntl-builder.exe --new-chapter \"我的章节\" --deploy --chapter root --force"));
+        lines.Add("");
+        lines.Add(L("  导入 mod（全部自动识别包形态）:"));
+        lines.Add(L("  --import-mod <包|目录>          传统 mod 自动转 ntl 格式（modding.xml / meta.toml / xdelta / zip / 原生 mod）"));
+        lines.Add(L("      --dry-run                   只分析不写盘（配合 --import-mod 做预检）"));
+        lines.Add(L("      --name <名> --author <作者>  覆盖包内元数据"));
+        lines.Add(L("      --mod-force                 校验和不符时仍强制尝试"));
+        lines.Add(L("  --mod-install <包>              安装原生 Neutraled/Kristal mod 包"));
+        lines.Add(L("  --mod-list [--json]             列出已安装 mod（--json：GUI/脚本读的稳定结构，与部署扫描同源）"));
+        lines.Add(L("  --import-delta <xdelta>         单项 xdelta / 修改版 data.win 转换"));
+        lines.Add(L("  --install-id <gamebananaId> [--file N] [--as-delta] [--dry-run] [--json]   统一下载 + 导入（自动探测包型）"));
+        lines.Add(L("      --gb-type Mod|Wip           GameBanana 条目类型（与 --install-id / --gb-files 合用，默认 Mod）"));
+        lines.Add(L("  --install-url <url> [--dry-run] [--json]   从直链下载并自动导入"));
+        lines.Add(L("  --route-probe <路径|目录> [--as 包型] [--json]   只读探测包型与建议导入器"));
+        lines.Add(L("      --as xdelta|datawin|ntlmod|kristal|gm3p|external   强制包型（探测失败或误判时用）"));
+        lines.Add(L("  --fetch <id> / --gb-install <id>   旧名（已弃用）：改用 --install-id"));
+        lines.Add(L("      --model Mod|Wip             指定 GameBanana 条目类型（默认 Mod）"));
+        lines.Add(L("  --extract-diff <data.win|目录>  把整包 mod 提取成**可叠加的差异层**（让多个整包 mod 共存）"));
+        lines.Add(L("      --chapter <ch>              指定章节（不给则从路径推断）"));
+        lines.Add(L("      --diff-override             层与层改同一对象时，声明 later-wins"));
+        lines.Add(L("  --layer-from-base <data.win>    **源码级**差异层：反编译真实改动对象 → GML patch（不再受索引移植限制）"));
+        lines.Add(L("  --export-packs <data.win>       导出资源包（精灵/声音/字体）→ 可叠加到任意基底"));
+        lines.Add(L("  --font-native [data.win] [目录] 部署期把本机字形（8bitoperator JVE + 汉化汉字）覆盖进 OFL 字体包"));
+        lines.Add(L("      --font-source game|base-mod 只用某一种本机字形来源（默认按 fonts/ntl_native_sources.json）"));
+        lines.Add(L("      --out <目录>                指定输出目录（默认写进对应 mod 目录）"));
+        lines.Add(L("  --kristal-merge <项目> --with <插件>...   Kristal 宿主合并导入（插件型 mod 缺宿主）"));
+        lines.Add(L("  --conflicts                     只查 mod 冲突不部署（0=无冲突 / 2=有冲突，CI 友好）"));
+        lines.Add(L("  --probe-code <data.win> <对象名>   指令级取证（字段真实类型 + 解析目标）"));
+        lines.Add(L("  --verify-refcopy <源> <目标>      用反编译器当预言机，验证跨资源池复制是否保真"));
+        lines.Add(L("  --merge-selftest                三方合并（patch × 基底）行级合并自检（17 组用例）"));
+        lines.Add(L("  --probe-object <data.win> <对象|*>  对象取证：头部字段 + 事件表（事件名/子类型/代码/指令数），* = 列全部对象"));
+        lines.Add(L("  --gml-check <data.win> <层目录> [模式]  编译自检：层里每个 .gml 按部署的同一套规则编译，逐个报失败文件与行"));
+        lines.Add(L("  --asset-guard <data.win> <层目录[;目录…]>  资源名守卫：层代码引用了产物里不存在的资源名就告警（只告警不中止）"));
+lines.Add(L("  --export-shaders <data.win> <mod 章节目录> [--base <基线>]  导出色差着色器资源包 → shaders/*.json（层缺着色器时用）"));
+        lines.Add(L("      模式 = check(默认) / asset(额外建脚本资源) / dup(无条件新建代码条目) / global(新全局脚本用 gml_GlobalScript_ 前缀) / deploy(=asset+dup)，可用逗号组合"));
+        lines.Add("");
+        lines.Add(L("  质量与自检:"));
+        lines.Add(L("  --lint / --doctor / --smoke     静态检查 / 自检 / API 冒烟"));
+        lines.Add(L("  --api-doc                       生成 API 文档"));
+        lines.Add(L("  --selftest [--no-launch]        端到端自测"));
+        lines.Add(L("  --probe-timeline-runtime        只读预检：时间线产物的运行时文件章节（按 data.win 血统解析）+ 语言档覆盖守卫，不写盘"));
+        lines.Add(L("  --repair-saves                  只修「存档联接悬空」（补建空目录；不部署、不启动游戏）"));
+        lines.Add(L("  --verify-backup [--chapter all|chapterN]   只读校验原版备份（规范<游戏根>\\backup / 镜像 Neutraled\\backup / 基线账本三方）"));
+        lines.Add(L("                                  退出码 0=健康 3=有问题；未登记基线只提示不算失败"));
+        lines.Add(L("  --repair-backup [--chapter …] --from mirror|live|file:<原版 data.win> [--yes]   按可信来源修复原版备份（不加 --yes 只预演；无需修复时 exit 0）"));
+        lines.Add(L("                                  不加 --yes 只预演；部署前也会自动校验，不通过则中止（不写任何产物）"));
+        lines.Add(L("  --deploy-state [--chapter all|root|chapterN] [--json]  只读查询 live 是原版还是已部署（按内容哈希判定，退出码 0）"));
+        lines.Add(L("  --frontend-matrix [--json]      四前端（CLI/GUI/Studio/Web）能力矩阵（Web 的 /api/capabilities 同源）"));
+        lines.Add(L("                                  state = baseline / deployed / missing / unknown；GUI 的部署状态标签也用它"));
+        lines.Add(L("  --restore-chapter all|root|chapterN [--dry-run]   把 live 还原成原版（单章或 all 全部；备份校验不通过则拒绝，退出码 3；--dry-run 只预演）"));
+        lines.Add(L("  --restore-session [--dry-run] [--json]   按上次 --launch 的部署会话还原（默认不自动还原）"));
+        lines.Add(L("  --baseline verify|repair|restore|status [--json]   备份收敛入口（分别等价 --verify-backup / --repair-backup / --restore-chapter / --backup-status）"));
+        lines.Add(L("  --backup-status [--json]        只读：四层备份现状（baseline/snapshot/restorepoint/save）+ 可重建缓存 + legacy .backup_files"));
+        lines.Add(L("                                  会话文件 Neutraled\\deploy-session.json；游戏运行中拒绝写盘"));
+        lines.Add("");
+        lines.Add(L("  存档 / B 面（详见 bside/README.txt）:"));
+        lines.Add(L("  --import-bside <存档> [--chapter chapterN] [--slot S] [--save-name <名字>] [--all-slots] [--template-only]"));
+        lines.Add(L("                                  导入一份真实 B 面存档：按**实际章节**改名成 bside/chapterN.sav，"));
+        lines.Add(L("                                  把玩家名字（≤12 个字母）写进存档第 1 行，直接落到槽位并标记 dr.ini 的 SideB"));
+        lines.Add(L("  --make-bside --chapter N [--slot S|--all-slots]   用模板生成 B 面存档（先用你自己导入的，再用随包默认模板；都没有就标记现有存档）"));
+        lines.Add(L("                                  模板位置：bside/templates/chapterN.sav 随包分发；bside/chapterN.sav 是你自己导入的（不进发布包）"));
+        lines.Add("");
+        lines.Add(L("  外部章节（Kristal / 冰封帷幕这类成品）:"));
+        lines.Add(L("  --add-external <exe> [名字]     注册成外部章节（章节选择器里可选）"));
+        lines.Add(L("  --ensure-watcher                守候进程没在跑就立刻起一个（静默）；已在跑则什么都不做"));
+        lines.Add(L("  --watch-autostart [on|off|status]  守候进程自启（登录 / 解锁 / 每 1 分钟兜底，免管理员）"));
+        lines.Add(L("  --watch-external                守候进程（静默，无窗口）：看到启动请求就拉起外部引擎，"));
+        lines.Add(L("                                  并负责隐藏/恢复 DELTARUNE 窗口 + 把焦点交给外部引擎"));
+        lines.Add(L("  --kristal-console [exe]         给**没有源码的融合版 Kristal exe** 注入 Neutraled 控制台"));
+        lines.Add(L("                                  （往内嵌 zip 追加 src/ntlconsole.lua + 在 main.lua 挂启动钩子；"));
+        lines.Add(L("                                    原版自动备份成 <exe>.orig，可反复注入）"));
+        lines.Add(L("  --kristal-console-restore [exe] 从 .orig 还原（撤销注入）"));
+        lines.Add(L("  --focus-test <exe> [--send-f2] [--keep]   焦点抢占自检（后台进程能否抢到前台 + F2 是否打开控制台）"));
+
+        lines.Add("");
+        lines.Add(L("  配置档 / 快照 / 恢复点（mod 集合与版本管理）:"));
+        lines.Add(L("  --profile-list [--json]         列出配置档（* = 当前活动档；--json：GUI 只读入口读它）"));
+        lines.Add(L("  --profile-new <id> [--name 名] [--from 档] [--desc 说明]    新建配置档"));
+        lines.Add(L("  --profile-use <id>              应用配置档（改各 mod 的启用态 + config.json 设置）"));
+        lines.Add(L("  --profile-show [id]             查看配置档内容"));
+        lines.Add(L("  --profile-copy <源> <目标>      复制配置档"));
+        lines.Add(L("  --profile-rename <旧> <新>      重命名配置档"));
+        lines.Add(L("  --profile-delete <id> [--force] 删除配置档（活动档需 --force）"));
+        lines.Add(L("  --profile-export <id> [--out 文件] / --profile-import <文件> [--force]   导出与导入"));
+        lines.Add(L("  --snapshot-list [modId]         列出 mod 的版本快照"));
+        lines.Add(L("  --snapshot-create <modId> [--version 版本] [--note 备注]   给当前内容打快照"));
+        lines.Add(L("  --snapshot-use <modId> <版本> [--force]   切回某个快照（先自动保存当前态）"));
+        lines.Add(L("  --snapshot-import <modId> <目录|zip> [--version 版本] / --snapshot-delete <modId> <版本>"));
+        lines.Add(L("  --snapshot-auto                 给所有 mod 建保底快照"));
+        lines.Add(L("  --restore-list                  列出整游戏恢复点"));
+        lines.Add(L("  --restore-create [--name 名] [--from live|profile] [--profile <id>]   建立恢复点"));
+        lines.Add(L("  --restore-apply <id> [--force]  恢复到该点（要求游戏未运行；先自动存回退点）"));
+        lines.Add(L("  --restore-export <id> <文件.ntlrestore> / --restore-import <文件> [--force] / --restore-delete <id>"));
+        lines.Add("");
+        lines.Add(L("  GameBanana / 下载队列 / 黑名单:"));
+        lines.Add(L("  --search <关键词> [--per-page N] [--no-blocklist] [--json]   统一搜索（默认过滤黑名单；--dry-run 零网络）"));
+        lines.Add(L("  --gb-search <关键词>            旧名（已弃用）：改用 --search"));
+        lines.Add(L("  --gb-files <modId>              列出该条目的可下载文件"));
+        lines.Add(L("  --gb-install <modId> [--file N] [--chapter 章节] [--force]   旧名（已弃用）：改用 --install-id"));
+        lines.Add(L("  --queue-list / --queue-run [--no-install] [--delete-after]   下载队列"));
+        lines.Add(L("  --queue-add <modId> [--name 名] [--file N]   把一次下载加入队列（不立刻下载）"));
+        lines.Add(L("  --queue-remove <条目id> [--delete-file]      从队列移除（--delete-file 同时删已下载文件）"));
+        lines.Add(L("  --block-list / --block-add <值> [--kind id|name|category] [--note 备注] / --block-remove <值>"));
+        lines.Add("");
+        lines.Add(L("  插件 / 主题 / 语言包 / 网页界面:"));
+        lines.Add(L("  --plugin-list / --plugin-enable <id> / --plugin-disable <id> / --plugin-info <id>"));
+        lines.Add(L("  --plugin-install <目录|.ntlplugin> [--force] / --plugin-remove <id> [--force] / --plugin-hooks"));
+        lines.Add(L("  --theme-list / --theme-use <id> / --theme-show <id>"));
+        lines.Add(L("  --theme-import <主题.json> [--force]   导入主题"));
+        lines.Add(L("  --lang-list                     列出可用界面语言与覆盖率"));
+        lines.Add(L("  --lang-use <语言码>             切换界面语言并存进 config.json"));
+        lines.Add(L("  --lang-coverage [语言码]        统计语言包覆盖率（C# 侧 + 游戏内；退出码 0 = 全部 100%）"));
+        lines.Add(L("  --lang-template <语言码> [--out 文件]   导出待翻译模板"));
+        lines.Add(L("  --lang-resolve [--json]         显示语言从哪来（--lang > NTL_LANG > config.json 的 lang > zh）"));
+        lines.Add(L("  --lang-migrate [--dry-run]      把旧 gui_lang.txt 并进 config.json 的 lang 并归档（语言唯一真源）"));
+        lines.Add("");
+        lines.Add(L("  配置键（config.json 的单一事实源）:"));
+        lines.Add(L("  --config-keys [--json]          列出全部键（类型 / owner / 默认值 / 是否废弃）"));
+        lines.Add(L("  --config-get <键> [--json]      查看一个键的生效值与来源"));
+        lines.Add(L("  --config-set <键=值> [--json]   读-改-写 config.json（未知键与注释原样保留）"));
+        lines.Add(L("  --config-migrate [--dry-run] [--json]   把废弃键迁移成规范键（旧键保留兼容）"));
+        lines.Add(L("  --web [--port 7931] [--no-open] [--auto-stop]   启动本地网页界面（跨平台，浏览器打开）"));
+        lines.Add(L("  --platform-info                 平台信息（章节后缀 / 硬链接 / curl / 可写性）"));
+        return lines;
+    }
+
     private static void PrintHelp()
     {
-        Console.WriteLine("Neutraled builder");
-        Console.WriteLine(L("  --lang zh|en                    设置输出语言（默认跟随 config.json 的 lang，缺省 zh；也可用环境变量 NTL_LANG）"));
-        Console.WriteLine(L("  --deploy                         部署 root（写命令默认 root；显式 --chapter chapterN 会连带 root）"));
-        Console.WriteLine(L("  --deploy --chapter chapter1     部署 root + 第 1 章（加 --no-root 只部署该章）"));
-        Console.WriteLine(L("  --info   --chapter chapter1     显示 data.win 概要（只读命令默认 chapter1）"));
-        Console.WriteLine(L("  --verify --chapter chapter1     校验注入结果（只读命令默认 chapter1）"));
-        Console.WriteLine(L("  --launch [章节]                 部署（命中缓存则硬链接秒开）并交给 Steam 启动；裸 --launch = root"));
-        Console.WriteLine(L("  --launch --no-start             同上但不拉起 Steam（只部署；Studio/自动化用这个）"));
-        Console.WriteLine();
-        Console.WriteLine(L("  游戏更新后（检测**只提示**，绝不自动改本体；详见 docs/UPDATE.md）:"));
-        Console.WriteLine(L("  --update-check                  只读检测：游戏是否更新 / 有没有新章节（0=没变 2=要处理 3=检测失败）"));
-        Console.WriteLine(L("  --adopt-current [--yes]         把当前原版采纳为新基线（旧备份移进 Neutraled/backup/history/，不删）"));
-        Console.WriteLine(L("  --deploy-all --yes              检测到更新时先采纳再部署（不加 --yes 会停下并打印处置步骤）"));
-        Console.WriteLine(L("  --base-mod none                 不用整包 mod 的 data.win（游戏更新了而该 mod 还没更新时用）"));
-        Console.WriteLine(L("  --accept-base-drift             明知整包基底与游戏版本不匹配仍继续（确认过差异才用）"));
-        Console.WriteLine(L("  --no-update-check               跳过更新检测（并行 worker 内部用）"));
-        Console.WriteLine();
-        Console.WriteLine(L("  从零做自己的章节（GML 模板 + 脚手架，详见 docs/CHAPTER_DEV.md）:"));
-        Console.WriteLine(L("  --new-chapter <名字>            生成一个**能进、能走、能看**的自定义章节（默认独立章节）"));
-        Console.WriteLine(L("      --author <作者>             作者名（默认 Player）→ mods/<名字>/<作者>/"));
-        Console.WriteLine("      --mode independent|overlay|fork");
-        Console.WriteLine(L("                                  independent=自带 data.win 的独立章节（默认）"));
-        Console.WriteLine(L("                                  overlay    =只叠加到官方某章，不产生新章节条目"));
-        Console.WriteLine(L("                                  fork       =复制一个已安装 mod 章节当基底（配合 --fork）"));
-        Console.WriteLine(L("      --chapter <chapterN>        基底官方章节（默认 chapter1）"));
-        Console.WriteLine(L("      --slot <N>                  章节排序号（默认自动排在最后，最小 6）"));
-        Console.WriteLine(L("      --fork <mod>[:作者[:chapterN]]  被 fork 的源章节（--new-chapter help 可列清单）"));
-        Console.WriteLine(L("      --template room|empty       模板：room=带一个可走房间（默认）/ empty=空骨架"));
-        Console.WriteLine(L("  例: ntl-builder.exe --new-chapter \"我的章节\" --deploy --chapter root --force"));
-        Console.WriteLine();
-        Console.WriteLine(L("  导入 mod（全部自动识别包形态）:"));
-        Console.WriteLine(L("  --import-mod <包|目录>          传统 mod 自动转 ntl 格式（modding.xml / meta.toml / xdelta / zip / 原生 mod）"));
-        Console.WriteLine(L("      --dry-run                   只分析不写盘（配合 --import-mod 做预检）"));
-        Console.WriteLine(L("      --name <名> --author <作者>  覆盖包内元数据"));
-        Console.WriteLine(L("      --mod-force                 校验和不符时仍强制尝试"));
-        Console.WriteLine(L("  --mod-install <包>              安装原生 Neutraled/Kristal mod 包"));
-        Console.WriteLine(L("  --mod-list [--json]             列出已安装 mod（--json：GUI/脚本读的稳定结构，与部署扫描同源）"));
-        Console.WriteLine(L("  --import-delta <xdelta>         单项 xdelta / 修改版 data.win 转换"));
-        Console.WriteLine(L("  --install-id <gamebananaId> [--file N] [--as-delta] [--dry-run] [--json]   统一下载 + 导入（自动探测包型）"));
-        Console.WriteLine(L("  --install-url <url> [--dry-run] [--json]   从直链下载并自动导入"));
-        Console.WriteLine(L("  --route-probe <路径|目录> [--as 包型] [--json]   只读探测包型与建议导入器"));
-        Console.WriteLine(L("      --as xdelta|datawin|ntlmod|kristal|gm3p|external   强制包型（探测失败或误判时用）"));
-        Console.WriteLine(L("  --fetch <id> / --gb-install <id>   旧名（已弃用）：改用 --install-id"));
-        Console.WriteLine(L("      --model Mod|Wip             指定 GameBanana 条目类型（默认 Mod）"));
-        Console.WriteLine(L("  --extract-diff <data.win|目录>  把整包 mod 提取成**可叠加的差异层**（让多个整包 mod 共存）"));
-        Console.WriteLine(L("      --chapter <ch>              指定章节（不给则从路径推断）"));
-        Console.WriteLine(L("      --diff-override             层与层改同一对象时，声明 later-wins"));
-        Console.WriteLine(L("  --layer-from-base <data.win>    **源码级**差异层：反编译真实改动对象 → GML patch（不再受索引移植限制）"));
-        Console.WriteLine(L("  --export-packs <data.win>       导出资源包（精灵/声音/字体）→ 可叠加到任意基底"));
-        Console.WriteLine(L("  --font-native [data.win] [目录] 部署期把本机字形（8bitoperator JVE + 汉化汉字）覆盖进 OFL 字体包"));
-        Console.WriteLine(L("      --font-source game|base-mod 只用某一种本机字形来源（默认按 fonts/ntl_native_sources.json）"));
-        Console.WriteLine(L("      --out <目录>                指定输出目录（默认写进对应 mod 目录）"));
-        Console.WriteLine(L("  --kristal-merge <项目> --with <插件>...   Kristal 宿主合并导入（插件型 mod 缺宿主）"));
-        Console.WriteLine(L("  --conflicts                     只查 mod 冲突不部署（0=无冲突 / 2=有冲突，CI 友好）"));
-        Console.WriteLine(L("  --probe-code <data.win> <对象名>   指令级取证（字段真实类型 + 解析目标）"));
-        Console.WriteLine(L("  --verify-refcopy <源> <目标>      用反编译器当预言机，验证跨资源池复制是否保真"));
-        Console.WriteLine(L("  --merge-selftest                三方合并（patch × 基底）行级合并自检（17 组用例）"));
-        Console.WriteLine(L("  --probe-object <data.win> <对象|*>  对象取证：头部字段 + 事件表（事件名/子类型/代码/指令数），* = 列全部对象"));
-        Console.WriteLine(L("  --gml-check <data.win> <层目录> [模式]  编译自检：层里每个 .gml 按部署的同一套规则编译，逐个报失败文件与行"));
-        Console.WriteLine(L("  --asset-guard <data.win> <层目录[;目录…]>  资源名守卫：层代码引用了产物里不存在的资源名就告警（只告警不中止）"));
-Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <基线>]  导出色差着色器资源包 → shaders/*.json（层缺着色器时用）"));
-        Console.WriteLine(L("      模式 = check(默认) / asset(额外建脚本资源) / dup(无条件新建代码条目) / global(新全局脚本用 gml_GlobalScript_ 前缀) / deploy(=asset+dup)，可用逗号组合"));
-        Console.WriteLine();
-        Console.WriteLine(L("  质量与自检:"));
-        Console.WriteLine(L("  --lint / --doctor / --smoke     静态检查 / 自检 / API 冒烟"));
-        Console.WriteLine(L("  --api-doc                       生成 API 文档"));
-        Console.WriteLine(L("  --selftest [--no-launch]        端到端自测"));
-        Console.WriteLine(L("  --probe-timeline-runtime        只读预检：时间线产物的运行时文件章节（按 data.win 血统解析）+ 语言档覆盖守卫，不写盘"));
-        Console.WriteLine(L("  --repair-saves                  只修「存档联接悬空」（补建空目录；不部署、不启动游戏）"));
-        Console.WriteLine(L("  --verify-backup [--chapter all|chapterN]   只读校验原版备份（规范<游戏根>\\backup / 镜像 Neutraled\\backup / 基线账本三方）"));
-        Console.WriteLine(L("                                  退出码 0=健康 3=有问题；未登记基线只提示不算失败"));
-        Console.WriteLine(L("  --repair-backup [--chapter …] --from mirror|live|file:<原版 data.win> --yes   按可信来源修复原版备份"));
-        Console.WriteLine(L("                                  不加 --yes 只预演；部署前也会自动校验，不通过则中止（不写任何产物）"));
-        Console.WriteLine(L("  --deploy-state [--chapter all|root|chapterN] [--json]  只读查询 live 是原版还是已部署（按内容哈希判定，退出码 0）"));
-        Console.WriteLine(L("  --frontend-matrix [--json]      四前端（CLI/GUI/Studio/Web）能力矩阵（Web 的 /api/capabilities 同源）"));
-        Console.WriteLine(L("                                  state = baseline / deployed / missing / unknown；GUI 的部署状态标签也用它"));
-        Console.WriteLine(L("  --restore-chapter all|root|chapterN [--dry-run]   把 live 还原成原版（单章或 all 全部；备份校验不通过则拒绝，退出码 3；--dry-run 只预演）"));
-        Console.WriteLine(L("  --restore-session [--dry-run] [--json]   按上次 --launch 的部署会话还原（默认不自动还原）"));
-        Console.WriteLine(L("  --baseline verify|repair|restore|status [--json]   备份收敛入口（分别等价 --verify-backup / --repair-backup / --restore-chapter / --backup-status）"));
-        Console.WriteLine(L("  --backup-status [--json]        只读：四层备份现状（baseline/snapshot/restorepoint/save）+ 可重建缓存 + legacy .backup_files"));
-        Console.WriteLine(L("                                  会话文件 Neutraled\\deploy-session.json；游戏运行中拒绝写盘"));
-        Console.WriteLine();
-        Console.WriteLine(L("  存档 / B 面（详见 bside/README.txt）:"));
-        Console.WriteLine(L("  --import-bside <存档> [--chapter chapterN] [--slot S] [--save-name <名字>] [--all-slots] [--template-only]"));
-        Console.WriteLine(L("                                  导入一份真实 B 面存档：按**实际章节**改名成 bside/chapterN.sav，"));
-        Console.WriteLine(L("                                  把玩家名字（≤12 个字母）写进存档第 1 行，直接落到槽位并标记 dr.ini 的 SideB"));
-        Console.WriteLine(L("  --make-bside --chapter N [--slot S|--all-slots]   用模板生成 B 面存档（先用你自己导入的，再用随包默认模板；都没有就标记现有存档）"));
-        Console.WriteLine(L("                                  模板位置：bside/templates/chapterN.sav 随包分发；bside/chapterN.sav 是你自己导入的（不进发布包）"));
-        Console.WriteLine();
-        Console.WriteLine(L("  外部章节（Kristal / 冰封帷幕这类成品）:"));
-        Console.WriteLine(L("  --add-external <exe> [名字]     注册成外部章节（章节选择器里可选）"));
-        Console.WriteLine(L("  --ensure-watcher                守候进程没在跑就立刻起一个（静默）；已在跑则什么都不做"));
-        Console.WriteLine(L("  --watch-autostart [on|off|status]  守候进程自启（登录 / 解锁 / 每 1 分钟兜底，免管理员）"));
-        Console.WriteLine(L("  --watch-external                守候进程（静默，无窗口）：看到启动请求就拉起外部引擎，"));
-        Console.WriteLine(L("                                  并负责隐藏/恢复 DELTARUNE 窗口 + 把焦点交给外部引擎"));
-        Console.WriteLine(L("  --kristal-console [exe]         给**没有源码的融合版 Kristal exe** 注入 Neutraled 控制台"));
-        Console.WriteLine(L("                                  （往内嵌 zip 追加 src/ntlconsole.lua + 在 main.lua 挂启动钩子；"));
-        Console.WriteLine(L("                                    原版自动备份成 <exe>.orig，可反复注入）"));
-        Console.WriteLine(L("  --kristal-console-restore [exe] 从 .orig 还原（撤销注入）"));
-        Console.WriteLine(L("  --focus-test <exe> [--send-f2] [--keep]   焦点抢占自检（后台进程能否抢到前台 + F2 是否打开控制台）"));
+        var lines = HelpLines();
+        foreach (var ln in lines) Console.WriteLine(ln);
+        var missing = BaseMissingHelpSwitches(lines);
+        if (missing.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine(L("  其余开关（简介见 --help all；★ = 需要取值）:"));
+            foreach (var chunk in ChunkNames(missing, 96)) Console.WriteLine("    " + chunk);
+            Console.WriteLine(L("  用 --help <开关> 看单条说明；--help --audit 检查帮助覆盖。"));
+        }
+    }
 
-        Console.WriteLine();
-        Console.WriteLine(L("  配置档 / 快照 / 恢复点（mod 集合与版本管理）:"));
-        Console.WriteLine(L("  --profile-list [--json]         列出配置档（* = 当前活动档；--json：GUI 只读入口读它）"));
-        Console.WriteLine(L("  --profile-new <id> [--name 名] [--from 档] [--desc 说明]    新建配置档"));
-        Console.WriteLine(L("  --profile-use <id>              应用配置档（改各 mod 的启用态 + config.json 设置）"));
-        Console.WriteLine(L("  --profile-show [id]             查看配置档内容"));
-        Console.WriteLine(L("  --profile-copy <源> <目标>      复制配置档"));
-        Console.WriteLine(L("  --profile-rename <旧> <新>      重命名配置档"));
-        Console.WriteLine(L("  --profile-delete <id> [--force] 删除配置档（活动档需 --force）"));
-        Console.WriteLine(L("  --profile-export <id> [--out 文件] / --profile-import <文件> [--force]   导出与导入"));
-        Console.WriteLine(L("  --snapshot-list [modId]         列出 mod 的版本快照"));
-        Console.WriteLine(L("  --snapshot-create <modId> [--version 版本] [--note 备注]   给当前内容打快照"));
-        Console.WriteLine(L("  --snapshot-use <modId> <版本> [--force]   切回某个快照（先自动保存当前态）"));
-        Console.WriteLine(L("  --snapshot-import <modId> <目录|zip> [--version 版本] / --snapshot-delete <modId> <版本>"));
-        Console.WriteLine(L("  --snapshot-auto                 给所有 mod 建保底快照"));
-        Console.WriteLine(L("  --restore-list                  列出整游戏恢复点"));
-        Console.WriteLine(L("  --restore-create [--name 名] [--from live|profile] [--profile <id>]   建立恢复点"));
-        Console.WriteLine(L("  --restore-apply <id> [--force]  恢复到该点（要求游戏未运行；先自动存回退点）"));
-        Console.WriteLine(L("  --restore-export <id> <文件.ntlrestore> / --restore-import <文件> [--force] / --restore-delete <id>"));
-        Console.WriteLine();
-        Console.WriteLine(L("  GameBanana / 下载队列 / 黑名单:"));
-        Console.WriteLine(L("  --search <关键词> [--per-page N] [--no-blocklist] [--json]   统一搜索（默认过滤黑名单；--dry-run 零网络）"));
-        Console.WriteLine(L("  --gb-search <关键词>            旧名（已弃用）：改用 --search"));
-        Console.WriteLine(L("  --gb-files <modId>              列出该条目的可下载文件"));
-        Console.WriteLine(L("  --gb-install <modId> [--file N] [--chapter 章节] [--force]   旧名（已弃用）：改用 --install-id"));
-        Console.WriteLine(L("  --queue-list / --queue-run [--no-install] [--delete-after]   下载队列"));
-        Console.WriteLine(L("  --queue-add <modId> [--name 名] [--file N]   把一次下载加入队列（不立刻下载）"));
-        Console.WriteLine(L("  --queue-remove <条目id> [--delete-file]      从队列移除（--delete-file 同时删已下载文件）"));
-        Console.WriteLine(L("  --block-list / --block-add <值> [--kind id|name|category] [--note 备注] / --block-remove <值>"));
-        Console.WriteLine();
-        Console.WriteLine(L("  插件 / 主题 / 语言包 / 网页界面:"));
-        Console.WriteLine(L("  --plugin-list / --plugin-enable <id> / --plugin-disable <id> / --plugin-info <id>"));
-        Console.WriteLine(L("  --plugin-install <目录|.ntlplugin> [--force] / --plugin-remove <id> [--force] / --plugin-hooks"));
-        Console.WriteLine(L("  --theme-list / --theme-use <id> / --theme-show <id>"));
-        Console.WriteLine(L("  --theme-import <主题.json> [--force]   导入主题"));
-        Console.WriteLine(L("  --lang-list                     列出可用界面语言与覆盖率"));
-        Console.WriteLine(L("  --lang-use <语言码>             切换界面语言并存进 config.json"));
-        Console.WriteLine(L("  --lang-coverage [语言码]        统计语言包覆盖率（C# 侧 + 游戏内；退出码 0 = 全部 100%）"));
-        Console.WriteLine(L("  --lang-template <语言码> [--out 文件]   导出待翻译模板"));
-        Console.WriteLine(L("  --lang-resolve [--json]         显示语言从哪来（--lang > NTL_LANG > config.json 的 lang > zh）"));
-        Console.WriteLine(L("  --lang-migrate [--dry-run]      把旧 gui_lang.txt 并进 config.json 的 lang 并归档（语言唯一真源）"));
-        Console.WriteLine();
-        Console.WriteLine(L("  配置键（config.json 的单一事实源）:"));
-        Console.WriteLine(L("  --config-keys [--json]          列出全部键（类型 / owner / 默认值 / 是否废弃）"));
-        Console.WriteLine(L("  --config-get <键> [--json]      查看一个键的生效值与来源"));
-        Console.WriteLine(L("  --config-set <键=值> [--json]   读-改-写 config.json（未知键与注释原样保留）"));
-        Console.WriteLine(L("  --config-migrate [--dry-run] [--json]   把废弃键迁移成规范键（旧键保留兼容）"));
-        Console.WriteLine(L("  --web [--port 7931] [--no-open] [--auto-stop]   启动本地网页界面（跨平台，浏览器打开）"));
-        Console.WriteLine(L("  --platform-info                 平台信息（章节后缀 / 硬链接 / curl / 可写性）"));
+    /// <summary>UX-01：手写帮助正文尚未覆盖的开关名（PrintHelp 用它生成「其余开关」索引）。</summary>
+    private static List<string> BaseMissingHelpSwitches(List<string> lines)
+    {
+        var text = string.Join("\n", lines);
+        return CliCatalogDetails.All.Select(e => e.Name)
+            .Where(n => text.IndexOf(n, StringComparison.Ordinal) < 0)
+            .OrderBy(n => n, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>UX-01：渲染后的默认 --help（正文 + 自动补的「其余开关」索引）仍未覆盖的开关。
+    /// 正常情况下应为空 —— --help --audit 用它证明「默认帮助没有漏开关」。</summary>
+    internal static List<string> MissingHelpSwitches(List<string>? lines = null)
+    {
+        lines ??= HelpLines();
+        var baseMissing = BaseMissingHelpSwitches(lines);
+        if (baseMissing.Count == 0) return baseMissing;
+        var rendered = string.Join("\n", lines) + "\n" + string.Join("\n", ChunkNames(baseMissing, 96));
+        return CliCatalogDetails.All.Select(e => e.Name)
+            .Where(n => rendered.IndexOf(n, StringComparison.Ordinal) < 0)
+            .OrderBy(n => n, StringComparer.Ordinal).ToList();
+    }
+
+    internal static int DefaultHelpCovered() => CliCatalogDetails.All.Length - MissingHelpSwitches().Count;
+
+    private static IEnumerable<string> ChunkNames(List<string> names, int width)
+    {
+        var cur = new System.Text.StringBuilder();
+        foreach (var n in names)
+        {
+            var tok = n + (CliCatalog.RequiresValueOf(n) ? "★" : "");
+            if (cur.Length > 0 && cur.Length + 1 + tok.Length > width) { yield return cur.ToString(); cur.Clear(); }
+            if (cur.Length > 0) cur.Append(' ');
+            cur.Append(tok);
+        }
+        if (cur.Length > 0) yield return cur.ToString();
     }
 
     private static string BootCodeName(string chapter) =>
@@ -1226,8 +1338,17 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     {
         var exe = exeArg ?? ExternalExeDefault(gameRoot);
         if (string.IsNullOrEmpty(exe)) { Console.WriteLine(L("  [错误] 没指定 exe")); return 1; }
-        FuseZip.EnsureConsole(exe, Path.Combine(Paths.NeutraledRoot(gameRoot), "kristal", "ntlconsole"), FindCjkFont(gameRoot));
-        return 0;
+        var libDir = Path.Combine(Paths.NeutraledRoot(gameRoot), "kristal", "ntlconsole");
+        // builder-cli-014：以前对非融合 exe 静默 exit 0（和 --kristal-console 的明确报错不一致）→ 对齐为 exit 1 + 原因
+        var rc = FuseZip.EnsureConsole(exe, libDir, FindCjkFont(gameRoot));
+        if (rc == 0) return 0;
+        if (rc == 2)
+        {
+            Console.WriteLine(L("[错误] 缺少控制台库: {0}（重装 Neutraled 或先跑一次 --kristal-console）", Path.Combine(libDir, "lib.lua")));
+            return 1;
+        }
+        Console.WriteLine(L("[错误] {0} 不是 Kristal 融合版（没有内嵌 mods/*/mod.json 或 main.lua），没有可注入的控制台；用 --kristal-console 查看具体原因", exe));
+        return 1;
     }
 
     /// <summary>已部署的 chapters.json 里所有外部章节的 exe 名（不含扩展名）——
@@ -1736,42 +1857,94 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     /// <summary>--import-all &lt;目录&gt; [--jobs N]：并行转换目录下所有包。</summary>
     private static int RunParallelImport(string gameRoot, string dir)
     {
-        if (!Directory.Exists(dir)) { Console.WriteLine(L("找不到目录: ") + dir); return 1; }
+        // builder-cli-002：相对路径曾经原样传给 worker，而 worker 的 cwd 是 builder exe 目录
+        // ⇒ `--import-all fixtures\\x` 父进程列得出文件、两个 worker 都「找不到包」（0/2）。这里统一转绝对路径。
+        var fullDir = Path.GetFullPath(dir);
+        if (!Directory.Exists(fullDir)) { Console.WriteLine(L("找不到目录: ") + dir); return 1; }
         var exts = new[] { ".zip", ".7z", ".rar", ".tar", ".gz", ".xdelta", ".win", ".ntlmod" };
-        var all = Directory.GetFiles(dir)
+        var all = Directory.GetFiles(fullDir)
             .Where(f => exts.Contains(Path.GetExtension(f).ToLowerInvariant()))
             .OrderBy(f => new FileInfo(f).Length)      // 小的先跑，长尾更短
             .ToList();
         if (all.Count == 0) { Console.WriteLine(L("目录里没有可导入的包: ") + dir); return 1; }
 
-        // ★ 幂等：包没变过（大小+修改时间一致）且上次导入成功 → 直接跳过。
-        //   实测「重跑全流程」里转换占 50s，而其中绝大多数包其实没变。
+        // builder-cli-015：插件型 Kristal 包（只有 mod.lua）不能独立导入。以前报的是
+        // <游戏根>\\Neutraled\\.tmp\\modimp-<guid> 的内部路径、也没有「该挂到宿主工程」的提示。
+        int pluginOnly = 0;
+        var accepted = new List<string>();
+        foreach (var f in all)
+        {
+            if (IsPluginOnlyKristalPackage(f))
+            {
+                pluginOnly++;
+                Console.WriteLine(L("[跳过] {0}: 插件型 Kristal mod（只有 mod.lua）不能独立导入；请用 --kristal-merge <工程目录> --with <插件目录>", Path.GetFileName(f)));
+                continue;
+            }
+            accepted.Add(f);
+        }
+        if (accepted.Count == 0) { Console.WriteLine(L("结果: 没有可独立导入的包（插件型包需要宿主工程）")); return 1; }
+
         var manPath = Path.Combine(Paths.NeutraledRoot(gameRoot), "cache", "import-manifest.json");
         var man = NoCache ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) : LoadImportManifest(manPath);
         var files = new List<string>();
         int skipped = 0;
-        foreach (var f in all)
+        foreach (var f in accepted)
         {
             var fp = Fingerprint(f);
             if (fp != null && man.TryGetValue(f, out var old) && old == fp) { skipped++; continue; }
             files.Add(f);
         }
         if (skipped > 0) Console.WriteLine(L("跳过 {0} 个未变化的包（内容+时间都没变，上次已成功导入）", skipped));
-        if (files.Count == 0) { Console.WriteLine(L("全部包都未变化，无需转换 ✓")); return 0; }
-        // 同理：worker 不带 --game 会去改自动探测到的游戏目录（导入会写 <root>/Neutraled/mods）
-        var rc = RunParallel(files.Select(f => "--import-mod \"" + f + "\" --game \"" + gameRoot + "\"").ToList(), files, L("转换"), JobsOrDefault());
-        // 成功的包记进清单（失败的不记，下次还会重试）
+        if (files.Count == 0)
+        {
+            Console.WriteLine(L("全部包都未变化，无需转换 ✓"));
+            return pluginOnly > 0 ? 1 : 0;   // 插件型包没被导入过，不能因此报「全绿」
+        }
+        var codes = new System.Collections.Concurrent.ConcurrentBag<(string label, int code)>();
+        var rc = RunParallel(files.Select(f => "--import-mod \"" + f + "\" --game \"" + gameRoot + "\"").ToList(),
+                             files, L("转换"), JobsOrDefault(), codes);
+        // builder-cli-003：只有 worker exit 0 的包才进清单（以前无条件写 → 下次「未变化」跳过，失败被永久假绿）
+        var done = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (label, code) in codes)
+        {
+            if (code == 0) done.Add(label);
+            else man.Remove(label);
+        }
         foreach (var f in files)
         {
+            if (!done.Contains(f)) continue;
             var fp = Fingerprint(f);
             if (fp != null) man[f] = fp;
         }
         try { Directory.CreateDirectory(Path.GetDirectoryName(manPath)!); File.WriteAllText(manPath, System.Text.Json.JsonSerializer.Serialize(man, Paths.Json)); } catch { }
+        if (pluginOnly > 0)
+        {
+            Console.WriteLine(L("结果: {0} 个插件型包已跳过（需要宿主工程），其余 {1} 个已处理", pluginOnly, files.Count));
+            return 1;
+        }
         return rc;
     }
 
+    /// <summary>builder-cli-015：zip/ntlmod 里只有 mod.lua、没有任何可独立导入的入口（mod.json / modding.xml / data.win）
+    /// ⇒ 插件型 Kristal mod，不能单独转换成独立章节/游戏 mod。</summary>
+    private static bool IsPluginOnlyKristalPackage(string file)
+    {
+        try
+        {
+            var ext = Path.GetExtension(file).ToLowerInvariant();
+            if (ext != ".zip" && ext != ".ntlmod") return false;
+            using var zip = System.IO.Compression.ZipFile.OpenRead(file);
+            var names = zip.Entries.Select(e => e.FullName.Replace('\\', '/').ToLowerInvariant()).ToList();
+            if (!names.Any(n => n == "mod.lua" || n.EndsWith("/mod.lua"))) return false;
+            return !names.Any(n => n == "mod.json" || n.EndsWith("/mod.json")
+                                || n.EndsWith("modding.xml") || n == "data.win" || n.EndsWith("/data.win"));
+        }
+        catch { return false; }
+    }
+
     /// <summary>把一组命令放进若干子进程并行跑，打印每项用时与总用时。</summary>
-    private static int RunParallel(List<string> argList, List<string> labels, string phase, int jobs)
+    private static int RunParallel(List<string> argList, List<string> labels, string phase, int jobs,
+        System.Collections.Concurrent.ConcurrentBag<(string label, int code)>? codeSink = null)
     {
         var exe = Environment.ProcessPath!;
         var results = new System.Collections.Concurrent.ConcurrentBag<(string label, int code, double sec)>();
@@ -1799,6 +1972,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                     pr.WaitForExit();
                     w.Stop();
                     results.Add((labels[idx], pr.ExitCode, w.Elapsed.TotalSeconds));
+                    codeSink?.Add((labels[idx], pr.ExitCode));
                     if (pr.ExitCode != 0)
                     {
                         Console.WriteLine(L("  [失败] {0}（exit={1}）", labels[idx], pr.ExitCode) + (se.Length > 0 ? " " + se.Split('\n')[0] : ""));
@@ -1815,6 +1989,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
                 {
                     w.Stop();
                     results.Add((labels[idx], 1, w.Elapsed.TotalSeconds));
+                    codeSink?.Add((labels[idx], 1));
                     Console.WriteLine(L("  [异常] {0}: {1}", labels[idx], ex.Message));
                 }
             });
@@ -2131,9 +2306,38 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         return 0;
     }
 
-    /// <summary>--restore-chapter / --restore-session 的目标分发：单章走 RestoreChapter，all 逐槽还原（C4 P0-3）。</summary>
-    internal static int RestoreTarget(string gameRoot, string chapter, bool dryRun = false)
+    /// <summary>--restore-chapter / --restore-session 的目标分发：单章走 RestoreChapter，all 逐槽还原（C4 P0-3）。
+    /// UX-25：json=true 时 stdout 只输出一个 JSON 对象（逐步文本全部抑制），供 GUI 直接 JsonDocument.Parse。</summary>
+    internal static int RestoreTarget(string gameRoot, string chapter, bool dryRun = false, bool json = false)
     {
+        if (json)
+        {
+            var targets = chapter.Equals("all", StringComparison.OrdinalIgnoreCase)
+                ? new List<string>(AllChapters)
+                : new List<string> { chapter };
+            var restored = new List<string>();
+            var failed = new List<object>();
+            foreach (var ch in targets)
+            {
+                var sw = new StringWriter();
+                var oldOut = Console.Out;
+                int one;
+                try { Console.SetOut(sw); one = RestoreChapter(gameRoot, ch, dryRun); }
+                finally { Console.SetOut(oldOut); }
+                if (one == 0) restored.Add(ch);
+                else
+                {
+                    var detail = sw.ToString().Replace("\r\n", "\n").Trim()
+                        .Split('\n').LastOrDefault(l => l.Trim().Length > 0) ?? "";
+                    failed.Add(new { chapter = ch, message = detail.Trim() });
+                }
+            }
+            var payload = new { ok = failed.Count == 0, target = chapter, dryRun, restored, failed };
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(payload,
+                new System.Text.Json.JsonSerializerOptions(Paths.Json) { WriteIndented = true }));
+            return failed.Count == 0 ? 0 : 1;
+        }
+
         if (!chapter.Equals("all", StringComparison.OrdinalIgnoreCase))
             return RestoreChapter(gameRoot, chapter, dryRun);
 
@@ -2163,7 +2367,7 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
             case "repair":
                 return Baseline.RepairCli(gameRoot, target, from, Yes);
             case "restore":
-                return RestoreTarget(gameRoot, chapterExplicit ? chapter : "root", dryRun);
+                return RestoreTarget(gameRoot, chapterExplicit ? chapter : "root", dryRun, json);
             default:
                 Console.WriteLine(L("[错误] --baseline 需要子命令: verify|repair|restore|status（收到: {0}）", sub));
                 Console.WriteLine(L("       例: --baseline status --json / --baseline verify / --baseline restore --chapter chapter2 --dry-run"));
@@ -2191,15 +2395,32 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         return 0;
     }
 
+    /// <summary>统一列表过滤（builder-cli-010）："*" = 全部；含 * 的模式按通配（前后缀/中缀）；否则忽略大小写子串。
+    /// 以前 --list/--listsprites 只认子串（--list * 静默为空），--listobjs/--listrooms 特判 "*" —— 两套语义。</summary>
+    private static bool MatchFilter(string name, string filter)
+    {
+        if (filter == "*") return true;
+        if (filter.IndexOf('*') < 0) return name.Contains(filter, StringComparison.OrdinalIgnoreCase);
+        int pos = 0;
+        foreach (var part in filter.Split('*', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var at = name.IndexOf(part, pos, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return false;
+            pos = at + part.Length;
+        }
+        return true;
+    }
+
     private static int ListSprites(string gameRoot, string chapter, string filter)
     {
         var data = Injector.Load(Paths.ChapterDataWin(gameRoot, chapter));
         int n = 0;
-        foreach (var s in data.Sprites.Where(s => (s.Name?.Content ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)))
+        foreach (var s in data.Sprites.Where(s => MatchFilter(s.Name?.Content ?? "", filter)))
         {
             Console.WriteLine(L("{0}  {1}x{2}  帧={3}", s.Name?.Content, s.Width, s.Height, s.Textures.Count));
             if (++n >= 60) break;
         }
+        Console.WriteLine(L("共 {0} 个匹配（模式: {1}）", n, filter) + (n >= 60 ? L("（仅显示前 60 条）") : ""));
         return 0;
     }
 
@@ -2218,8 +2439,13 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     private static int ListCodes(string gameRoot, string chapter, string filter)
     {
         var data = Injector.Load(Paths.ChapterDataWin(gameRoot, chapter));
-        foreach (var c in data.Code.Where(c => (c.Name?.Content ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)))
+        int n = 0;
+        foreach (var c in data.Code.Where(c => MatchFilter(c.Name?.Content ?? "", filter)))
+        {
             Console.WriteLine(c.Name?.Content);
+            if (++n >= 60) break;
+        }
+        Console.WriteLine(L("共 {0} 个匹配（模式: {1}）", n, filter) + (n >= 60 ? L("（仅显示前 60 条）") : ""));
         return 0;
     }
 
@@ -2305,11 +2531,11 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         for (int i = 0; i < data.Rooms.Count; i++)
         {
             var name = data.Rooms[i].Name?.Content ?? "";
-            if (filter != "*" && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!MatchFilter(name, filter)) continue;
             Console.WriteLine($"{i}\t{name}");
             if (++n >= 300) { Console.WriteLine(L("...(截断)")); break; }
         }
-        Console.WriteLine(L("共 {0} 个匹配（总房间数 {1}）", n, data.Rooms.Count));
+        Console.WriteLine(L("共 {0} 个匹配（总房间数 {1}；模式: {2}）", n, data.Rooms.Count, filter));
         return 0;
     }
 
@@ -2321,11 +2547,11 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
         for (int i = 0; i < data.GameObjects.Count; i++)
         {
             var name = data.GameObjects[i].Name?.Content ?? "";
-            if (filter != "*" && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!MatchFilter(name, filter)) continue;
             Console.WriteLine($"{i}\t{name}");
             if (++n >= 200) { Console.WriteLine(L("...(截断)")); break; }
         }
-        Console.WriteLine(L("共 {0} 个匹配", n));
+        Console.WriteLine(L("共 {0} 个匹配（模式: {1}）", n, filter));
         return 0;
     }
 
@@ -3564,6 +3790,25 @@ Console.WriteLine(L("  --export-shaders <data.win> <mod 章节目录> [--base <�
     static string CjkSourceFont = "fnt_main";
     /// <summary>--font-native 的强制来源种类（game / base-mod；不给则按 fonts/ntl_native_sources.json 的优先级）。</summary>
     static string? FontSource = null;
+
+    /// <summary>--cache-max-set &lt;MB&gt;（GUI-M07）：只把上限写进 config.json 的 cache_max_mb。
+    /// 刻意**不做**部署/缓存应用/启动 Steam —— GUI 的设置项不该有副作用；
+    /// 旧组合 --launch --cache-max MB 保留兼容（那条路径仍会顺带部署+启动）。</summary>
+    static int CacheMaxSetCli(string gameRoot, string raw)
+    {
+        var text = (raw ?? "").Trim();
+        if (text.Length == 0 || !int.TryParse(text, out var mb) || mb <= 0 || mb > 1024 * 1024)
+        {
+            Console.WriteLine(L("[错误] --cache-max-set 需要一个正整数（单位 MB，1 .. 1048576），收到: {0}",
+                text.Length == 0 ? L("（空）") : text));
+            Console.WriteLine(L("       用法: ntl-builder --cache-max-set <MB>   例: --cache-max-set 4096（只写 config.json，不部署、不启动）"));
+            return 2;
+        }
+        ConfigFile.Set(gameRoot, "cache_max_mb", JsonValue.Create(mb));
+        Console.WriteLine(L("[缓存] 上限已设为 {0} MB（已写入 {1}；不部署、不启动）",
+            mb, Path.Combine(Paths.NeutraledRoot(gameRoot), "config.json")));
+        return 0;
+    }
 
     /// <summary>--launch &lt;chapter&gt;：查缓存→命中则硬链接应用（秒开）→ 否则部署→ 存缓存 → 由 Steam 拉起游戏。</summary>
     static int LaunchWithCache(string gameRoot, string chapter, string cacheMaxMb)

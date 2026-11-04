@@ -53,7 +53,7 @@ public static class WebUi
     /// <summary>已注册的全部 API 路由（PrintStatus 逐条打印，便于 grep 断言）。</summary>
     private static readonly string[] ApiRoutes =
     {
-        "GET /api/status", "GET /api/mods", "POST /api/mods/toggle",
+        "GET /api/status", "GET /api/chapters", "GET /api/mods", "POST /api/mods/toggle",
         "GET /api/profiles", "POST /api/profile/use", "POST /api/profile/save",
         "GET /api/snapshots", "POST /api/snapshot/use",
         "GET /api/restore", "POST /api/restore/apply",
@@ -260,6 +260,7 @@ public static class WebUi
         if (method == "GET" && !path.StartsWith("/api/", StringComparison.Ordinal))
         {
             if (path == "/" || path.Equals("/index.html", StringComparison.OrdinalIgnoreCase)) { ServeIndex(ctx); return; }
+            if (path.Equals("/favicon.ico", StringComparison.OrdinalIgnoreCase)) { ServeFavicon(ctx); return; }
             if (ServeStatic(ctx, path)) return;
             Fail(ctx, 404, L("找不到资源: {0}", path));
             return;
@@ -284,7 +285,8 @@ public static class WebUi
 
                 case "GET /api/status":
                 {
-                    var mods = ScanAll();
+                    var leaves = ScanAll();
+                    var groups = GroupMods(leaves);
                     var profIds = new JsonArray();
                     foreach (var p in Profiles.List(_gameRoot)) profIds.Add(Str(Obj(p), "id", "Id"));
                     Json(ctx, 200, new JsonObject
@@ -292,8 +294,11 @@ public static class WebUi
                         ["gameRoot"] = _gameRoot,
                         ["platform"] = Platform.Name,
                         ["chapterSuffix"] = Platform.ChapterSuffix(_gameRoot),
-                        ["mods"] = mods.Count,
-                        ["enabled"] = mods.Count(x => x.Enabled),
+                        // 口径与 GET /api/mods 一致：按 mod Id 聚合（多章节 mod 只算一个），叶子条目另给 leafMods。
+                        ["mods"] = groups.Count,
+                        ["leafMods"] = leaves.Count,
+                        ["enabled"] = groups.Count(g => g.Leaves.All(x => x.Enabled)),
+                        ["partial"] = groups.Count(g => g.Leaves.Any(x => x.Enabled) && !g.Leaves.All(x => x.Enabled)),
                         ["profiles"] = profIds,
                         ["active_profile"] = Profiles.ActiveId(_gameRoot),
                         ["lang"] = CurrentLang(),
@@ -305,20 +310,44 @@ public static class WebUi
                     return;
                 }
 
+                case "GET /api/chapters":
+                {
+                    Json(ctx, 200, new JsonObject
+                    {
+                        ["ok"] = true,
+                        ["chapters"] = BuildChapterArray()
+                    });
+                    return;
+                }
+
                 case "GET /api/mods":
                 {
                     var arr = new JsonArray();
-                    foreach (var m in ScanAll())
+                    foreach (var g in GroupMods(ScanAll()))
+                    {
+                        var first = g.Leaves[0];
+                        var enabled = g.Leaves.All(x => x.Enabled);
+                        var state = enabled ? "all" : g.Leaves.Any(x => x.Enabled) ? "partial" : "none";
+                        var chapters = new JsonArray();
+                        foreach (var ch in g.Leaves.Select(x => x.Chapter ?? "")
+                                     .Where(x => x.Length > 0)
+                                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                                     .OrderBy(x => ChapterOrder(x)).ThenBy(x => x, StringComparer.OrdinalIgnoreCase))
+                            chapters.Add(ch);
                         arr.Add(new JsonObject
                         {
-                            ["id"] = m.Id,
-                            ["name"] = m.Name,
-                            ["author"] = m.Author,
-                            ["version"] = m.Version,
-                            ["enabled"] = m.Enabled,
-                            ["chapter"] = m.Chapter ?? "",
-                            ["dir"] = m.Dir
+                            ["id"] = g.Id,
+                            ["name"] = g.Leaves.Select(x => x.Name).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "",
+                            ["author"] = g.Leaves.Select(x => x.Author).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "",
+                            ["version"] = g.Leaves.Select(x => x.Version).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "",
+                            ["enabled"] = enabled,
+                            ["enabledState"] = state,
+                            ["chapters"] = chapters,
+                            ["chapter"] = string.Join(", ", chapters.Select(x => x?.ToString() ?? "")),
+                            ["leafCount"] = g.Leaves.Count,
+                            ["dir"] = first.Dir
                         });
+                    }
                     Json(ctx, 200, arr);
                     return;
                 }
@@ -330,11 +359,25 @@ public static class WebUi
                     if (Pick(body, "enabled", "Enabled") == null) throw new WebBadRequest(L("缺少 enabled 参数"));
                     bool want = Flag(body, "enabled", "Enabled");
 
-                    var hit = ScanAll().FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
-                    if (hit == null) throw new WebBadRequest(L("找不到 mod: {0}", id));
+                    // WEB-08：按 mod Id 聚合，启停必须覆盖同 Id 的全部叶子（多章节 mod 不能只改第一个）。
+                    var hits = ScanAll().Where(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (hits.Count == 0) { Fail(ctx, 404, L("找不到 mod: {0}", id)); return; }
 
-                    Profiles.RewriteModEnabled(_gameRoot, hit, want);
-                    Json(ctx, 200, new JsonObject { ["ok"] = true, ["id"] = hit.Id, ["enabled"] = want });
+                    int changed = 0;
+                    foreach (var hit in hits)
+                    {
+                        if (hit.Enabled == want) continue;
+                        Profiles.RewriteModEnabled(_gameRoot, hit, want);
+                        changed++;
+                    }
+                    Json(ctx, 200, new JsonObject
+                    {
+                        ["ok"] = true,
+                        ["id"] = hits[0].Id,
+                        ["enabled"] = want,
+                        ["changed"] = changed,
+                        ["leafCount"] = hits.Count
+                    });
                     return;
                 }
 
@@ -365,6 +408,7 @@ public static class WebUi
                     var id = Str(body, "id");
                     if (!SafeToken(id)) throw new WebBadRequest(L("配置档 id 非法: {0}", id));
                     int changed = Profiles.Apply(_gameRoot, id);
+                    if (changed < 0) { Fail(ctx, 404, L("找不到配置档: {0}", id)); return; }
                     Json(ctx, 200, new JsonObject { ["ok"] = true, ["id"] = id, ["changed"] = changed });
                     return;
                 }
@@ -377,6 +421,7 @@ public static class WebUi
                     if (Profiles.Load(_gameRoot, id) == null)
                         Profiles.Create(_gameRoot, id, string.IsNullOrWhiteSpace(name) ? id : name);
                     int n = Profiles.CaptureFromLive(_gameRoot, id);
+                    if (n < 0) { Fail(ctx, 400, L("配置档 id 非法: {0}", id)); return; }
                     Json(ctx, 200, new JsonObject { ["ok"] = true, ["id"] = id, ["captured"] = n });
                     return;
                 }
@@ -414,6 +459,7 @@ public static class WebUi
                     if (!SafeToken(version)) throw new WebBadRequest(L("快照版本非法: {0}", version));
                     bool force = Flag(body, "force", "Force");
                     int n = Snapshots.Use(_gameRoot, modId, version, force);
+                    if (n < 0) { Fail(ctx, 404, L("快照不存在或回切失败: {0} @ {1}", modId, version)); return; }
                     Json(ctx, 200, new JsonObject { ["ok"] = true, ["modId"] = modId, ["version"] = version, ["restored"] = n });
                     return;
                 }
@@ -448,6 +494,9 @@ public static class WebUi
                     if (!SafeToken(id)) throw new WebBadRequest(L("恢复点 id 非法: {0}", id));
                     bool force = Flag(body, "force", "Force");
                     int n = RestorePoints.Apply(_gameRoot, id, force);
+                    if (n == 1) { Fail(ctx, 400, L("恢复点 id 非法: {0}", id)); return; }
+                    if (n == 2) { Fail(ctx, 404, L("找不到恢复点或没有数据副本: {0}", id)); return; }
+                    if (n == 3) { Fail(ctx, 409, L("游戏正在运行，请先关闭游戏再恢复: {0}", id)); return; }
                     Json(ctx, 200, new JsonObject { ["ok"] = true, ["id"] = id, ["applied"] = n });
                     return;
                 }
@@ -637,14 +686,32 @@ public static class WebUi
                     var code = (req.QueryString["code"] ?? "").Trim();
                     if (code.Length == 0) code = CurrentLang();
                     if (!SafeToken(code)) throw new WebBadRequest(L("语言代码非法: {0}", code));
+                    // WEB-10：查询语言必须是真实可用语言（内置 zh/en + lang/lang_*.json），否则给可用列表。
+                    var available = LangPacks.Available(_gameRoot);
+                    if (!available.Any(x => string.Equals(x, code, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var langs = new JsonArray();
+                        foreach (var l in available) langs.Add(l);
+                        Json(ctx, 400, new JsonObject
+                        {
+                            ["ok"] = false,
+                            ["error"] = L("未知语言代码: {0}", code),
+                            ["code"] = code,
+                            ["languages"] = langs
+                        });
+                        return;
+                    }
                     int result;
                     var report = CaptureConsole(() => LangPacks.Coverage(_gameRoot, code), out result);
+                    // WEB-11：Coverage 的报告头是 LangPacks 的固定文案（当前界面语言/zh 基准）；
+                    // 这里在 Web 层补上本次查询 code 与基准语言说明，不改 CLI 的输出契约。
+                    var reportText = CoverageReportForCode(report.Trim(), code);
                     Json(ctx, 200, new JsonObject
                     {
                         ["ok"] = true,
                         ["code"] = code,
                         ["result"] = result,
-                        ["report"] = report.Trim()
+                        ["report"] = reportText
                     });
                     return;
                 }
@@ -661,7 +728,12 @@ public static class WebUi
                     if (chapter.Length == 0) chapter = "root";
                     if (!SafeToken(chapter)) throw new WebBadRequest(L("章节名非法: {0}", chapter));
                     int code = hook(_gameRoot, chapter);
-                    Json(ctx, 200, new JsonObject { ["ok"] = code == 0, ["chapter"] = chapter, ["code"] = code });
+                    if (code != 0)
+                    {
+                        Fail(ctx, 500, L("部署失败（返回码 {0}）: {1}", code, chapter));
+                        return;
+                    }
+                    Json(ctx, 200, new JsonObject { ["ok"] = true, ["chapter"] = chapter, ["code"] = code });
                     return;
                 }
             }
@@ -826,6 +898,93 @@ public static class WebUi
     private static List<ModEntry> ScanAll() =>
         Mods.ScanMods(Paths.ModsRoot(_gameRoot), "root", includeDisabled: true, allChapters: true);
 
+    /// <summary>网页的部署目标（与 builder 的 AllChapters 对齐；all 由 DeployAll 串行展开）。</summary>
+    private static readonly string[] DeployTargets = { "root", "chapter1", "chapter2", "chapter3", "chapter4", "chapter5", "all" };
+
+    private sealed class ModGroup
+    {
+        public string Id = "";
+        public List<ModEntry> Leaves = new();
+    }
+
+    /// <summary>按 mod Id 聚合叶子（WEB-01）：/api/status、/api/mods、toggle 共用同一口径。</summary>
+    private static List<ModGroup> GroupMods(IEnumerable<ModEntry> leaves) =>
+        leaves.Where(m => !string.IsNullOrWhiteSpace(m.Id))
+            .GroupBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ModGroup { Id = g.First().Id, Leaves = g.ToList() })
+            .ToList();
+
+    private static int ChapterOrder(string chapter)
+    {
+        if (string.Equals(chapter, "root", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (string.Equals(chapter, "all", StringComparison.OrdinalIgnoreCase)) return 99;
+        if (chapter.StartsWith("chapter", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(chapter.Substring("chapter".Length), out var n)) return n;
+        return 50;
+    }
+
+    /// <summary>GET /api/chapters：官方可部署目标 + 用户注册的外部章节（外部章节不可当部署目标，deployable=false）。</summary>
+    private static JsonArray BuildChapterArray()
+    {
+        var arr = new JsonArray();
+        foreach (var c in DeployTargets)
+            arr.Add(new JsonObject
+            {
+                ["id"] = c,
+                ["name"] = c,
+                ["kind"] = c == "root" ? "root" : c == "all" ? "all" : "official",
+                ["deployable"] = true
+            });
+        try
+        {
+            foreach (var ext in Chapters.LoadExternalList(_gameRoot))
+            {
+                if (!ext.TryGetValue("exe", out var exe) || string.IsNullOrWhiteSpace(exe) || !File.Exists(exe)) continue;
+                var id = ext.TryGetValue("id", out var iv) && iv.Length > 0
+                    ? iv
+                    : "external:" + Path.GetFileNameWithoutExtension(exe).ToLowerInvariant();
+                if (DeployTargets.Contains(id, StringComparer.OrdinalIgnoreCase)) continue;
+                var name = ext.TryGetValue("name", out var nv) && nv.Length > 0
+                    ? nv
+                    : Path.GetFileNameWithoutExtension(exe);
+                arr.Add(new JsonObject
+                {
+                    ["id"] = id,
+                    ["name"] = name,
+                    ["kind"] = "external",
+                    ["deployable"] = false
+                });
+            }
+        }
+        catch { /* 外部章节清单坏了不影响官方章表 */ }
+        return arr;
+    }
+
+    /// <summary>favicon：优先发 tools/icon.ico，缺失时回 204（WEB-07：浏览器不再报 404）。</summary>
+    private static void ServeFavicon(HttpListenerContext ctx)
+    {
+        try
+        {
+            var icon = Path.Combine(Paths.NeutraledRoot(_gameRoot), "tools", "icon.ico");
+            if (File.Exists(icon))
+            {
+                var bytes = File.ReadAllBytes(icon);
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "image/x-icon";
+                ctx.Response.Headers["Cache-Control"] = "no-store";
+                ctx.Response.ContentLength64 = bytes.Length;
+                if (!HeadOnly(ctx)) ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                ctx.Response.Close();
+                return;
+            }
+            ctx.Response.StatusCode = 204;
+            ctx.Response.Headers["Cache-Control"] = "no-store";
+            ctx.Response.Close();
+        }
+        catch { try { ctx.Response.Abort(); } catch { } }
+    }
+
     /// <summary>读 POST 体（上限 1 MB）；超限/非 JSON 对象一律 WebBadRequest（→ 400）。</summary>
     private static JsonObject ReadBody(HttpListenerRequest req)
     {
@@ -867,8 +1026,21 @@ public static class WebUi
 
     private static void Fail(HttpListenerContext ctx, int status, string message)
     {
-        try { Json(ctx, status, new JsonObject { ["error"] = message }); }
+        try { Json(ctx, status, new JsonObject { ["ok"] = false, ["error"] = message }); }
         catch { try { ctx.Response.Abort(); } catch { } }
+    }
+
+    /// <summary>给 Web 覆盖率报告补上「本次查询语言」与「基准语言 zh」。</summary>
+    private static string CoverageReportForCode(string report, string code)
+    {
+        if (string.IsNullOrEmpty(report)) return report;
+        var text = report
+            .Replace("===== 语言覆盖率 =====", "===== 语言覆盖率（查询语言 " + code + "；基准语言 zh）=====")
+            .Replace("（api/ 的 zh 表）", "（游戏内基准语言 zh）");
+        // 「词条总数: N（当前语言 xx）」只反映界面语言，容易和 ?code= 混淆 → 明确写成查询语言 + 基准语言。
+        text = System.Text.RegularExpressions.Regex.Replace(text,
+            "（当前语言 [^）]*）", "（查询语言 " + code + "；基准语言 zh）");
+        return text;
     }
 
     /// <summary>把 DTO 转成 JsonObject（用仓库统一的序列化选项，非 ASCII 不转义）。</summary>

@@ -338,7 +338,36 @@ public static class Localizer
         ["采纳新基线失败（退出码 {0}），本次已取消，游戏目录没有改动。详见日志。"] = "Adopting the new baseline failed (exit code {0}); this run was cancelled and the game folder was not modified. See the log.",
         ["部署全部章节"] = "Deploy all chapters",
         ["启动"] = "Launch",
-        ["检测到游戏更新 / 新章节 / 整包基底漂移（详见下方报告）。\n\n① 采纳新基线并继续：把当前原版采纳为新基线，旧备份移进 backup/history/<buildid>/（不删）；新章节同时登记为已确认，然后继续本次{0}。\n② 直接继续：不做采纳，本次{0}可能被检测拦下（拦下时不会改动游戏目录，日志里有处置步骤）。"] = "A game update / new chapter / whole-pack base drift was detected (see the report below).\n\n① Adopt new baseline & continue: adopt the current vanilla as the new baseline and move the old backups into backup/history/<buildid>/ (never deleted); new chapters are also marked confirmed, then this {0} continues.\n② Continue anyway: no adoption; this {0} may be blocked by the check (when blocked the game folder is not modified and the log lists the next steps)."
+        ["检测到游戏更新 / 新章节 / 整包基底漂移（详见下方报告）。\n\n① 采纳新基线并继续：把当前原版采纳为新基线，旧备份移进 backup/history/<buildid>/（不删）；新章节同时登记为已确认，然后继续本次{0}。\n② 直接继续：不做采纳，本次{0}可能被检测拦下（拦下时不会改动游戏目录，日志里有处置步骤）。"] = "A game update / new chapter / whole-pack base drift was detected (see the report below).\n\n① Adopt new baseline & continue: adopt the current vanilla as the new baseline and move the old backups into backup/history/<buildid>/ (never deleted); new chapters are also marked confirmed, then this {0} continues.\n② Continue anyway: no adoption; this {0} may be blocked by the check (when blocked the game folder is not modified and the log lists the next steps).",
+
+        // ==================== 修复批 B1–B8 新增文案（2026-11-01）====================
+        ["启用 / 禁用"] = "Enable / Disable",
+        ["打开所在文件夹"] = "Open containing folder",
+        ["查看 mod.json"] = "View mod.json",
+        ["mod.json — {0}"] = "mod.json — {0}",
+        ["复制全部"] = "Copy all",
+        ["另存为…"] = "Save as…",
+        ["文本 (*.txt)|*.txt|所有文件|*.*"] = "Text (*.txt)|*.txt|All files|*.*",
+        ["全部章节: 查询中…"] = "All chapters: querying…",
+        ["全部章节: 状态未知"] = "All chapters: unknown state",
+        ["全部 {0} 个目标: 已部署 {1}，原版 {2}"] = "All {0} targets: deployed {1}, vanilla {2}",
+        ["全部 {0} 个目标: 已部署 {1}，原版 {2}，缺失 {3}"] = "All {0} targets: deployed {1}, vanilla {2}, missing {3}",
+        ["把全部目标（root + chapter1..5）恢复到原版？"] = "Restore all targets (root + chapter1..5) to vanilla?",
+        ["部署加速档会跳过「输入函数重定向」：部署更快，但章节内『控制台输入屏蔽』失效 —— 控制台仍能打开，游戏自身的 keyboard_check_direct 仍会读到按键。\n\n确定开启吗？"] =
+            "Fast deploy skips the input-function redirection pass: deploys are faster, but in-chapter console input blocking stops working - the console still opens, yet the game's own keyboard_check_direct still reads your keys.\n\nTurn it on?",
+        ["Neutraled — 确认开启部署加速档"] = "Neutraled — Confirm Fast Deploy",
+        ["Kristal 验证完成"] = "Kristal validation done",
+        ["Kristal 验证失败（退出码 {0}）"] = "Kristal validation failed (exit code {0})",
+        ["验证 Kristal 工程…"] = "Validating the Kristal project…",
+        ["[错误] Kristal 验证失败（退出码 {0}），详见日志"] = "[Error] Kristal validation failed (exit code {0}); see the log",
+        ["发现 {0} 个更新：\n\n{1}\n\n要打开 GameBanana 下载页吗？（只打开网页，不会自动下载或覆盖）"] =
+            "{0} update(s) found:\n\n{1}\n\nOpen the GameBanana download page? (opens a web page only; nothing is downloaded or overwritten)",
+        ["Neutraled — 发现更新"] = "Neutraled — Updates Found",
+        ["  …（还有 {0} 个）"] = "  … ({0} more)",
+        ["[检查更新] 打开下载页失败: {0}"] = "[Check updates] failed to open the download page: {0}",
+        ["上限必须是正整数（MB），例如 4096。"] = "Limit must be a positive whole number (MB), e.g. 4096.",
+        ["[缓存] 设置上限失败（退出码 {0}）"] = "[Cache] failed to set the limit (exit code {0})",
+        ["[配置] 检测到存档区镜像不一致，已按 {0} 重新镜像"] = "[Config] save-area mirror was out of sync; re-mirrored from {0}"
     };
 
     /// <summary>载入界面语言：唯一真源 = Neutraled/config.json 的 lang（与 builder、游戏内文字同一个键）。

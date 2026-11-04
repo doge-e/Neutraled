@@ -464,11 +464,20 @@ public static class CliFeatures
                 {
                     var t = Tail(args, "--lang-use");
                     if (t.Count < 1) return Usage("--lang-use <语言码 zh|en|ja|ko|ru|es|de|fr|zh-TW>");
-                    var code = t[0];
+                    var code = t[0].Trim().ToLowerInvariant();
+                    // builder-cli-007：以前找不到语言包也 exit 0 并把无效代码写进 config.json
+                    // （下一条命令才发现语言回退成中文）。现在先校验可用清单，失败 exit 1 且不写配置。
+                    var avail = LangPacks.Available(gameRoot);
+                    if (!avail.Contains(code, StringComparer.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine(L("[语言] 找不到语言包: {0}（可用: {1}）", code, string.Join(", ", avail)));
+                        Console.WriteLine(L("       查看明细: --lang-list / 覆盖率: --lang-coverage"));
+                        return 1;
+                    }
                     LangPacks.LoadExternal(gameRoot, code);
                     Lang.SetCode(code);
-                    ConfigFile.SetMany(gameRoot, new Dictionary<string, JsonNode?> { ["lang"] = JsonValue.Create(code) });
-                    Console.WriteLine(L("[语言] 已切换为 {0}（已写入 config.json）", code));
+                    ConfigFile.SetMany(gameRoot, new Dictionary<string, JsonNode?> { ["lang"] = JsonValue.Create(Lang.Current) });
+                    Console.WriteLine(L("[语言] 已切换为 {0}（已写入 config.json）", Lang.Current));
                     return 0;
                 }
                 case "lang-coverage":

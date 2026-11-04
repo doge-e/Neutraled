@@ -37,12 +37,7 @@ public sealed class CodeEditor : RichTextBox
         _hlTimer.Tick += (_, _) => { _hlTimer.Stop(); Highlight(); };
         TextChanged += (_, _) => { _hlTimer.Stop(); _hlTimer.Start(); UpdateGutter(); };
         VScroll += (_, _) => SyncGutter();
-        SelectionChanged += (_, _) =>
-        {
-            var line = GetLineFromCharIndex(SelectionStart) + 1;
-            var col = SelectionStart - GetFirstCharIndexFromLine(line - 1) + 1;
-            StatusChanged?.Invoke(Localizer.T("行 {0}, 列 {1}  |  字符 {2}", line, col, TextLength));
-        };
+        SelectionChanged += (_, _) => NotifyCaretStatus();
         KeyDown += OnKeyDown;
     }
 
@@ -190,6 +185,7 @@ public sealed class CodeEditor : RichTextBox
         _completion.Items.AddRange(matches.ToArray());
         _completion.SelectedIndex = 0;
         _completion.DoubleClick += (_, _) => AcceptCompletion();
+        _completion.Leave += (_, _) => HideCompletion();   // STU-03：点到别处关闭补全时也要复位状态栏
         StatusChanged?.Invoke(Localizer.T("补全候选 {0} 项（前缀 \"{1}\"）", matches.Count, word));
         Parent?.Controls.Add(_completion);
         _completion.BringToFront();
@@ -212,11 +208,24 @@ public sealed class CodeEditor : RichTextBox
 
     public void HideCompletion()
     {
+        var had = _completion != null;
         if (_completion != null)
         {
             Parent?.Controls.Remove(_completion);
             _completion.Dispose();
             _completion = null;
         }
+        // STU-03：关闭补全（Esc / 接受 / 失焦）后，状态栏恢复成行列信息，不再停留在「补全候选…」。
+        if (had) NotifyCaretStatus();
+    }
+
+    private void NotifyCaretStatus()
+    {
+        // 补全列表打开时保留「补全候选…」提示：打开补全/移动候选会让 SelectionChanged 触发，
+        // 若照常刷新行列信息，状态栏会刚显示候选数就被覆盖（STU-03 观察 P3）。
+        if (_completion != null) return;
+        var line = GetLineFromCharIndex(SelectionStart) + 1;
+        var col = SelectionStart - GetFirstCharIndexFromLine(line - 1) + 1;
+        StatusChanged?.Invoke(Localizer.T("行 {0}, 列 {1}  |  字符 {2}", line, col, TextLength));
     }
 }

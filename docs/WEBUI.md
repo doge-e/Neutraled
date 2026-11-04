@@ -16,7 +16,7 @@
 - 边看 GameBanana 搜索结果边装；
 - 换主题、换语言后立刻看到新配色与译文覆盖率。
 
-它**不是**：远程管理面板（只绑本机、没有登录）、mod 编辑器、命令行的替代品。网页里没有的操作（例如 `--adapt`、`--pack`、插件安装/卸载）仍然要回到命令行。
+它**不是**：远程管理面板（只绑本机、没有登录）、mod 编辑器、命令行的替代品。网页里没有的操作（例如 `--layer-from-base`、`--pack`、插件安装/卸载）仍然要回到命令行。
 
 ## 2. 启动
 
@@ -166,7 +166,7 @@ Get-NetTCPConnection -LocalPort 7933 -State Listen -ErrorAction SilentlyContinue
 
 ### 4.2 mod 管理
 
-表格列出每个 mod 的 id、名称、作者、版本、章节与开关。开关直接生效（**不弹确认**），成功 toast「已启用 X / 已禁用 X」；启用状态写回该 mod 自己的 `mod.json`，和命令行 `--enable/--disable` 是同一处数据。
+表格列出每个 mod 的 id、名称、作者、版本、章节与开关。开关直接生效（**不弹确认**），成功 toast「已启用 X / 已禁用 X」；启用状态写回该 mod 自己的 `mod.json`，和 GUI 勾选框、`--profile-use` 套用的是同一处数据。
 
 ### 4.3 配置档
 
@@ -193,7 +193,7 @@ Get-NetTCPConnection -LocalPort 7933 -State Listen -ErrorAction SilentlyContinue
 - 「执行队列（下载并安装）」→ `POST /api/queue/run {autoInstall:true}`；
 - 「执行队列（仅下载）」→ `{autoInstall:false}`。
 
-两者都会弹确认。队列本身是在命令行 `--dl-add`、`--install-id`（旧名 `--gb-install`）累积出来的，网页只是把它们跑完。
+两者都会弹确认。队列本身是在命令行 `--queue-add`、`--install-id`（旧名 `--gb-install`）累积出来的，网页只是把它们跑完。
 
 ### 4.7 插件
 
@@ -252,7 +252,7 @@ Get-NetTCPConnection -LocalPort 7933 -State Listen -ErrorAction SilentlyContinue
 
 > 请求体统一是 JSON（`Content-Type: application/json`），上限 1 MB；字段名大小写敏感，`id` 与 `modId` 两种写法在对应接口里都认。
 
-### 5.3 实测样例（原样粘贴，2026-09-26，端口 7936）
+### 5.3 实测样例（原样粘贴；`/api/lang*` 两项为 2026-11-01 抓取，其余为 2026-09-26；端口 7936 / 7997）
 
 `GET /api/status`
 
@@ -263,14 +263,16 @@ Get-NetTCPConnection -LocalPort 7933 -State Listen -ErrorAction SilentlyContinue
 `GET /api/lang`
 
 ```
-{"ok":true,"active":"zh","available":["zh","en","de","es","fr","ja","ko","ru","zh-tw"],"builtIn":["zh","en"]}
+{"ok":true,"active":"zh","available":["zh","en","de","es","fr","ja"],"builtIn":["zh","en"]}
 ```
 
 `GET /api/lang/coverage`
 
 ```
-{"ok":true,"code":"zh","result":0,"report":"===== 语言覆盖率 =====\r\n  词条总数: 1854（当前语言 zh）\r\n  游戏内词条: 416 条（api/ 的 zh 表）\r\n[语言] zh  总键 1854  已译 1854  缺失 0  覆盖率 100.0%"}
+{"ok":true,"code":"zh","result":0,"report":"===== 语言覆盖率 =====\r\n  词条总数: 2704（当前语言 zh）\r\n  游戏内词条: 545 条（api/ 的 zh 表）\r\n[语言] zh  总键 2704  已译 2704  缺失 0  覆盖率 100.0%"}
 ```
+
+> `/api/lang/coverage` 的 `result` 是「抓取是否成功」（0 = 成功），**不是**覆盖率退出码；覆盖率本身看 `report` 文本与 `--lang-coverage`（当前 4 种外部语言未达 100%，CLI 退出 1）。当前实测：词条总数 **2704**、游戏内 **545**、zh/en 100%、de/es/fr/ja **69.2%**（游戏内 **82.3%**）。
 
 `GET /api/gb/search?q=test&perPage=200`（`perPage` 被夹到上限 50；命中 14 条，截前两条）
 
@@ -312,7 +314,7 @@ Get-NetTCPConnection -LocalPort 7933 -State Listen -ErrorAction SilentlyContinue
 
 - **同一条代码路径**：WebUi 自己零业务逻辑，只把请求转给模块公开 API（`Profiles` / `Snapshots` / `RestorePoints` / `GbBrowse` / `DownloadQueue` / `Plugins` / `Themes` / `LangPacks`），和 `--profile-use`、`--snapshot-use` 这些开关做的是同一件事。网页里改的东西命令行立刻看得到，反之亦然。
 - 网页独有的便利：一次开关多个 mod、色板预览、覆盖率文本、状态每 15 秒自动刷新。
-- 只有命令行有的：`--adapt`、`--pack`、`--plugin-install/--plugin-remove`、`--make-cjk-font`、`--cache-*`、`--i18n-*` 等一大票开关，以及所有需要 `--force` 的批量操作。
+- 只有命令行有的：`--layer-from-base`、`--pack`、`--plugin-install/--plugin-remove`、`--make-cjk-font`、`--cache-*`、`--i18n-*` 等一大票开关，以及所有需要 `--force` 的批量操作。
 - `POST /api/deploy` 走主程序注入的 `DeployHook`（CLI 里就是 `DeployAll`），所以网页部署和 `--deploy` 是同一套逻辑。
 - 路由清单与状态由 `WebUi.PrintStatus()` 输出，但目前没有 CLI 开关调用它（见下）。
 

@@ -41,7 +41,7 @@ public static class LangTable_C4
         d["  --ignore-unknown                跳过未知开关校验（高级/脚本透传用）"] = "  --ignore-unknown                skip unknown-switch validation (advanced / script pass-through)";
 
         // ---------- C4 P1-4：备份语义收敛（--baseline / --backup-status）+ 写命令默认目标提示 ----------
-        d["[错误] 无效章节: {0}（可用 root / chapter1 .. chapter9 / all）"] = "[error] invalid chapter: {0} (use root / chapter1 .. chapter9 / all)";
+        d["[错误] 无效章节: {0}（可用 root / chapter1 .. chapter5 / all）"] = "[Error] Invalid chapter: {0} (use root / chapter1 .. chapter5 / all)";
         d["目标: root（未指定 --chapter；写命令默认只部署 root，显式 --chapter chapterN 会连带 root）"] = "Target: root (no --chapter given; write commands deploy root by default, explicit --chapter chapterN also deploys root)";
         d["目标: all（全部章节）"] = "Target: all (every chapter)";
         d["目标: {0}"] = "Target: {0}";

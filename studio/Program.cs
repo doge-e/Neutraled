@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Neutraled.Studio;
 
 public static class Program
@@ -35,9 +37,85 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // UX-29：--headless 只跑可脚本化检查，不创建窗口（selftest / plan）。
+        if (args.Any(a => a.Equals("--headless", StringComparison.OrdinalIgnoreCase)))
+        {
+            Environment.ExitCode = RunHeadless(args);
+            return;
+        }
         SelfTest = args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase));
         ApplicationConfiguration.Initialize();
         Application.Run(new MainForm());
+    }
+
+    /// <summary>Studio 的无窗口入口：--headless selftest 检查环境；--headless plan [--chapter X] 打印部署参数。</summary>
+    private static int RunHeadless(string[] args)
+    {
+        var tail = args.SkipWhile(a => !a.Equals("--headless", StringComparison.OrdinalIgnoreCase)).Skip(1).ToArray();
+        var action = tail.FirstOrDefault(a => !a.StartsWith("-", StringComparison.Ordinal))?.ToLowerInvariant() ?? "selftest";
+        return action switch
+        {
+            "selftest" => HeadlessSelfTest(),
+            "plan" => HeadlessPlan(tail),
+            _ => HeadlessUsage(action)
+        };
+    }
+
+    private static string HeadlessOption(string[] args, string name)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+            if (args[i].Equals(name, StringComparison.OrdinalIgnoreCase)) return args[i + 1];
+        return "";
+    }
+
+    private static int HeadlessUsage(string action)
+    {
+        Console.Error.WriteLine("studio --headless selftest | --headless plan [--chapter root|chapter1..chapter5|all]");
+        Console.Error.WriteLine("unknown headless action: " + action);
+        return 2;
+    }
+
+    private static int HeadlessSelfTest()
+    {
+        var checks = new List<(string Name, bool Ok, string Value)>
+        {
+            ("gameRoot", Directory.Exists(GameRoot), GameRoot),
+            ("neutraledRoot", Directory.Exists(NeutraledRoot), NeutraledRoot),
+            ("liveRoot", Directory.Exists(LiveRoot), LiveRoot),
+            ("modsRoot", Directory.Exists(ModsRoot), ModsRoot),
+            ("builderExe", File.Exists(BuilderExe), BuilderExe),
+            ("apiRegistry", File.Exists(ApiRegistry), ApiRegistry)
+        };
+        bool ok = true;
+        foreach (var c in checks) ok &= c.Ok;
+        var result = new
+        {
+            ok,
+            action = "selftest",
+            gameRoot = GameRoot,
+            neutraledRoot = NeutraledRoot,
+            builderExe = BuilderExe,
+            checks = checks.Select(c => new { c.Name, c.Ok, c.Value })
+        };
+        Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = false }));
+        return ok ? 0 : 1;
+    }
+
+    private static int HeadlessPlan(string[] args)
+    {
+        var chapter = HeadlessOption(args, "--chapter");
+        if (chapter.Length == 0) chapter = "root";
+        var valid = chapter is "root" or "all" or "chapter1" or "chapter2" or "chapter3" or "chapter4" or "chapter5";   // ntl:chapter4-ok 显式章节白名单
+        var result = new
+        {
+            ok = valid,
+            action = "plan",
+            chapter,
+            args = "--deploy --chapter " + chapter,
+            error = valid ? "" : "invalid chapter: " + chapter
+        };
+        Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = false }));
+        return valid ? 0 : 2;
     }
 
     /// <summary>运行 builder 并实时回传输出。</summary>
@@ -65,7 +143,7 @@ public static class Program
     }
 
     /// <summary>C4 P1-6：启动游戏统一走 builder --launch（部署/缓存/会话/自愈一条链），不再裸 steam://。
-    ///   bare --launch = root；Studio 里没有章节选择，需要章节请用 ntl-gui 或 CLI。</summary>
+    ///   bare --launch = root；需要章节请用 ntl-gui、CLI，或 Studio 工具栏的章节选择（该选择只用于部署）。</summary>
     public static async Task LaunchGameAsync(Action<string>? onLine = null)
     {
         try

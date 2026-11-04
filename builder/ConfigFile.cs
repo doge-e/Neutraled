@@ -125,6 +125,18 @@ public static class ConfigFile
 
         var dir = Paths.NeutraledRoot(gameRoot);
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+        // UX-05：任何一次经 ConfigFile 的写盘都顺带把 schema_version 迁移到当前版本。
+        // 旧实现只有 --config-migrate 会写它，于是 GUI 改语言/增强选项后文件里仍是 0（或缺失），
+        // 而 ConfigSchema 的读侧默认按当前版本解释，版本号长期是谎报状态。
+        try
+        {
+            var sv = obj["schema_version"];
+            var cur = sv == null ? 0 : sv.GetValue<int>();
+            if (cur < ConfigSchema.SchemaVersion) obj["schema_version"] = ConfigSchema.SchemaVersion;
+        }
+        catch { obj["schema_version"] = ConfigSchema.SchemaVersion; }
+
         var json = obj.ToJsonString(new JsonSerializerOptions
         {
             WriteIndented = true,

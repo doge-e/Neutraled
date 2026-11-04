@@ -395,19 +395,21 @@ internal static class FuseZip
     /// 为什么放在这里：此刻 exe 一定没在运行 → 文件不会被占用
     /// （游戏运行时 exe 是锁住的，注入会失败 —— 实测踩过，所以"注入必须赶在启动前"）。
     /// 顺带刷新 exe 同目录的 ntl-console.lua（热更新入口，钩子优先读它，以后改控制台不必再动 exe）。</summary>
-    public static void EnsureConsole(string exe, string libDir, string? fontPath)
+    public static int EnsureConsole(string exe, string libDir, string? fontPath)
     {
+        // builder-cli-014：返回码 0=已最新/注入成功，1=不是融合包（没有可注入的控制台），2=缺少控制台库。
+        // 以前是 void + 静默 return ⇒ --kristal-ensure 对非融合 exe 也 exit 0，与 --kristal-console 的明确报错不一致。
         try
         {
-            if (!File.Exists(exe)) return;
+            if (!File.Exists(exe)) return 1;
             var libLua = Path.Combine(libDir, "lib.lua");
-            if (!File.Exists(libLua)) return;
+            if (!File.Exists(libLua)) return 2;
             var want = ConsoleLuaBytes(libLua);
 
             List<string> names;
-            try { names = ListNames(exe); } catch { return; }              // 不是融合包 → 不管
-            if (!names.Contains("main.lua")) return;
-            if (!names.Any(n => n.StartsWith("mods/") && n.EndsWith("/mod.json"))) return;   // 不是 Kristal 融合包
+            try { names = ListNames(exe); } catch { return 1; }              // 不是融合包 → 交给调用方报错
+            if (!names.Contains("main.lua")) return 1;
+            if (!names.Any(n => n.StartsWith("mods/") && n.EndsWith("/mod.json"))) return 1;   // 不是 Kristal 融合包
 
             var have = ReadEntry(exe, "src/ntlconsole.lua");
             var mainRaw = ReadEntry(exe, "main.lua");
@@ -427,8 +429,9 @@ internal static class FuseZip
                 if (!string.IsNullOrEmpty(dir)) File.WriteAllBytes(Path.Combine(dir, "ntl-console.lua"), want);
             }
             catch { }
+            return 0;
         }
-        catch (Exception ex) { Console.WriteLine(L("  [控制台] 跳过: ") + ex.Message); }
+        catch (Exception ex) { Console.WriteLine(L("  [控制台] 跳过: ") + ex.Message); return 1; }
     }
 
     /// <summary>读控制台源码 lib.lua，并把文案占位符 @@NTL_LANG@@ 换成当前语言（zh / en）。

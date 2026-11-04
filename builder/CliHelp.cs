@@ -89,6 +89,21 @@ public static class CliHelp
             else if (a == "--json") json = true;
         }
 
+        // builder-cli-009：--help --nosuch 以前静默退化成默认帮助并 exit 0；--help --json 则把 --json 静默丢掉。
+        if (!audit && afterHelp == "--json")
+        {
+            Console.Error.WriteLine(L("[提示] --help --json 不支持：请用 --help --audit --json 获取开关目录审计 JSON。"));
+            return 2;
+        }
+        if (!audit && afterHelp != null && afterHelp.StartsWith("-", StringComparison.Ordinal) && !CliCatalog.IsKnown(afterHelp))
+        {
+            Console.WriteLine(L("[错误] 没有这个开关: {0}", afterHelp));
+            var sugU = CliCatalog.Suggest(afterHelp);
+            if (sugU.Count > 0) Console.WriteLine(L("  你是不是想输入: {0}", string.Join(" / ", sugU)));
+            Console.WriteLine(L("  查看全部开关: --help all"));
+            return 2;
+        }
+
         string? selector = null;
         if (afterHelp == "all" || afterHelp == "advanced" || afterHelp == "dev") selector = afterHelp;
         else if (afterHelp != null && CliCatalog.IsKnown(afterHelp) && others.Count == 1) selector = afterHelp;
@@ -104,6 +119,11 @@ public static class CliHelp
             return 0;
         }
 
+        if (selector == "dev")
+        {
+            // builder-cli-008：dev 与 all 内容相同（LevelOf dev=2）。保持等价但明确说明，避免用户以为两者有差异。
+            Console.WriteLine(L("注意：--help dev 与 --help all 等价（都列全部 {0} 个开关）；只看进阶/常用请用 --help advanced。", CliCatalogDetails.All.Length));
+        }
         if (selector is "all" or "advanced" or "dev") return PrintGrouped(LevelOf(selector));
 
         // --help <开关>：允许写 --deploy 或 deploy
@@ -160,7 +180,11 @@ public static class CliHelp
             .Select(g => g.Key).OrderBy(k => k, StringComparer.Ordinal).ToList();
         var badGroup = CliCatalogDetails.All.Where(e => Groups.All(g => g.Id != e.Group))
             .Select(e => e.Name).OrderBy(k => k, StringComparer.Ordinal).ToList();
-        var ok = missing.Count == 0 && extra.Count == 0 && duplicate.Count == 0 && badGroup.Count == 0;
+        // UX-01：默认 --help（手写富文本）是否覆盖全部开关 —— 以前只覆盖 157/222，用户看不出还缺哪些。
+        var defaultMissing = Program.MissingHelpSwitches();
+        var defaultCovered = CliCatalogDetails.All.Length - defaultMissing.Count;
+        var ok = missing.Count == 0 && extra.Count == 0 && duplicate.Count == 0 && badGroup.Count == 0
+                 && defaultMissing.Count == 0;
 
         if (json)
         {
@@ -169,6 +193,8 @@ public static class CliHelp
                 schemaVersion = 1,
                 totalKnown = known.Count,
                 totalCatalog = CliCatalogDetails.All.Length,
+                defaultCovered,
+                defaultMissing,
                 missing,
                 extra,
                 duplicate,
@@ -185,11 +211,15 @@ public static class CliHelp
         {
             Console.WriteLine(L("===== 命令行目录审计 ====="));
             Console.WriteLine(L("  CliCatalog.Known: {0} 个    CliCatalogDetails: {1} 条", known.Count, CliCatalogDetails.All.Length));
+            Console.WriteLine(L("  --help 默认视图覆盖: {0}/{1}", defaultCovered, CliCatalogDetails.All.Length));
+            if (defaultMissing.Count > 0) Console.WriteLine(L("  [缺] 默认帮助未覆盖 {0} 个: {1}", defaultMissing.Count, string.Join(", ", defaultMissing)));
             Console.WriteLine(missing.Count == 0 ? L("  [通过] 没有「合法但没说明」的开关") : L("  [缺] {0} 个: {1}", missing.Count, string.Join(", ", missing)));
             Console.WriteLine(extra.Count == 0 ? L("  [通过] 没有「有说明但不合法」的开关") : L("  [多] {0} 个: {1}", extra.Count, string.Join(", ", extra)));
             if (duplicate.Count > 0) Console.WriteLine(L("  [重复] {0}: {1}", duplicate.Count, string.Join(", ", duplicate)));
             if (badGroup.Count > 0) Console.WriteLine(L("  [类别非法] {0}: {1}", badGroup.Count, string.Join(", ", badGroup)));
-            Console.WriteLine(ok ? L("结果: 目录完整 ✓") : L("结果: 目录不完整（先补齐 CliCatalogDetails）"));
+            if (missing.Count == 0 && extra.Count == 0 && duplicate.Count == 0 && badGroup.Count == 0 && defaultMissing.Count > 0)
+                Console.WriteLine(L("结果: 目录完整，但默认 --help 覆盖不全（缺 {0} 个）", defaultMissing.Count));
+            else Console.WriteLine(ok ? L("结果: 目录完整 ✓") : L("结果: 目录不完整（先补齐 CliCatalogDetails）"));
         }
         return ok ? 0 : 3;
     }

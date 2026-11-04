@@ -105,10 +105,19 @@ public static class DeploySession
 
         if (session == null)
         {
-            if (json) { PrintJson(null, running, dryRun, restored, failed, loadError ?? ""); return 0; }
+            // UX-03：以前无会话也 exit 0（脚本/GUI 无法区分「没有要还原的」和「还原成功」）。
+            // 现在 exit 4 = 没有会话；并给下一步建议。
+            var nextStep = L("先运行一次 --launch（会记录本次部署目标），或用 --deploy-state 查看 live 状态");
+            if (json)
+            {
+                PrintJson(null, running, dryRun, restored, failed, loadError ?? "",
+                    ok: false, error: loadError ?? L("没有部署会话"), nextStep: nextStep);
+                return 4;
+            }
             if (!string.IsNullOrEmpty(loadError)) Console.WriteLine(L("[警告] 部署会话文件读不了: {0}", loadError));
             Console.WriteLine(L("没有未完成的部署会话（Neutraled/deploy-session.json 不存在）。"));
-            return 0;
+            Console.WriteLine("       " + nextStep);
+            return 4;
         }
 
         var chapters = new List<string>();
@@ -131,13 +140,13 @@ public static class DeploySession
         if (chapters.Count == 0)
         {
             if (!json) Console.WriteLine(L("[警告] 会话里没有可还原的目标；删除会话文件（可用 --restore-session 重跑或手工删）"));
-            if (json) PrintJson(session, running, dryRun, restored, failed, "");
+            if (json) PrintJson(session, running, dryRun, restored, failed, L("会话里没有可还原的目标"), ok: false, error: L("会话里没有可还原的目标"));
             return running && !dryRun ? 3 : 0;
         }
 
         if (running && !dryRun)
         {
-            if (json) { PrintJson(session, running, dryRun, restored, failed, L("游戏正在运行")); return 3; }
+            if (json) { PrintJson(session, running, dryRun, restored, failed, L("游戏正在运行"), ok: false, error: L("游戏正在运行")); return 3; }
             Console.WriteLine(L("[错误] 游戏正在运行（DELTARUNE）；请先退出游戏再还原（否则 data.win 被占用，可能写一半）"));
             return 3;
         }
@@ -145,7 +154,7 @@ public static class DeploySession
         if (dryRun)
         {
             if (!json) Console.WriteLine(L("  预演：将还原 {0} 个目标（不写盘）", chapters.Count));
-            if (json) PrintJson(session, running, dryRun, restored, failed, "");
+            if (json) PrintJson(session, running, dryRun, restored, failed, "", ok: true);
             return 0;
         }
 
@@ -177,16 +186,21 @@ public static class DeploySession
             else
                 Console.WriteLine(L("[警告] 有 {0} 个目标还原失败，会话文件保留以便重试: {1}", failed.Count, string.Join("/", failed)));
         }
-        else PrintJson(session, running, dryRun, restored, failed, "");
+        else PrintJson(session, running, dryRun, restored, failed, "",
+            ok: failed.Count == 0, error: failed.Count == 0 ? "" : L("部分目标还原失败"), nextStep: failed.Count == 0 ? "" : L("修复占用/权限后重跑 --restore-session（会话文件已保留）"));
 
         if (failed.Count == 0) DeleteFile(gameRoot);
         return rc;
     }
 
-    private static void PrintJson(Session? s, bool running, bool dryRun, List<string> restored, List<string> failed, string message)
+    private static void PrintJson(Session? s, bool running, bool dryRun, List<string> restored, List<string> failed, string message,
+        bool ok = true, string error = "", string nextStep = "")
     {
         var payload = new
         {
+            ok,
+            error,
+            nextStep,
             session = s == null ? null : new { s.Id, s.StartedAtUtc, s.Launch, s.Chapters },
             gameRunning = running,
             dryRun,

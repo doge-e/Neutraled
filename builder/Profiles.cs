@@ -81,8 +81,14 @@ public static class Profiles
     /// 档文件里手工加过的未知键只要仍存在于 config.json，CaptureFromLive 也会继续收进来（见 CaptureInto）。</summary>
     private static readonly List<string> SettingKeys = new()
     {
-        "lang", "theme", "base_mod", "auto_skip_selector", "auto_chapter",
-        "skip_legend", "debug_live", "cache_max_mb"
+        // UX-05 / 裁决 q：配置档只自动捕获「换档必须带走」的设置。
+        //   · mod 启用集合已单列在 Profile.Enabled，这里不再重复；
+        //   · base_mod 必存（换档常常要换整包基底，否则套用后产物基座不对）；
+        //   · lang / theme 属**可选覆盖** —— 旧档里记过就继续保留（CaptureInto 会并入 p.Settings 已有的键），
+        //     新档默认不再自动捕获，避免「套用配置档顺手把玩家界面语言/主题改掉」；
+        //   · cache_max_mb 是机器相关设置（换机器上限不同），不进配置档；
+        //   · auto_skip_selector / skip_legend 是已废弃旧键，规范键 auto_skip / skip_intro 由游戏侧迁移，不在这里捕获。
+        "base_mod",
     };
 
     /// <summary>写档文件用：缩进 + 非 ASCII 原样（复制 Paths.Json 的编码器设置，避免两处不一致）。</summary>

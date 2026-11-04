@@ -52,7 +52,8 @@ public static class Headless
                 Console.WriteLine("  plan         --action deploy|launch|restore|import|packs|conflicts|layer|fetch|readonly --chapter <root|chapterN|all>");
                 Console.WriteLine("  deploy-state --chapter <root|chapterN|all>                    转发 builder --deploy-state（--json 时逐字段相同）");
                 Console.WriteLine("  lang-report                                                   读取 config.json 的唯一语言真源");
-                return sub.Length == 0 ? 0 : 2;
+                // GUI-L10：不带子命令就是用法错误（原先 rc0，脚本无法区分「跑完了」和「什么也没跑」）。
+                return 2;
         }
     }
 
@@ -60,6 +61,26 @@ public static class Headless
 
     private static int Alerts(bool json, string logPath, string statePath)
     {
+        // GUI-L11：日志不存在 ≠ 没有新告警。旧实现返回空列表并 rc0，调用方会以为「一切正常」。
+        if (!File.Exists(logPath))
+        {
+            if (json)
+            {
+                var err = new JsonObject
+                {
+                    ["error"] = "log-not-found",
+                    ["log"] = logPath,
+                    ["state"] = statePath,
+                };
+                Console.WriteLine(err.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            }
+            else
+            {
+                Console.Error.WriteLine("[headless] ERROR: 日志文件不存在: " + logPath);
+                Console.Error.WriteLine("[headless] 提示：游戏至少启动过一次后才有 dr-api.log；或用 --log <路径> 指定。");
+            }
+            return 2;
+        }
         var list = UiLogic.NewAlerts(logPath, statePath);
         if (json)
         {
@@ -228,7 +249,7 @@ public static class Headless
         Check("chapter: all 允许用于 deploy", UiLogic.PlanChapter("all", UiLogic.ActionKind.Deploy).Ok);
         Check("chapter: 空选择只读默认 chapter1", UiLogic.ChapterAllowed("", UiLogic.ActionKind.ReadOnly) == "chapter1");
         Check("chapter: 空选择写命令默认 root", UiLogic.ChapterAllowed("", UiLogic.ActionKind.Deploy) == "root");
-        Check("argv: deploy chapter1", UiLogic.BuildArgs(UiLogic.ActionKind.Deploy, "chapter1") == "--deploy --chapter chapter1");
+        Check("argv: deploy chapter1", UiLogic.BuildArgs(UiLogic.ActionKind.Deploy, "chapter1") == "--launch chapter1 --no-start");   // UX-04
         Check("argv: launch root", UiLogic.BuildArgs(UiLogic.ActionKind.Launch, "root") == "--launch root");
         Check("argv: conflicts chapter2", UiLogic.BuildArgs(UiLogic.ActionKind.Conflicts, "chapter2") == "--conflicts --chapter chapter2");
         Check("exit: 0 -> 无文案", UiLogic.MessageForExit(0, UiLogic.ActionKind.Deploy) == null);

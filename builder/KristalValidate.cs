@@ -45,7 +45,7 @@ public static class KristalValidate
         "debug.", "package.", "loadstring", "load(",
     };
 
-    public static Result Validate(string srcDir)
+    public static Result Validate(string srcDir, string? gameRoot = null)
     {
         var rep = new Result();
         if (!Directory.Exists(srcDir))
@@ -161,7 +161,8 @@ public static class KristalValidate
 
         try
         {
-            var outDir = Path.Combine(Paths.NeutraledRoot(Paths.DetectGameRoot()), "kristal-validation");
+            // builder-cli-005：显式 --game 必须生效（以前忽略它、写 DetectGameRoot() 推出来的目录）
+            var outDir = Path.Combine(Paths.NeutraledRoot(gameRoot ?? Paths.DetectGameRoot()), "kristal-validation");
             Directory.CreateDirectory(outDir);
             File.WriteAllText(Path.Combine(outDir, "REPORT.md"), sb.ToString());
             Console.WriteLine();

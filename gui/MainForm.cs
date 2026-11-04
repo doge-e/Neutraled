@@ -42,6 +42,9 @@ public sealed class MainForm : Form
     };
     /// <summary>「退出后自动还原」等待任务的取消源（C4 P0-3）。重新部署/手动还原时要能取消上一次的等待。</summary>
     private CancellationTokenSource? _autoRestoreCts;
+    /// <summary>UX-31：部署加速档的二次确认状态（首次勾选弹一次，本次会话内确认过就不再弹）。</summary>
+    private static bool _fastDeployConfirmed;
+    private bool _suppressFastToggle;
 
     private sealed class ModRow
     {
@@ -61,10 +64,15 @@ public sealed class MainForm : Form
         DeployOptions.Load(Program.NeutraledRoot);   // 部署加速档（Neutraled/gui_deploy.txt）
 
         Text = Localizer.T("Neutraled — DELTARUNE Mod 管理器");
-        Width = 1190; Height = 740; MinimumSize = new Size(900, 620);
+        // GUI-M01：900x620 时底部「缓存管理/工具箱」与顶部「权限/Kristal」必然被裁（控件最右到 x≈1128）。
+        // 最小尺寸按实际内容宽度收紧到 1190x700（AutoScroll 仍保留，DPI/字体变大时还能滚动触达）。
+        Width = 1190; Height = 740; MinimumSize = new Size(1190, 700);
         StartPosition = FormStartPosition.CenterScreen;
 
-        var topPanel = new Panel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(8) };
+        // GUI-M01：窗口缩到 MinimumSize(900x620) 时顶部/底部按钮会被右边裁掉。
+        // 两个面板改成可横向滚动（内容最小宽度 = 实际最右控件），并略加高避免滚动条压住按钮；
+        // 这样小窗口下所有按钮都能通过滚动触达，不需要重排整套布局。
+        var topPanel = new Panel { Dock = DockStyle.Top, Height = 64, Padding = new Padding(8), AutoScroll = true, AutoScrollMinSize = new Size(1030, 0) };
         _lblChapter.Text = Localizer.T("章节:"); _lblChapter.Left = 8; _lblChapter.Top = 14; _lblChapter.Width = 50; _lblChapter.AutoSize = false;
         _chapterCombo.Left = 60; _chapterCombo.Top = 10; _chapterCombo.Width = 150;
         _chapterCombo.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -99,7 +107,7 @@ public sealed class MainForm : Form
         topPanel.Controls.Add(_btnPerm);
         // Kristal 是专有名词，中英一致（保持硬编码）
         _btnKristal.Text = "Kristal"; _btnKristal.Left = 950; _btnKristal.Top = 9; _btnKristal.Width = 70;
-        _btnKristal.Click += (_, _) => ShowKristalDialog();
+        _btnKristal.Click += (_, _) => ShowKristalDialog();   // UX-12：方法内部改为异步并按退出码给结论
         topPanel.Controls.Add(_btnKristal);
         _btnDiag.Click += (_, _) => ShowDiagnosticsDialog();
         topPanel.Controls.Add(_btnDiag);
@@ -117,6 +125,14 @@ public sealed class MainForm : Form
         _modList.Columns.Add(Localizer.T("作者"), 130);
         _modList.Columns.Add(Localizer.T("章节"), 90);
         _modList.Columns.Add(Localizer.T("状态"), 80);
+        // GUI-I05：右键菜单 / 双击切换启用 / 列头排序（旧实现只能靠勾选框，列头点了没反应）。
+        var modMenu = new ContextMenuStrip();
+        modMenu.Items.Add(Localizer.T("启用 / 禁用"), null, async (_, _) => await ToggleSelectedModsAsync());
+        modMenu.Items.Add(Localizer.T("打开所在文件夹"), null, (_, _) => OpenSelectedModFolder());
+        modMenu.Items.Add(Localizer.T("查看 mod.json"), null, (_, _) => ShowSelectedModJson());
+        _modList.ContextMenuStrip = modMenu;
+        _modList.DoubleClick += async (_, _) => await ToggleSelectedModsAsync();
+        _modList.ColumnClick += (_, e) => SortModsByColumn(e.Column);
         _modList.ItemChecked += (_, e) =>
         {
             // 勾选/取消勾选立刻写回该 mod.json 的 enabled（以前的写法只在点「部署/部署并启动」时才
@@ -133,7 +149,7 @@ public sealed class MainForm : Form
             NotifyConfigChanged();   // 配置变更时提示"重启游戏后生效"
         };
 
-        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(8) };
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 66, Padding = new Padding(8), AutoScroll = true, AutoScrollMinSize = new Size(1150, 0) };
         void Style(Button b, string text, int left, int width) { b.Text = text; b.Left = left; b.Top = 8; b.Width = width; b.Height = 30; }
         Style(_btnDeploy, Localizer.T("部署"), 8, 90);
         Style(_btnDeployLaunch, Localizer.T("部署并启动"), 106, 120);
@@ -290,11 +306,27 @@ public sealed class MainForm : Form
             catch (Exception) when (overwriteOnBroken) { obj = new System.Text.Json.Nodes.JsonObject(); }
         }
         mutate(obj);
-        File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions
+        // GUI-M03 / 裁决 u：写盘统一走 builder 的 ConfigFile（同一个序列化器 + 无 BOM + 镜像存档区），
+        // 不再自己 File.WriteAllText —— 否则游戏 root 阶段（章节选择器）读到的存档区镜像会一直是旧配置。
+        // 解析仍留在本方法（要支持「坏文件时丢弃 or 抛给调用方」两种既有语义，ConfigFile.Load 不做这种区分）。
+        Neutraled.Builder.ConfigFile.Save(Program.GameRoot, obj);
+        // 一致性校验：ConfigFile.Save 的镜像是 best-effort，这里再核一次；不一致就补写一份（同一份文本）。
+        try
         {
-            WriteIndented = true,
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        }));
+            var mirror = Neutraled.Builder.Paths.SaveMirrorConfigPath();
+            if (mirror != null)
+            {
+                var text = File.ReadAllText(path);
+                if (!File.Exists(mirror) || !string.Equals(File.ReadAllText(mirror), text, StringComparison.Ordinal))
+                {
+                    var mdir = Path.GetDirectoryName(mirror);
+                    if (!string.IsNullOrEmpty(mdir) && !Directory.Exists(mdir)) Directory.CreateDirectory(mdir);
+                    File.WriteAllText(mirror, text);
+                    System.Diagnostics.Debug.WriteLine(Localizer.T("[配置] 检测到存档区镜像不一致，已按 {0} 重新镜像", path));
+                }
+            }
+        }
+        catch { /* 校验失败不影响主流程 */ }
     }
 
     private void Log(string s)
@@ -431,8 +463,8 @@ public sealed class MainForm : Form
             obj["schema_version"] = 2;
             obj["auto_skip"] = skipSelector;
             obj["auto_chapter"] = autoChapter;
-            obj["auto_chapter_id"] = "";
-            obj["auto_skip_delay"] = 90;
+            // UX-05：不再写 GUI 没有界面的键（auto_chapter_id 由游戏侧 ntl_autoskip 读取、外部/时间线章节用；
+            // auto_skip_delay 是高级键）。旧实现每次「保存增强选项」都把玩家手写的值覆盖成 ""/90。
             obj["skip_intro"] = skipIntro;
             obj["intro_delay"] = introDelay;
             obj["debug_live"] = debugLive;
@@ -572,10 +604,55 @@ public sealed class MainForm : Form
         return false;
     }
 
+    /// <summary>GUI-L02：选 all 时的聚合部署状态（root + chapter1..5 共 6 个槽位）。
+    /// 数据来自 builder 的 --deploy-state --chapter all --json（与单章同一判定：按内容哈希）。</summary>
+    private async Task UpdateDeployStateAllAsync()
+    {
+        var seq = ++_deployStateSeq;
+        try
+        {
+            _deployState.ForeColor = Color.DimGray;
+            _deployState.Text = Localizer.T("全部章节: 查询中…");
+            var sb = new System.Text.StringBuilder();
+            var rc = await Program.RunBuilderAsync("--deploy-state --chapter all --json", l => sb.AppendLine(l));
+            if (seq != _deployStateSeq) return;
+            if (rc != 0) { _deployState.Text = Localizer.T("全部章节: 状态未知"); _deployState.ForeColor = Color.DarkOrange; return; }
+            string? json = null;
+            foreach (var line in sb.ToString().Split('\n'))
+            {
+                var t = line.Trim();
+                if (t.StartsWith("{") && t.EndsWith("}")) json = t;
+            }
+            if (json == null) { _deployState.Text = Localizer.T("全部章节: 状态未知"); _deployState.ForeColor = Color.DarkOrange; return; }
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("slots", out var slots)) { _deployState.Text = Localizer.T("全部章节: 状态未知"); return; }
+            int total = 0, deployed = 0, baseline = 0, missing = 0;
+            foreach (var slot in slots.EnumerateArray())
+            {
+                total++;
+                switch (slot.TryGetProperty("state", out var st) ? st.GetString() : null)
+                {
+                    case "deployed": deployed++; break;
+                    case "baseline": baseline++; break;
+                    case "missing": missing++; break;
+                }
+            }
+            _deployState.Text = missing > 0
+                ? Localizer.T("全部 {0} 个目标: 已部署 {1}，原版 {2}，缺失 {3}", total, deployed, baseline, missing)
+                : Localizer.T("全部 {0} 个目标: 已部署 {1}，原版 {2}", total, deployed, baseline);
+            _deployState.ForeColor = missing > 0 ? Color.Firebrick : (deployed == total ? Color.SeaGreen : Color.DarkOrange);
+            _deployState.Tag = "";
+        }
+        catch
+        {
+            if (seq == _deployStateSeq) { _deployState.Text = Localizer.T("全部章节: 状态未知"); _deployState.ForeColor = Color.DarkOrange; }
+        }
+    }
+
     private async void UpdateDeployState()
     {
         var chapter = SelectedChapter();
-        if (chapter == "all") { _deployStateSeq++; _deployState.Text = ""; return; }
+        if (chapter == "all") { await UpdateDeployStateAllAsync(); return; }
         var seq = ++_deployStateSeq;
         try
         {
@@ -851,8 +928,16 @@ public sealed class MainForm : Form
         };
         btnSetMax.Click += async (_, _) =>
         {
-            var chapter = SelectedChapter();
-            await Program.RunBuilderAsync($"--launch {chapter} --cache-max {txtMax.Text}", Log);
+            // GUI-M07 / 裁决 s：只写 config.cache_max_mb，绝不部署、不启动游戏。
+            // 旧实现走 --launch <章节> --cache-max（设完上限继续部署并由 Steam 拉起游戏）。
+            if (!int.TryParse((txtMax.Text ?? "").Trim(), out var mb) || mb <= 0 || mb > 1024 * 1024)
+            {
+                MessageBox.Show(this, Localizer.T("上限必须是正整数（MB），例如 4096。"), "Neutraled",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            var rc = await Program.RunBuilderAsync($"--cache-max-set {mb}", Log);
+            if (rc != 0) Log(Localizer.T("[缓存] 设置上限失败（退出码 {0}）", rc));
             await ReloadAsync();
         };
 
@@ -999,7 +1084,14 @@ public sealed class MainForm : Form
         var chapter = SelectedChapter();
         if (chapter == "all")
         {
-            MessageBox.Show(Localizer.T("all 不支持一键恢复，请分别选择单章恢复。"), "Neutraled");
+            // UX-27：builder 的 --restore-chapter 本来就支持 all（逐槽还原 root + chapter1..5），
+            // 旧 GUI 直接拒绝并让玩家逐章点，纯属没有接线。
+            if (MessageBox.Show(Localizer.T("把全部目标（root + chapter1..5）恢复到原版？"), "Neutraled",
+                    MessageBoxButtons.OKCancel) != DialogResult.OK) return;
+            SetBusy(true, Localizer.T("恢复中..."));
+            var rcAll = await Program.RunBuilderAsync("--restore-chapter all", Log);
+            SetBusy(false, rcAll == 0 ? Localizer.T("已恢复原版") : Localizer.T("恢复失败"));
+            UpdateDeployState();
             return;
         }
         if (MessageBox.Show(Localizer.T("把 {0} 恢复到原版？", chapter), "Neutraled", MessageBoxButtons.OKCancel) != DialogResult.OK) return;
@@ -1071,7 +1163,11 @@ public sealed class MainForm : Form
             var b = new Button { Text = text, Left = 12, Top = y, Width = 600, Height = 40, TextAlign = ContentAlignment.MiddleLeft };
             var h = new Label { Text = hint, Left = 24, Top = y + 42, Width = 580, Height = 16, ForeColor = Color.DimGray };
             dlg.Controls.Add(b); dlg.Controls.Add(h);
-            y += 66;
+            // GUI-M08：说明文案的行数随语言/字体变化（英文常折成两行，16px 会裁掉下半行）。
+            // 用与 --check-toolbox-layout 相同的度量方式撑高，并按实际高度推进 y，避免文字压到下一条按钮上。
+            h.Height = Math.Max(16, TextRenderer.MeasureText(h.Text, h.Font,
+                new Size(h.Width, int.MaxValue), TextFormatFlags.WordBreak).Height + 4);
+            y += 42 + h.Height + 8;
             return b;
         }
         Add(Localizer.T("Kristal 宿主合并"), Localizer.T("项目 + 插件 → 一个 mod（插件型 mod 缺宿主时用）"))
@@ -1125,6 +1221,23 @@ public sealed class MainForm : Form
         };
         cbFast.CheckedChanged += async (_, _) =>
         {
+            if (_suppressFastToggle) return;
+            if (cbFast.Checked && !_fastDeployConfirmed)
+            {
+                // UX-31：代价写清楚，首次勾选必须显式确认；取消则不改变设置。
+                var ok = MessageBox.Show(dlg,
+                    Localizer.T("部署加速档会跳过「输入函数重定向」：部署更快，但章节内『控制台输入屏蔽』失效 —— 控制台仍能打开，游戏自身的 keyboard_check_direct 仍会读到按键。\n\n确定开启吗？"),
+                    Localizer.T("Neutraled — 确认开启部署加速档"),
+                    MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) == DialogResult.OK;
+                if (!ok)
+                {
+                    _suppressFastToggle = true;
+                    cbFast.Checked = false;
+                    _suppressFastToggle = false;
+                    return;
+                }
+                _fastDeployConfirmed = true;
+            }
             DeployOptions.FastDeploy = cbFast.Checked;
             DeployOptions.Save(Program.NeutraledRoot);
             Log(cbFast.Checked
@@ -1374,6 +1487,7 @@ public sealed class MainForm : Form
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Neutraled/0.1");
             int checkedCount = 0, updateCount = 0;
+            var updates = new List<(string gb, string name, string cur, string ver)>();
 
             foreach (ListViewItem item in _modList.Items)
             {
@@ -1404,6 +1518,7 @@ public sealed class MainForm : Form
                     if (ver != "" && ver.TrimStart('v') != curVer.TrimStart('v'))
                     {
                         updateCount++;
+                        updates.Add((gbId, row.Name, curVer, ver));
                         Log($"★ {row.Name}: {curVer} -> {ver}  ({title})");
                     }
                     else Log(Localizer.T("   {0}: 已是最新 ({1})", row.Name, curVer));
@@ -1412,6 +1527,21 @@ public sealed class MainForm : Form
             }
             SetBusy(false, updateCount > 0 ? Localizer.T("发现 {0} 个更新", updateCount) : Localizer.T("全部为最新"));
             if (checkedCount == 0) Log(Localizer.T("（没有可用于检查更新的 mod：需要 mod.json 里带 gb_id）"));
+            // UX-17：只读检查完不再「没有任何入口」——给一个明确的下一步（打开下载页，绝不自动下载/覆盖）。
+            if (updates.Count > 0)
+            {
+                var preview = string.Join(Environment.NewLine,
+                    updates.Take(5).Select(u => "  " + u.name + ": " + u.cur + " -> " + u.ver));
+                if (updates.Count > 5) preview += Environment.NewLine + Localizer.T("  …（还有 {0} 个）", updates.Count - 5);
+                var ask = MessageBox.Show(this,
+                    Localizer.T("发现 {0} 个更新：\n\n{1}\n\n要打开 GameBanana 下载页吗？（只打开网页，不会自动下载或覆盖）", updates.Count, preview),
+                    Localizer.T("Neutraled — 发现更新"), MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                if (ask == DialogResult.Yes)
+                {
+                    try { Process.Start(new ProcessStartInfo { FileName = "https://gamebanana.com/mods/" + updates[0].gb, UseShellExecute = true }); }
+                    catch (Exception ex) { Log(Localizer.T("[检查更新] 打开下载页失败: {0}", ex.Message)); }
+                }
+            }
             await Task.CompletedTask;
         }
         catch (Exception ex)
@@ -1558,9 +1688,65 @@ public sealed class MainForm : Form
         }
         catch { }
 
-        var form = new Form { Text = Localizer.T("Neutraled — 诊断"), Width = 840, Height = 640, StartPosition = FormStartPosition.CenterParent };
-        form.Controls.Add(new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, Dock = DockStyle.Fill, Font = new Font("Consolas", 9), WordWrap = false, Text = sb.ToString() });
-        form.ShowDialog(this);
+        // GUI-L04：诊断也走通用只读对话框（带 复制全部 / 另存为）。
+        ShowTextDialog(Localizer.T("Neutraled — 诊断"), sb.ToString());
+    }
+
+    // ==================== GUI-I05：mod 列表交互（右键 / 双击 / 排序）====================
+    private int _modSortColumn = -1;
+    private bool _modSortAsc = true;
+
+    private async Task ToggleSelectedModsAsync()
+    {
+        if (_busy || _modList.SelectedItems.Count == 0) return;
+        foreach (ListViewItem item in _modList.SelectedItems)
+        {
+            if (item.Tag is not ModRow row) continue;
+            var want = !row.Enabled;
+            if (!SaveModEnabled(row, want)) continue;
+            item.Checked = want;
+            if (item.SubItems.Count >= 5) item.SubItems[4].Text = row.Enabled ? Localizer.T("启用") : Localizer.T("禁用");
+        }
+        NotifyConfigChanged();
+        await Task.CompletedTask;
+    }
+
+    private void OpenSelectedModFolder()
+    {
+        var first = _modList.SelectedItems.Cast<ListViewItem>().FirstOrDefault();
+        if (first?.Tag is not ModRow row || !File.Exists(row.Path)) return;
+        try { Process.Start("explorer.exe", "/select,\"" + row.Path + "\""); }
+        catch (Exception ex) { Log(Localizer.T("[警告] 打开文件夹失败: {0}", ex.Message)); }
+    }
+
+    private void ShowSelectedModJson()
+    {
+        var first = _modList.SelectedItems.Cast<ListViewItem>().FirstOrDefault();
+        if (first?.Tag is not ModRow row) return;
+        try { ShowTextDialog(Localizer.T("mod.json — {0}", row.Name), File.ReadAllText(row.Path)); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Neutraled"); }
+    }
+
+    private sealed class ModListComparer : System.Collections.IComparer
+    {
+        private readonly int _col;
+        private readonly bool _asc;
+        public ModListComparer(int col, bool asc) { _col = col; _asc = asc; }
+        public int Compare(object? x, object? y)
+        {
+            var a = ((ListViewItem)x!).SubItems[_col].Text;
+            var b = ((ListViewItem)y!).SubItems[_col].Text;
+            return (_asc ? 1 : -1) * string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void SortModsByColumn(int column)
+    {
+        if (column < 0 || column >= _modList.Columns.Count) return;
+        if (_modSortColumn == column) _modSortAsc = !_modSortAsc;
+        else { _modSortColumn = column; _modSortAsc = true; }
+        _modList.ListViewItemSorter = new ModListComparer(column, _modSortAsc);
+        _modList.Sort();
     }
 
     private string? FindBuilderExe()
@@ -1669,29 +1855,63 @@ public sealed class MainForm : Form
     }
 
     /// <summary>Kristal 验证对话框</summary>
-    private void ShowKristalDialog()
+    private async void ShowKristalDialog()
     {
         var dlg = new FolderBrowserDialog { Description = Localizer.T("选择 Kristal mod 目录（含 *.lua）") };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
-        var exe = FindBuilderExe();
-        if (exe == null) { Log(Localizer.T("[错误] 找不到 ntl-builder.exe")); return; }
-
         Log(Localizer.T("========== Kristal 批量验证 =========="));
-        RunBuilder(exe, "--validate-kristal \"" + dlg.SelectedPath + "\"");
-        Log(Localizer.T("验证完成，报告在 Neutraled/kristal-validation/REPORT.md"));
+        SetBusy(true, Localizer.T("验证 Kristal 工程…"));
+        // UX-12：以前不看退出码就 Log「验证完成」，坏工程/坏路径也显示成功。
+        var rc = await Program.RunBuilderAsync("--validate-kristal \"" + dlg.SelectedPath + "\"", Log);
+        SetBusy(false, rc == 0 ? Localizer.T("Kristal 验证完成") : Localizer.T("Kristal 验证失败（退出码 {0}）", rc));
+        if (rc == 0) Log(Localizer.T("验证完成，报告在 Neutraled/kristal-validation/REPORT.md"));
+        else Log(Localizer.T("[错误] Kristal 验证失败（退出码 {0}），详见日志", rc));
     }
 
-    /// <summary>通用文本对话框</summary>
-    private void ShowTextDialog(string title, string content)
+    /// <summary>通用只读文本对话框（诊断/联动/权限/mod.json 共用）。
+    /// GUI-L04：加「复制全部 / 另存为」，可选「刷新」（传入 reload 才会出现该按钮）。</summary>
+    private void ShowTextDialog(string title, string content, Func<string>? reload = null)
     {
         var form = new Form { Text = title, Width = 860, Height = 640, StartPosition = FormStartPosition.CenterParent };
-        form.Controls.Add(new TextBox
+        var box = new TextBox
         {
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both,
             Dock = DockStyle.Fill, Font = new Font("Consolas", 9),
             WordWrap = false, Text = content
-        });
+        };
+        var bar = new Panel { Dock = DockStyle.Top, Height = 42 };
+        var btnCopy = new Button { Text = Localizer.T("复制全部"), Left = 8, Top = 7, Width = 100, Height = 28 };
+        btnCopy.Click += (_, _) => { try { Clipboard.SetText(box.Text); } catch { } };
+        var btnSave = new Button { Text = Localizer.T("另存为…"), Left = 116, Top = 7, Width = 100, Height = 28 };
+        btnSave.Click += (_, _) =>
+        {
+            using var sfd = new SaveFileDialog { Filter = Localizer.T("文本 (*.txt)|*.txt|所有文件|*.*"), FileName = "neutraled.txt" };
+            if (sfd.ShowDialog(form) != DialogResult.OK) return;
+            try { File.WriteAllText(sfd.FileName, box.Text); }
+            catch (Exception ex) { MessageBox.Show(form, ex.Message, "Neutraled"); }
+        };
+        bar.Controls.AddRange(new Control[] { btnCopy, btnSave });
+        if (reload != null)
+        {
+            var btnReload = new Button { Text = Localizer.T("刷新"), Left = 224, Top = 7, Width = 90, Height = 28 };
+            btnReload.Click += (_, _) =>
+            {
+                try { box.Text = reload(); }
+                catch (Exception ex) { box.Text += Environment.NewLine + ex.Message; }
+            };
+            bar.Controls.Add(btnReload);
+        }
+        var close = new Button
+        {
+            Text = Localizer.T("关闭"), Left = form.ClientSize.Width - 108, Top = 7,
+            Width = 90, Height = 28, DialogResult = DialogResult.Cancel,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        bar.Controls.Add(close);
+        form.CancelButton = close;
+        form.Controls.Add(box);
+        form.Controls.Add(bar);
         form.ShowDialog(this);
     }
 }

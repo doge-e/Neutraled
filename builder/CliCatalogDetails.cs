@@ -39,6 +39,7 @@ public static class CliCatalogDetails
         new("--cache-dedup", "cache", "合并重复的缓存条目", "merge duplicate cache entries", 2),
         new("--cache-list", "cache", "列出缓存条目与占用", "list cache entries and their sizes", 1),
         new("--cache-max", "cache", "设置启动时缓存上限 MB", "set the cache size limit in MB for launch", 2),
+        new("--cache-max-set", "cache", "只写 config.json 的缓存上限 MB（不部署、不启动）", "write the cache size limit in MB to config.json only (no deploy, no launch)", 1),
         new("--chapter", "chapter", "指定目标章节", "select the target chapter", 0),
         new("--chars", "font", "指定字体字表的字符集合", "set the explicit character list for the font", 2),
         new("--charset", "font", "指定中文字体的字符集范围", "choose the character set used to build the CJK font", 2),

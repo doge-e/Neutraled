@@ -15,4 +15,10 @@
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
   </PropertyGroup>
 
+  <!-- GUI-M03 / 裁决 u：config.json 的唯一写入口是 builder 的 ConfigFile（读-改-写 + 无 BOM + 镜像存档区）。
+       GUI 直接引用 builder 工程，避免再复制一份「写游戏根 + 镜像」的规则导致两份文件漂移。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\builder\Neutraled.Builder.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -1,7 +1,7 @@
 # 控制台（CONSOLE）
 
 > **打开/关闭**：`F2` 开关，`Esc` 也可关闭。控制台不会暂停游戏（需要暂停用 `pause`）。
-> **本文档已与源码全量核对（2026-09-28）**：与 `api/ntl_console_cmds_builtin.gml` 的注册表逐条一致 —— **64 条内置命令 / 7 个分类**（info 14 · state 9 · action 11 · power 5 · debug 16 · auto 9）；旧版本写的"内置 41 条 / 5 类"是过期数字（2026-09-29 复核：注册表实际 **64** 条，比 09-28 多出 `dry`）。
+> **本文档已与源码全量核对（2026-09-28）**：与 `api/ntl_console_cmds_builtin.gml` 的注册表逐条一致 —— **64 条内置命令 / 6 个分类**（info 14 · state 9 · action 11 · power 5 · debug 16 · auto 9）；旧版本写的"内置 41 条 / 5 类"是过期数字（2026-09-29 复核：注册表实际 **64** 条，比 09-28 多出 `dry`）。
 > 对照代码：`api/ntl_console_exec.gml`（分派）、`api/ntl_console_cmds_builtin.gml`（注册）、各 `api/ntl_console_*.gml`（实现）、`api/ntl_i18n_init.gml` + `api/ntl_i18n_out.gml`（文案/用法）。
 
 ---
@@ -59,7 +59,7 @@
 
 ---
 
-## 三、命令总账（64 条 / 7 类）
+## 三、命令总账（64 条 / 6 类）
 
 用 `cmds` 看全部（开头就报总数与分类数），`cmds <分类>` 只看一类，`help <命令>` 看单条用法。
 
@@ -199,7 +199,7 @@ flag[0] = 0
 
 ```
 > cmds
-共 64 条命令 / 7 个分类（看某类：cmds <分类>）
+共 64 条命令 / 6 个分类（看某类：cmds <分类>）
 
 == 信息类 (14) ==
   api   api <关键词>
@@ -363,7 +363,7 @@ end
 ```
 按 F2 打开控制台
 
-> cmds                  看所有命令（64 条 / 7 类）
+> cmds                  看所有命令（64 条 / 6 类）
 > cmds mod              只看 mod 提供的命令
 > help goto             查 goto 的用法
 > mods                  看本产物已加载的 mod

@@ -222,6 +222,20 @@ public static class Snapshots
 
     /// <summary>读一份快照的元数据；.snapshot.json 缺失或损坏时按目录实际内容兜底并打印警告 ——
     /// 只要目录还在就能列出来，不会因为一个坏文件让整个列表消失。</summary>
+    /// <summary>把 mod id 规范化为 snapshots 根下真实目录名（忽略大小写）；没有则原样返回。</summary>
+    private static string CanonicalModId(string snapshotsRoot, string modId)
+    {
+        try
+        {
+            if (Directory.Exists(snapshotsRoot))
+                foreach (var d in Directory.EnumerateDirectories(snapshotsRoot))
+                    if (string.Equals(Path.GetFileName(d), modId, StringComparison.OrdinalIgnoreCase))
+                        return Path.GetFileName(d);
+        }
+        catch { }
+        return modId;
+    }
+
     private static SnapInfo ReadOrSynthesize(string modId, string version, string dir)
     {
         var meta = Path.Combine(dir, MetaName);
@@ -232,7 +246,8 @@ public static class Snapshots
                 var info = JsonSerializer.Deserialize<SnapInfo>(File.ReadAllText(meta), Paths.Json);
                 if (info != null)
                 {
-                    if (string.IsNullOrWhiteSpace(info.ModId)) info.ModId = modId;
+                    // builder-cli-018：列表/详情一律用盘上的目录名（大小写权威），不信任 meta 里可能过时的写法
+                    info.ModId = modId;
                     if (string.IsNullOrWhiteSpace(info.Version)) info.Version = version;
                     if (string.IsNullOrWhiteSpace(info.Created)) info.Created = DirTime(dir);
                     if (info.Files <= 0)
@@ -354,6 +369,9 @@ public static class Snapshots
         string source, string sourceRef, string? note, string action)
     {
         var root = Root(gameRoot);
+        // builder-cli-018：同一个 mod 的 id 大小写必须统一（盘上是 climod、用户传 CliMod 时元数据会写 CliMod，
+        // --snapshot-list 于是一条 climod、一条 CliMod）。以盘上快照目录名为权威。
+        modId = CanonicalModId(root, modId);
         var final = version;
         for (int n = 2; n < 1000 && Directory.Exists(Path.Combine(root, modId, final)); n++)
             final = version + "-" + n;

@@ -68,17 +68,18 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 | **一条龙下载转换** | `--install-id <gamebananaId>` / `--install-url <url>` 下载 + 自动探测包型并路由导入（xdelta / data.win / .ntlmod / Kristal / GM3P / 外部引擎）；旧名 `--fetch` / `--fetch-mod` 是可用别名 |
 | 部署缓存 | 硬链接复用 21s → 0.8s，签名含 api 指纹自动失效 |
 | 质量工具 | `--lint` / `--doctor` / `--smoke` / `--api-doc` / `--selftest` |
-| 控制台 | **64 条命令** + 滚动/历史/宏/别名，中英双语（6 种语言） |
-| **配置档 / 快照 / 恢复点** | `--profile-*`（启用集合 + 游戏设置）、`--snapshot-*`（每 mod 版本快照，真实复制）、`--restore-*`（整游戏恢复点，跨机导出/导入） |
+| 控制台 | **64 条命令** + 滚动/历史/宏/别名；输出中英双语（界面语言 zh/en 内置，另随包 4 种外部语言包） |
+| **配置档 / 快照 / 恢复点** | `--profile-*`（启用集合 + `base_mod`；旧档里的游戏设置会继续套用）、`--snapshot-*`（每 mod 版本快照，真实复制）、`--restore-*`（整游戏恢复点，跨机导出/导入） |
 | **GameBanana + 下载队列** | `--search` / `--gb-files` / `--install-id`（下载→识别→导入一条龙；旧名 `--gb-search` / `--gb-install` 是别名）、`--route-probe`（只读探测包型）、`--queue-*`（断点续传、黑名单） |
 | **插件系统** | C# DLL 插件 + `plugin.json` 清单/权限，`AssemblyLoadContext` 可卸载加载（见 `sdk/`） |
 | **主题** | 4 个内置主题 + 外部主题 JSON，`--theme-use` 直接改游戏内控制台配色 |
-| **外部语言包** | `Neutraled/lang/lang_*.json`；内置 zh/en + 随包 4 种（de/es/fr/ja），`--lang-coverage` 体检 |
-| **游戏内 Mod 设置面板** | 设置菜单第 6 行（部署补丁注入，样式与官方项一致；原版 Return to Title / Back 顺移到第 7、8 行）：章节开关 / 已加载模组数 / 界面语言（6 种，即时切换）/ 重新部署并重启 / mod 自注册项；打开后走游戏原生二级菜单页（`global.submenu == 51`），`↑↓` 选择、`Z`/`Enter` 确认、`X` 返回；字号用官方菜单字体（`mainbig`），菜单框保持原版尺寸、多加的行靠滚动条容纳（见 docs/MANAGE.md §11、§11.4、docs/MODMENU-API.md） |
+| **外部语言包** | `Neutraled/lang/lang_*.json`；内置 zh/en（100%），随包外部 4 种（de/es/fr/ja）当前覆盖率 69.2%（游戏内 82.3%），`--lang-coverage` 体检 |
+| **游戏内 Mod 设置面板** | 设置菜单第 6 行（部署补丁注入，样式与官方项一致；原版 Return to Title / Back 顺移到第 7、8 行）：章节开关 / 已加载模组数 / 界面语言（6 种，即时切换；zh/en 完整，外部 4 种翻译进行中）/ 重新部署并重启 / mod 自注册项；打开后走游戏原生二级菜单页（`global.submenu == 51`），`↑↓` 选择、`Z`/`Enter` 确认、`X` 返回；字号用官方菜单字体（`mainbig`），菜单框保持原版尺寸、多加的行靠滚动条容纳（见 docs/MANAGE.md §11、§11.4、docs/MODMENU-API.md） |
 | **内建字体补全** | 部署时按产物真正会用到的文本，自动把内置像素字体包的字形补进 `fnt_main` / `fnt_mainbig` / `fnt_small` / `fnt_legend`（只补真的缺的）；原版基底 + 中文 lang 包也不会再出现「整段文字空白」；译文本体由人工本地化组提供（见 docs/MANAGE.md §11.2、`--font-probe`） |
 | **Web UI** | 零依赖 HttpListener 静态页（`--web`，跨平台；WinForms GUI 仍是 Windows 原生前端） |
 | GUI / Studio | `ntl-gui.exe` 图形管理器、`ntl-studio.exe` 代码编辑器 |
 
+> 术语：**mod** 与 **模组** 同义（本文档两种写法混用，指同一个对象）；**部署** = 由 builder 生成各章节 `data.win` 并切换产物，**安装** = 把 Neutraled 装进游戏目录、或把 mod 包导入 `mods/` —— 两者不是一回事。
 ## 文档
 
 | 文档 | 内容 |
@@ -107,10 +108,11 @@ dotnet build builder\Neutraled.Builder.csproj -c Release      # → ntl-builder.
 dotnet build gui\Neutraled.Gui.csproj -c Release              # → ntl-gui.exe
 dotnet build studio\Neutraled.Studio.csproj -c Release        # → ntl-studio.exe
 
-# 一键测试（8 项检查）
-test.bat            # 静态检查 + 自检 + 冒烟 + mod 列表 + 存档快照 + API 文档
-test.bat --deploy   # 追加部署
-test.bat --full     # 追加“部署 + 启动游戏 + 联动验收”
+# 一键测试（静态套件；不启动游戏）
+test.bat                # = _test/fulltest-static.ps1：构建/lint/doctor/smoke/部署/验证/打包/安装往返
+test.bat -SkipPackage   # 跳过打包与安装往返
+test.bat -OutDir <目录>  # 结果目录（默认 E:\aiwork\out\Neutraled2\fulltest）
+# 真机 / 外部章节 / 安装器套件：_test/fulltest-game.ps1、_test/fulltest-external.ps1、tools/verify-install.ps1
 ```
 
 ## 已知限制

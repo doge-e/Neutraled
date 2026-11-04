@@ -33,11 +33,25 @@ public static class DeployOptions
         try { File.WriteAllText(SettingsPath(neutraledRoot), FastDeploy ? "1" : "0"); } catch { }
     }
 
-    /// <summary>宽松解析：1/0、true/false、on/off、yes/no 都认；其它一律当关闭。</summary>
+    /// <summary>宽松解析：1/0、true/false、on/off、yes/no 都认；其它一律当关闭。
+    /// 注意：这是给「设置文件内容」用的；命令行参数请用 <see cref="TryParseFlag"/>，
+    /// 非法值必须报错退出而不是静默当关闭（GUI-L12）。</summary>
     public static bool ParseFlag(string? text)
     {
         var v = (text ?? "").Trim().ToLowerInvariant();
         return v is "1" or "true" or "on" or "yes" or "fast";
+    }
+
+    /// <summary>命令行严格解析：只认 on/off（另接受 true/false、1/0、yes/no 作为别名），
+    /// 其它字符串返回 false（调用方应打印用法并以退出码 2 结束，且**不要写设置文件**）。</summary>
+    public static bool TryParseFlag(string? text, out bool value)
+    {
+        switch ((text ?? "").Trim().ToLowerInvariant())
+        {
+            case "on": case "true": case "1": case "yes": value = true; return true;
+            case "off": case "false": case "0": case "no": value = false; return true;
+            default: value = false; return false;
+        }
     }
 
     /// <summary>把 --fast-deploy 追加到命令行；关闭时原样返回（不留多余空格）。</summary>

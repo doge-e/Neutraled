@@ -69,19 +69,22 @@ ntl-builder.exe --uninstall
 
 ```
 Neutraled/
-  bin/ntl-builder.exe     ← 命令行（发布包装完在这；开发布局是 builder/bin/Release/net9.0/）
-  ntl-gui.exe             ← 图形界面（只有源码树 / 自己编译时才有）
+  bin/ntl-builder.exe     ← 命令行（发布包布局；开发布局是 builder/bin/Release/net9.0/）
+  bin/ntl-gui.exe         ← 图形界面（发布包 / 自己编译时才有）
   api/  live/  docs/  lang/  fonts/  tools/  templates/  kristal/  kristal-maps/  sdk/
   mods/                   ← 你的 mod（发布包只带几个示例）
   backup/                 ← 原版 data.win 备份
   cache/                  ← 部署缓存（可设上限）
 ```
 
-**启动游戏**（`bin/` 下，或网页界面）：
-- **命令行**：`bin\ntl-builder.exe --deploy-all` → 自动查缓存 → 应用 → **由 Steam 拉起**
-- **网页界面**：`bin\ntl-builder.exe --web`（浏览器里选章节 / 管理 mod / 点「部署并启动」）
+**启动游戏**（`Neutraled/` 下）：
+- **命令行**：`bin\ntl-builder.exe --launch root` → 查缓存 → 需要时部署 → **由 Steam 拉起**（`--launch chapter1` 指定章节；`--no-start` 只部署不启动）
+- **只部署不启动**：`bin\ntl-builder.exe --deploy-all` 只并行部署所有目标，**不会启动游戏**；启动仍走 `--launch` 或 Steam
+- **网页界面**：`bin\ntl-builder.exe --web`（浏览器里选章节 / 管理 mod / 部署；**没有启动按钮**）
 - **有图形界面时**：GUI 里点「部署并启动」
 - 也可以直接点 Steam 的「开始游戏」（用上次准备好的 data.win）
+
+> `launch.ps1` 只在源码树里有（`Neutraled\launch.ps1`，是 `--launch` 的薄转发），安装器**不会**复制它；安装版请统一用 `bin\ntl-builder.exe --launch`。
 
 ### ⚠️ 注意事项
 
@@ -164,7 +167,7 @@ print("  这是我的第一行改动！")
 
 ```powershell
 cd E:\steam\steamapps\common\DELTARUNE\Neutraled
-.\launch.ps1
+.\bin\ntl-builder.exe --launch root
 ```
 
 游戏启动后，打开日志看结果：
@@ -219,7 +222,7 @@ draw_set_color(c_white)        -- 恢复白色
 
 ```powershell
 Get-Process DELTARUNE -EA 0 | Stop-Process -Force
-.\launch.ps1
+.\bin\ntl-builder.exe --launch root
 ```
 
 进游戏后，**左上角会出现红色的「我的 mod 在画画！」** 🎨
@@ -292,13 +295,13 @@ return nil    -- nil = 不拦截，继续执行原函数
 **99% 的原因是没重启游戏。** Lua 脚本在游戏启动时读取。
 
 ```powershell
-.\launch.ps1            # 默认 root；-Chapter chapter1 指定章节；-NoCache 先清缓存
+.\bin\ntl-builder.exe --launch root      # 默认 root；--launch chapter1 指定章节；先 --cache-clear 强制重部署
 ```
 
 #### ❓ 部署失败 / 改动没生效
 
 **游戏还开着。** `data.win` 被占用时写盘会**静默失败**（显示成功但文件没变）。
-新版 `launch.ps1` 只是 `ntl-builder --launch` 的薄转发，**不会替你杀进程**：
+`--launch`（源码树里的 `launch.ps1` 就是它的薄转发）**不会替你杀进程**：
 `--launch` 检测到游戏在跑会直接报占用错误（退出码非 0），请先自己关掉游戏再运行。
 这也是刻意的——自动杀游戏会丢未保存进度。
 

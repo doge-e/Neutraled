@@ -151,7 +151,19 @@ public static class DeltaImport
                 Paths.Log(L("  复制修改版 data.win"));
             }
 
-            var data = Injector.Load(outWin);
+            // builder-cli-013：非 xdelta / 非完整 data.win 的输入以前会把 .NET 异常（含 D:\a\_work 构建路径栈）
+            // 一路抛到 Main 的 catch 打印出来。这里就地捕获并给可操作的中文提示，栈只留在异常消息之外。
+            UndertaleModLib.UndertaleData data;
+            try
+            {
+                data = Injector.Load(outWin);
+            }
+            catch (Exception ex)
+            {
+                Paths.Log(L("  [错误] 不是有效的 data.win / 差异包（无法解析）: {0}", ex.Message));
+                Paths.Log(L("  提示：--import-delta 只接受 xdelta 补丁或完整的 GameMaker data.win；普通文本/压缩包请改用 --import-mod"));
+                return 1;
+            }
             Paths.Log(L("  产物: 对象={0} 代码={1} 精灵={2} 声音={3}", data.GameObjects.Count, data.Code.Count, data.Sprites.Count, data.Sounds.Count));
 
             // 收集外部文件（lang / vid / 其它）→ mod/files/

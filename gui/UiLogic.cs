@@ -62,7 +62,9 @@ public static class UiLogic
         string? input = null, string? name = null, string? author = null,
         string? outPath = null, string? winPath = null) => action switch
     {
-        ActionKind.Deploy => $"--deploy --chapter {chapter}",
+        // UX-04：GUI/headless 的「部署」必须和「部署并启动」走同一条 --launch 链路（缓存 + 部署会话 + 存档联接自愈），
+        // 只差最后不拉起 Steam。旧写法 --deploy --chapter 不写 deploy-session.json，玩家点【恢复原版】时检测不到会话。
+        ActionKind.Deploy => $"--launch {chapter} --no-start",
         ActionKind.Launch => $"--launch {chapter}",
         ActionKind.Restore => "--restore-session",
         ActionKind.ImportMod => $"--import-mod \"{input}\" --chapter {chapter} --name \"{name}\" --author \"{author}\"",

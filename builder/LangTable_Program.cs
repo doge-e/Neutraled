@@ -291,6 +291,11 @@ public static class LangTable_Program
         d["  --restore-chapter all|root|chapterN   把 live 还原成原版（单章或 all 全部；备份校验不通过则拒绝，退出码 3）"] = "  --restore-chapter all|root|chapterN   restore live to vanilla (one chapter or all; refuses when backup verification fails, exit 3)";
         d["  --restore-session [--dry-run] [--json]   按上次 --launch 的部署会话还原（默认不自动还原）"] = "  --restore-session [--dry-run] [--json]   restore the deploy session recorded by the last --launch (no auto-restore by default)";
         d["                                  会话文件 Neutraled\\deploy-session.json；游戏运行中拒绝写盘"] = "                                  session file: Neutraled\\deploy-session.json; refuses to write while the game is running";
+        // GUI-M07 / B3：--cache-max-set（只写 config.json 的缓存上限）
+        d["  --cache-max-set <MB>            只把缓存上限写进 config.json（不部署、不启动；GUI 设置项用）"] = "  --cache-max-set <MB>            write the cache limit into config.json only (no deploy, no launch; for the GUI setting)";
+        d["[错误] --cache-max-set 需要一个正整数（单位 MB，1 .. 1048576），收到: {0}"] = "[Error] --cache-max-set needs a positive integer (MB, 1 .. 1048576); got: {0}";
+        d["       用法: ntl-builder --cache-max-set <MB>   例: --cache-max-set 4096（只写 config.json，不部署、不启动）"] = "       Usage: ntl-builder --cache-max-set <MB>   e.g. --cache-max-set 4096 (writes config.json only; no deploy, no launch)";
+        d["[缓存] 上限已设为 {0} MB（已写入 {1}；不部署、不启动）"] = "[Cache] Limit set to {0} MB (written to {1}; no deploy, no launch)";
         d["[会话] 本次部署目标已记录: {0}（退出游戏后可 --restore-session 还原）"] = "[Session] Recorded this deploy's targets: {0} (use --restore-session after quitting the game)";
         d["[警告] 写部署会话失败: {0}"] = "[Warn] Failed to write the deploy session: {0}";
         d["会话文件是空内容"] = "the session file is empty";
@@ -313,5 +318,45 @@ public static class LangTable_Program
         d["[警告] 有 {0} 个目标还原失败，会话文件保留以便重试: {1}"] = "[Warn] {0} target(s) failed to restore; the session file is kept for a retry: {1}";
         d["===== 还原 {0} ====="] = "===== Restore {0} =====";
         d["===== 还原完成: {0}/{1} 章成功 ====="] = "===== Restore finished: {0}/{1} chapters succeeded =====";
+        d["结果: 全部备份正常，无需修复（不需要 --yes）"] = "Result: all backups healthy, nothing to repair (no --yes needed)";
+        d["[语言] 找不到语言包: {0}（可用: {1}）"] = "[Lang] Language pack not found: {0} (available: {1})";
+        d["       查看明细: --lang-list / 覆盖率: --lang-coverage"] = "       Details: --lang-list / coverage: --lang-coverage";
+        d["[提示] --help --json 不支持：请用 --help --audit --json 获取开关目录审计 JSON。"] = "[Hint] --help --json is not supported; use --help --audit --json to get the switch catalog audit JSON.";
+        d["注意：--help dev 与 --help all 等价（都列全部 {0} 个开关）；只看进阶/常用请用 --help advanced。"] = "Note: --help dev and --help all are equivalent (both list all {0} switches); use --help advanced to see only advanced/common ones.";
+        d["  --help 默认视图覆盖: {0}/{1}"] = "  default --help view covers: {0}/{1}";
+        d["  [缺] 默认帮助未覆盖 {0} 个: {1}"] = "  [Missing] the default help does not cover {0} switch(es): {1}";
+        d["结果: 目录完整，但默认 --help 覆盖不全（缺 {0} 个）"] = "Result: catalog complete, but the default --help is incomplete ({0} missing)";
+        d["先运行一次 --launch（会记录本次部署目标），或用 --deploy-state 查看 live 状态"] = "Run --launch once first (it records the deploy targets), or use --deploy-state to inspect live state";
+        d["没有部署会话"] = "no deploy session";
+        d["会话里没有可还原的目标"] = "the session has no restorable targets";
+        d["部分目标还原失败"] = "some targets failed to restore";
+        d["修复占用/权限后重跑 --restore-session（会话文件已保留）"] = "Fix the lock/permission issue and rerun --restore-session (the session file is kept)";
+        d["[错误] 一次只能运行一个主命令：{0} + {1}（共 {2} 个）；用 --help 查看用法"] = "[Error] Only one main command may run at a time: {0} + {1} ({2} total); see --help";
+        d["[错误] --game 指定的游戏目录不存在: {0}"] = "[Error] The game directory given by --game does not exist: {0}";
+        d["       请确认路径（应包含 DELTARUNE.exe 或 data.win）。"] = "       Check the path (it should contain DELTARUNE.exe or data.win).";
+        d["[提示] --json 对 {0} 不生效，已忽略；用 --help 查看支持 --json 的命令。"] = "[Hint] --json has no effect on {0} and was ignored; use --help to see commands that support --json.";
+        d["（无主命令）"] = "(no main command)";
+        d["  --deploy --chapter all           串行部署 root + chapter1..5（兼容写法；推荐 --deploy-all 并行）"] = "  --deploy --chapter all           deploy root + chapter1..5 sequentially (compatibility form; prefer --deploy-all for parallelism)";
+        d["  --launch all                     先全量部署 root + chapter1..5，再走 Steam 启动（等价 --deploy-all 后启动）"] = "  --launch all                     deploy root + chapter1..5 first, then launch through Steam (same as --deploy-all then launch)";
+        d["      --gb-type Mod|Wip           GameBanana 条目类型（与 --install-id / --gb-files 合用，默认 Mod）"] = "      --gb-type Mod|Wip           GameBanana entry type (with --install-id / --gb-files; default Mod)";
+        d["  --repair-backup [--chapter …] --from mirror|live|file:<原版 data.win> [--yes]   按可信来源修复原版备份（不加 --yes 只预演；无需修复时 exit 0）"] = "  --repair-backup [--chapter …] --from mirror|live|file:<original data.win> [--yes]   repair original backups from a trusted source (preview without --yes; exit 0 when nothing needs repair)";
+        d["  其余开关（简介见 --help all；★ = 需要取值）:"] = "  Other switches (see --help all for details; ★ = takes a value):";
+        d["  用 --help <开关> 看单条说明；--help --audit 检查帮助覆盖。"] = "  Use --help <switch> for one switch; --help --audit checks help coverage.";
+        d["[错误] 缺少控制台库: {0}（重装 Neutraled 或先跑一次 --kristal-console）"] = "[Error] Missing console library: {0} (reinstall Neutraled or run --kristal-console once)";
+        d["[错误] {0} 不是 Kristal 融合版（没有内嵌 mods/*/mod.json 或 main.lua），没有可注入的控制台；用 --kristal-console 查看具体原因"] = "[Error] {0} is not a fused Kristal exe (no embedded mods/*/mod.json or main.lua); there is no console to inject; run --kristal-console for details";
+        d["[跳过] {0}: 插件型 Kristal mod（只有 mod.lua）不能独立导入；请用 --kristal-merge <工程目录> --with <插件目录>"] = "[Skip] {0}: plugin-type Kristal mod (only mod.lua) cannot be imported standalone; use --kristal-merge <project dir> --with <plugin dir>";
+        d["结果: 没有可独立导入的包（插件型包需要宿主工程）"] = "Result: no standalone-importable packages (plugin-type packages need a host project)";
+        d["结果: {0} 个插件型包已跳过（需要宿主工程），其余 {1} 个已处理"] = "Result: skipped {0} plugin-type package(s) (host project required); processed {1} other(s)";
+        d["共 {0} 个匹配（模式: {1}）"] = "Total {0} match(es) (pattern: {1})";
+        d["（仅显示前 60 条）"] = "(showing first 60 only)";
+        d["共 {0} 个匹配（总房间数 {1}；模式: {2}）"] = "Total {0} match(es) (rooms: {1}; pattern: {2})";
+        d["找不到配置档: {0}"] = "profile not found: {0}";
+        d["快照不存在或回切失败: {0} @ {1}"] = "snapshot missing or switch-back failed: {0} @ {1}";
+        d["找不到恢复点或没有数据副本: {0}"] = "restore point not found or has no data copy: {0}";
+        d["游戏正在运行，请先关闭游戏再恢复: {0}"] = "the game is running; close it before restoring: {0}";
+        d["未知语言代码: {0}"] = "unknown language code: {0}";
+        d["部署失败（返回码 {0}）: {1}"] = "deploy failed (exit {0}): {1}";
+        d["[错误] --focus-test 需要 exe 路径（--send-keys / --send-text / --send-f2 / --keep 是它的选项）"] = "[Error] --focus-test needs an exe path (--send-keys / --send-text / --send-f2 / --keep are its options)";
+        d["       用法: ntl-builder --focus-test <exe> [--send-f2] [--send-keys 按键] [--send-text 文本] [--keep]"] = "       Usage: ntl-builder --focus-test <exe> [--send-f2] [--send-keys keys] [--send-text text] [--keep]";
     }
 }

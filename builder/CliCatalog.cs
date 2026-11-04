@@ -19,7 +19,7 @@ public static class CliCatalog
     {
         "--accept-base-drift", "--add-external", "--adopt-current", "--all-slots", "--api-doc", "--as", "--as-delta", "--asset-guard",
         "--audit-inputscan", "--author", "--auto-stop", "--base", "--base-mod", "--block-add",
-        "--block-list", "--block-remove", "--cache-applied", "--cache-check", "--cache-clear", "--cache-dedup",
+        "--block-list", "--block-remove", "--cache-applied", "--cache-check", "--cache-clear", "--cache-dedup", "--cache-max-set",
         "--cache-list", "--cache-max", "--chapter", "--chars", "--charset", "--check", "--conflicts",
         "--content-check", "--convert-kristal", "--delete-after", "--delete-file", "--deploy", "--deploy-all",
         "--deploy-state", "--desc", "--diff-override", "--diff-verbose", "--doctor", "--dry-run",
@@ -59,11 +59,11 @@ public static class CliCatalog
     /// <summary>必须跟一个取值的开关（缺少取值 → 用法错误 exit 2）。取值以 - 开头视为缺失。</summary>
     private static readonly HashSet<string> RequiresValue = new(StringComparer.Ordinal)
     {
-        "--as", "--asset-guard", "--audit-inputscan", "--author", "--base", "--baseline", "--cache-max", "--chapter",
+        "--as", "--asset-guard", "--audit-inputscan", "--author", "--base", "--baseline", "--cache-max", "--cache-max-set", "--chapter",
         "--config-get", "--config-set",
         "--add-external", "--chars", "--charset", "--convert-kristal", "--dump", "--dumpall", "--export-packs",
         "--export-shaders", "--ext-args", "--extract", "--extract-diff", "--fetch", "--fetch-mod", "--find",
-        "--focus-test", "--font-name", "--font-source", "--fork", "--from", "--from-font",
+        "--focus-test", "--font-name", "--font-source", "--fork", "--from", "--from-font", "--gb-type",
         "--game", "--import-bside", "--import-delta", "--import-kristal", "--import-kristal-map", "--import-mod", "--install-id", "--install-url",
         "--jobs", "--kristal-merge", "--lang", "--layer-from-base", "--link-saves",
         "--list", "--listobjs", "--listsprites", "--map-id", "--map-out",
@@ -151,6 +151,7 @@ public static class CliCatalog
         ["--cache-list"] = "cache-list",
         ["--make-icon"] = "make-icon",
         ["--cache-clear"] = "cache-clear",
+        ["--cache-max-set"] = "cache-max-set",
         ["--cache-dedup"] = "cache-dedup",
         ["--cache-applied"] = "cache-applied",
         ["--launch"] = "launch",
@@ -165,6 +166,19 @@ public static class CliCatalog
         ["--validate-kristal"] = "validate-kristal",
         ["--new-chapter"] = "new-chapter",
         ["--fork"] = "new-chapter",
+        // C4 P1-4 / builder-cli-006：这些主命令以前没登记映射 ⇒ 组合检测与拼写建议都看不到它们
+        ["--add-external"] = "add-external",
+        ["--import-all"] = "import-all",
+        ["--extract"] = "extract",
+        ["--font-probe"] = "font-probe",
+        ["--make-cjk-font"] = "make-cjk-font",
+        ["--font-native"] = "font-native",
+        ["--content-check"] = "content-check",
+        ["--cache-check"] = "cache-check",
+        ["--watch-autostart"] = "watch-autostart",
+        ["--kristal-console"] = "kristal-console",
+        ["--kristal-ensure"] = "kristal-ensure",
+        ["--kristal-console-restore"] = "kristal-console-restore",
     };
 
     /// <summary>CliFeatures 独占的功能开关：与主命令同时出现是用法错误（原先会被静默丢弃）。</summary>
@@ -196,12 +210,30 @@ public static class CliCatalog
         return null;
     }
 
-    /// <summary>同 <see cref="MainCommand"/>，但返回命中的开关本身（错误消息用）。</summary>
-    public static string? MainCommandSwitch(string[] args)
+    /// <summary>同 <see cref="MainCommand"/>，但返回命中的开关本身（错误消息用）。
+    /// ignoreVersion=true 时跳过 --version（功能命令的 --version 是具名选项，见 builder-cli-004）。</summary>
+    public static string? MainCommandSwitch(string[] args, bool ignoreVersion = false)
     {
         foreach (var a in args)
+        {
+            if (ignoreVersion && a == "--version") continue;
             if (CommandSwitches.ContainsKey(a)) return a;
+        }
         return null;
+    }
+
+    /// <summary>argv 里出现的全部主命令（按命令名去重、保留首次出现顺序）。
+    /// UX-24：以前多个主命令是「最后一个生效」（--deploy --info 只剩 info），用这个列表做冲突检测。</summary>
+    public static List<string> MainCommandsDistinct(string[] args, bool ignoreVersion = false)
+    {
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var a in args)
+        {
+            if (ignoreVersion && a == "--version") continue;
+            if (CommandSwitches.TryGetValue(a, out var cmd) && seen.Add(cmd)) list.Add(cmd);
+        }
+        return list;
     }
 
     /// <summary>主命令列表（未知命令提示的编辑距离候选）。</summary>

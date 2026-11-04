@@ -809,10 +809,18 @@ public static class Baseline
         if (!yes)
         {
             Console.WriteLine(L("===== 修复原版备份（repair-backup，预演） ====="));
+            bool needFix = false;
             foreach (var c in slots)
             {
                 var rep = Evaluate(gameRoot, c);
+                if (rep.State != SlotState.Ok) needFix = true;
                 Console.WriteLine("  " + c + L(": ") + DescribeFix(rep, from));
+            }
+            // builder-cli-016：全部健康时以前也 exit 1（还提示「需要 --yes 才会写盘」），脚本会误判有故障。
+            if (!needFix)
+            {
+                Console.WriteLine(L("结果: 全部备份正常，无需修复（不需要 --yes）"));
+                return 0;
             }
             Console.WriteLine(L("需要 --yes 才会写盘（先看 --verify-backup 的报告）"));
             return 1;

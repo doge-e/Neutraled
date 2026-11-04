@@ -42,15 +42,16 @@ public static class Program
         //   ntl-gui.exe --print-deploy-args [--fast-deploy on|off]  → 打印三条部署路径拼出的命令行
         //   ntl-gui.exe --check-toolbox-layout [zh|en]              → 量工具箱对话框的控件边界/文字高度
         //   ntl-gui.exe --set-fast-deploy on|off                    → 直接改设置（等价于工具箱里勾选）
+        // 自检命令必须用退出码表达结论（GUI-M09）：0=通过、1=发现问题、2=参数错误。
         if (args.Any(a => a.Equals("--check-toolbox-layout", StringComparison.OrdinalIgnoreCase)))
         {
-            CheckToolboxLayout(args);
+            Environment.ExitCode = CheckToolboxLayout(args);
             return;
         }
 
         if (args.Any(a => a.Equals("--print-deploy-args", StringComparison.OrdinalIgnoreCase)))
         {
-            PrintDeployArgs(args);
+            Environment.ExitCode = PrintDeployArgs(args);
             return;
         }
 
@@ -60,8 +61,15 @@ public static class Program
             if (args[i].Equals("--set-fast-deploy", StringComparison.OrdinalIgnoreCase))
             {
                 try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
+                // GUI-L12：非法值不能静默当 off 写盘（那会把玩家明确的设置悄悄改掉）。
+                if (!DeployOptions.TryParseFlag(args[i + 1], out var fast))
+                {
+                    Console.Error.WriteLine("[selfcheck] ERROR: --set-fast-deploy 只接受 on|off（也认 true/false、1/0、yes/no），收到: " + args[i + 1]);
+                    Environment.ExitCode = 2;
+                    return;
+                }
                 DeployOptions.Load(NeutraledRoot);
-                DeployOptions.FastDeploy = DeployOptions.ParseFlag(args[i + 1]);
+                DeployOptions.FastDeploy = fast;
                 DeployOptions.Save(NeutraledRoot);
                 Console.WriteLine("[selfcheck] saved fast-deploy = " + (DeployOptions.FastDeploy ? "on" : "off")
                     + " -> " + DeployOptions.SettingsPath(NeutraledRoot));
@@ -82,7 +90,7 @@ public static class Program
 
     /// <summary>结构自检：构造工具箱对话框（不显示），量控件边界/文字高度并打印开关与代价文案。
     /// 用法: ntl-gui.exe --check-toolbox-layout [zh|en]（不带语言就沿用 config.json 的 lang）。</summary>
-    private static void CheckToolboxLayout(string[] args)
+    private static int CheckToolboxLayout(string[] args)
     {
         try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
         using var owner = new MainForm();          // 构造里会 Localizer.Load(config.json.lang)，所以语言在这之后再定
@@ -113,25 +121,35 @@ public static class Program
             Console.WriteLine($"[layout] {c.GetType().Name,-10} T={c.Top,4} H={c.Height,3} B={c.Bottom,4} W={c.Width,4} R={c.Right,4} {(over ? "OVERFLOW" : "ok")}{extra}");
         }
         Console.WriteLine(bad == 0 ? "[layout] RESULT: all controls fit" : $"[layout] RESULT: {bad} control(s) overflow");
+        // GUI-M09：出口码就是结论（原先恒为 0，脚本/CI 无法据此判失败）。
+        return bad == 0 ? 0 : 1;
     }
 
     /// <summary>自检：按当前设置（或用 --fast-deploy on/off 临时覆盖）打印三条部署命令行。</summary>
-    private static void PrintDeployArgs(string[] args)
+    private static int PrintDeployArgs(string[] args)
     {
         try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
         DeployOptions.Load(NeutraledRoot);
         for (int i = 0; i < args.Length - 1; i++)
             if (args[i].Equals("--fast-deploy", StringComparison.OrdinalIgnoreCase))
             {
-                DeployOptions.FastDeploy = DeployOptions.ParseFlag(args[i + 1]);
+                // GUI-L12：非法值报错退出，不静默当 off。
+                if (!DeployOptions.TryParseFlag(args[i + 1], out var fast))
+                {
+                    Console.Error.WriteLine("[selfcheck] ERROR: --fast-deploy 只接受 on|off，收到: " + args[i + 1]);
+                    return 2;
+                }
+                DeployOptions.FastDeploy = fast;
                 break;
             }
 
         Console.WriteLine("[selfcheck] fast-deploy = " + (DeployOptions.FastDeploy ? "on" : "off"));
         Console.WriteLine("[selfcheck] settings    = " + DeployOptions.SettingsPath(NeutraledRoot));
-        Console.WriteLine("[selfcheck] deploy          : " + DeployOptions.AppendFastDeploy("--deploy --chapter chapter1"));
-        Console.WriteLine("[selfcheck] deploy all      : " + DeployOptions.AppendFastDeploy("--deploy --chapter all"));
+        // 与 GUI 实际行为保持一致（UX-04）：【部署】= --launch <章节> --no-start（写部署会话、走缓存，只是不拉起 Steam）。
+        Console.WriteLine("[selfcheck] deploy          : " + DeployOptions.AppendFastDeploy("--launch chapter1 --no-start"));
+        Console.WriteLine("[selfcheck] deploy all      : " + DeployOptions.AppendFastDeploy("--launch all --no-start"));
         Console.WriteLine("[selfcheck] deploy + launch : " + DeployOptions.AppendFastDeploy("--launch chapter1"));
+        return 0;
     }
 
     /// <summary>后台起一个"外部章节守候"进程（不阻塞 GUI）。

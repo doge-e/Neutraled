@@ -82,21 +82,22 @@ public static class ApiRegistry
             }).ToList()
         };
 
-        if (data != null)
+        // builder-cli-001：以前只有 data != null（章节产物）才写 api-registry.json，
+        // 而 DeploySelfCheck 无条件要求它存在 ⇒ 全新安装（Installer 不拷注册表）第一次部署 root
+        // 会在写盘后自检 (e) 失败并中止，chapter1 也不再继续。root 的 original 段可以是空数组
+        // （顶层 data.win 资源本就不全；运行时只需要 mods 段），但文件必须存在且严格可解析。
+        // * 单行紧凑写出：完整版有 ~1 MB / 2 万行，而运行时（控制台 `api` 命令）用
+        //   file_text_open_read + 逐行 `_txt += ...` 读取；GameMaker 的字符串 += 
+        //   每次都复制整个累积串（O(n^2)）-> 实测在真机上卡 19.6 秒。单行化后只读 1 行。
+        Paths.SafeWrite(path, JsonSerializer.Serialize(registry, new JsonSerializerOptions
         {
-            // * 单行紧凑写出：完整版有 ~1 MB / 2 万行，而运行时（控制台 `api` 命令）用
-            //   file_text_open_read + 逐行 `_txt += ...` 读取；GameMaker 的字符串 += 
-            //   每次都复制整个累积串（O(n^2)）-> 实测在真机上卡 19.6 秒。单行化后只读 1 行。
-            Paths.SafeWrite(path, JsonSerializer.Serialize(registry, new JsonSerializerOptions
-            {
-                WriteIndented = false,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            }));
+            WriteIndented = false,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        }));
 
-            var kb = new FileInfo(path).Length / 1024;
-            Paths.Log(L("  API 注册表: 函数 {0} / 对象 {1} / ", functions.Count, registry.original.objects.Length) +
-                      $"mod {registry.mods.Count} -> {path} ({kb} KB)");
-        }
+        var kb = new FileInfo(path).Length / 1024;
+        Paths.Log(L("  API 注册表: 函数 {0} / 对象 {1} / ", functions.Count, registry.original.objects.Length) +
+                  $"mod {registry.mods.Count} -> {path} ({kb} KB)");
 
         // * 运行时精简注册表：开机初始化（ntl_ns_load）只需要 mods 段，
         //   不需要 original 段的原版清单。这份文件小到即使逐行拼接也只要毫秒级，

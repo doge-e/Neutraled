@@ -36,7 +36,7 @@
 
 ### 2. 配置档 profile
 
-一个配置档 = 「哪些 mod 启用」+「跟随这次切换写入的一组设置」。应用配置档 = 直接改各 `mods/<id>/mod.json` 的 `enabled` 字段（与 GUI 的勾选框改的是同一处）。
+一个配置档 = 「哪些 mod 启用」+「换档时要带走的设置」（新档默认只自动捕获 `base_mod`；旧档里记过的设置继续套用）。应用配置档 = 直接改各 `mods/<id>/mod.json` 的 `enabled` 字段（与 GUI 的勾选框改的是同一处）。
 
 ```powershell
 ntl-builder --profile-new 剧情 --name "只看剧情" --from default   # 以现有档为底
@@ -544,7 +544,7 @@ dotnet publish builder/Neutraled.Builder.csproj -c Release -r osx-arm64   --self
 
 ## 配置档（PROFILES）
 
-> **一句话**：把「哪些 mod 开着 + 一份游戏设置」存成一个有名字的**配置档**，之后一条命令就能在几套组合之间来回切 —— 切换只改每个 mod 自己 `mod.json` 里的 `enabled`，**不复制、不移动、不删除任何 mod 文件**。
+> **一句话**：把「哪些 mod 开着 + 换档要带走的设置（新档默认 `base_mod`）」存成一个有名字的**配置档**，之后一条命令就能在几套组合之间来回切 —— 切换只改每个 mod 自己 `mod.json` 里的 `enabled`，**不复制、不移动、不删除任何 mod 文件**。
 
 功能概览见 [MANAGE.md](MANAGE.md) §2；本文是配置档的细节文档与实测记录。所有命令都走同一个 `ntl-builder.exe`。
 
@@ -557,7 +557,7 @@ dotnet publish builder/Neutraled.Builder.csproj -c Release -r osx-arm64   --self
 
 一个 mod 组合调好之后，下次想换玩法往往要手点十几个勾选框。配置档把这件事变成**一次快照 + 一条命令**：
 
-* 存档 = 一份 `profiles/<id>.json`（启用集合 + 设置 + 涉及章节）；
+* 存档 = 一份 `profiles/<id>.json`（启用集合 + 设置 + 涉及章节；新档的 `settings` 默认只有 `base_mod`，旧档原有键保留）；
 * 切换 = 逐个改写 `mods/…/mod.json` 的 `enabled`，再把这档记的设置写进 `config.json`；
 * 因此 mod 目录、mod 内容、data.win 全都不动 —— 切档是**几毫秒级的元数据操作**，不会重新部署。
 
@@ -650,18 +650,22 @@ root 产物（游戏自带启动器 `data.win`，也就是**章节选择器**那
 }
 ```
 
+> 示例里的 `settings` 含 `lang` / `theme` / `auto_chapter`，这是**旧档**；新档默认只自动写入 `base_mod`（见下表与下文）。
+
 | 字段 | 含义 |
 | --- | --- |
 | `id` | 档 id（= 文件名去掉 `.json`）；只能含字母/数字（含中文）/ `_ - . @ +`，长度 ≤128，不能含 `..` 或路径分隔符 |
 | `name` / `description` / `note` | 显示名 / 说明 / 备注（纯展示，不参与行为） |
 | `created` / `updated` | 本地时间 `yyyy-MM-ddTHH:mm:ss`；保存时自动刷新 `updated` |
 | `enabled` | 启用 mod 的 id 列表（**不在此列表里的 mod 会被禁用**） |
-| `settings` | 应用时要写进 `config.json` 的键值；采集范围 = 内置 8 键 ∪ 档里原本就有的键 |
+| `settings` | 应用时要写进 `config.json` 的键值；**新建档默认只自动捕获 `base_mod`**，档里原本记过的键（如旧档的 `lang`/`theme`/`auto_chapter`）继续保留 |
 | `chapters` | 由启用 mod 的章节推导（`root` 排最前），只作展示与恢复点参考 |
 | `mods_root` | mods 根，默认 `mods`；只接受 `Neutraled` 之下的相对路径 |
 
-内置会采集的设置键（`Profiles.cs:82-86`，也是打印顺序）：
-`lang`、`theme`、`base_mod`、`auto_skip_selector`、`auto_chapter`、`skip_legend`、`debug_live`、`cache_max_mb`。
+内置自动采集的设置键（`Profiles.cs:82-92`，按写入顺序）：只有 `base_mod`。
+* `lang` / `theme` 是**可选覆盖**：档里原本记过就继续保留，新档不再自动捕获（避免切档顺手改掉界面语言/主题）；
+* `cache_max_mb` 是机器相关设置，不进配置档；
+* `auto_skip_selector` / `skip_legend` 等旧键已废弃，由 `ConfigSchema` 映射到 `auto_skip` / `skip_intro`，不再采集；
 **特意不含 `active_profile`** —— 它是「当前用哪个档」的指针，不属于任何一个档的内容。
 
 ---
@@ -686,6 +690,8 @@ root 产物（游戏自带启动器 `data.win`，也就是**章节选择器**那
 
 ### 实测输出
 
+> 下列输出产生于 2026-09-26（旧版采集 8 个设置键）。2026-11 起新建档默认只采集 `base_mod`；旧档里原本记过的 `lang` / `theme` / `auto_chapter` 等键仍会照旧套用 —— 所以「设置」行的条数可能因档而异。
+
 #### 1. 列出：`--profile-list`
 
 ```bash
@@ -703,10 +709,10 @@ ntl-builder.exe --profile-list
 一行一档，列 = `标记  id  显示名  启用 N 个 mod  更新时间`；`*` = 当前活动档。目录里一个档都没有时：
 
 ```
-[配置档] 还没有配置档（用 --profile-create <id> 新建）
+[配置档] 还没有配置档（用 --profile-new <id> 新建）
 ```
 
-> ⚠ 这行提示里的 `--profile-create` **并不存在**（真开关是 `--profile-new`），属于待修的文案瑕疵。
+> 旧版本（≤2026-10）这里曾误写成一个不存在的开关名；当前源码与示例输出都已是 `--profile-new`（`builder/Profiles.cs:756`）。
 
 #### 2. 看详情：`--profile-show [id]`
 
@@ -944,15 +950,14 @@ ntl-builder.exe --profile-import "<…>\docsdemo.export.json"
 ### 已知限制
 
 1. **`--profile-new` 恒返回 0**。id 非法（`../evil`）或同名已存在时，模块只打一行 `非法 id：…` / `已存在同名档，未覆盖：…`，CLI 仍然追加 `[配置档] 已创建 ../evil` 并退出 0 —— 脚本**不能靠退出码判断新建是否真的发生**，要自己查 `profiles/<id>.json` 是否存在。
-2. **空列表的提示文案是错的**：`用 --profile-create <id> 新建` —— 没有 `--profile-create` 这个开关，正确的是 `--profile-new`。
-3. **`--profile-delete` 被拒时退出 1，而 `--profile-export`/`--profile-import` 的参数/重名问题退出 2**，同一族命令的退出码语义不统一（`0` 成功、`1` 失败、`2` 用法/参数问题、`3` 被拒绝 是 MANAGE.md 的约定）。
-4. **`--desc` 有效但不在用法行里**；用法行只列 `--name` 与 `--from`。
-5. **档里找不到的 mod 只会被忽略**（一行 `[配置档] 忽略：找不到 mod <id>`）。这种档看起来「应用成功」，实际少改了几个 mod —— 手工编辑档、或 mod 被删掉之后容易踩到。
-6. **配置档不记录 mod 的版本与内容**：它只管「开/关」。要能还原到某个版本，用快照（[MANAGE.md](MANAGE.md)）；要整游戏回退用恢复点（[MANAGE.md](MANAGE.md)）。
-7. **采集的设置键是白名单**：只有上面那 8 个键 + 档里原本记过的键会被跟到；其它模块以后新加的键，除非该档曾经记过，否则不会自动采集。
-8. **游戏内控制台没有配置档命令**。控制台里的 `profile` 是**性能统计**（FPS / 缓存命中 / Hook 数 / 对象数，`api/ntl_console_profile.gml`、`ntl_i18n_init.gml:118`）—— 与本文的配置档**同名但无关**。切档目前只有 CLI 与 GUI/Web 两个入口。
-9. **未验证的部分**：GUI / Web / 插件侧的配置档入口（只测了 CLI）；游戏**正在运行时**切档（会改 `mod.json`，下一次部署才生效，未实测并发场景）；macOS/Linux 上的行为（本机 Windows 10 实测，路径校验与大小写规则在源码里按平台分支）。
-10. **`profiles/active.json` 的语义与 [MANAGE.md](MANAGE.md) §1 的描述有出入**：那里写它「仅记录，不改行为」，实测它在 `config.json` 的 `active_profile` 缺失/为空时**会被当成活动档**（回退读取，见「活动档指针」）。
+2. **`--profile-delete` 被拒时退出 1，而 `--profile-export`/`--profile-import` 的参数/重名问题退出 2**，同一族命令的退出码语义不统一（`0` 成功、`1` 失败、`2` 用法/参数问题、`3` 被拒绝 是 MANAGE.md 的约定）。
+3. **`--desc` 有效但不在用法行里**；用法行只列 `--name` 与 `--from`。
+4. **档里找不到的 mod 只会被忽略**（一行 `[配置档] 忽略：找不到 mod <id>`）。这种档看起来「应用成功」，实际少改了几个 mod —— 手工编辑档、或 mod 被删掉之后容易踩到。
+5. **配置档不记录 mod 的版本与内容**：它只管「开/关」。要能还原到某个版本，用快照（[MANAGE.md](MANAGE.md)）；要整游戏回退用恢复点（[MANAGE.md](MANAGE.md)）。
+6. **采集的设置键是白名单**：新建档只会自动捕获 `base_mod`；档里原本记过的键会被保留并继续跟随；其它模块以后新加的键，除非该档曾经记过，否则不会自动采集（规范键表见 `builder/ConfigSchema.cs`）。
+7. **游戏内控制台没有配置档命令**。控制台里的 `profile` 是**性能统计**（FPS / 缓存命中 / Hook 数 / 对象数，`api/ntl_console_profile.gml`、`ntl_i18n_init.gml:118`）—— 与本文的配置档**同名但无关**。切档目前只有 CLI 与 GUI/Web 两个入口。
+8. **未验证的部分**：GUI / Web / 插件侧的配置档入口（只测了 CLI）；游戏**正在运行时**切档（会改 `mod.json`，下一次部署才生效，未实测并发场景）；macOS/Linux 上的行为（本机 Windows 10 实测，路径校验与大小写规则在源码里按平台分支）。
+9. **`profiles/active.json` 的语义与 [MANAGE.md](MANAGE.md) §1 的描述有出入**：那里写它「仅记录，不改行为」，实测它在 `config.json` 的 `active_profile` 缺失/为空时**会被当成活动档**（回退读取，见「活动档指针」）。
 
 ---
 

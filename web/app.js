@@ -19,9 +19,9 @@ const TABS = [
   { id: 'deploy',    label: '部署' }
 ];
 
-const CHAPTERS = ['root', 'chapter1', 'chapter2', 'chapter3', 'chapter4'];
+const CHAPTERS = ['root', 'chapter1', 'chapter2', 'chapter3', 'chapter4', 'chapter5', 'all'];
 
-const state = { status: null, tab: 'overview', themes: null, snapMod: '' };
+const state = { status: null, tab: 'overview', themes: null, snapMod: '', chapters: null, currentChapter: 'root' };
 
 /* ------------------------------------------------------------------ 基础设施 */
 
@@ -65,6 +65,28 @@ function asList(data, ...keys) {
   if (Array.isArray(data)) return data;
   for (const k of keys) if (data && Array.isArray(data[k])) return data[k];
   return [];
+}
+
+/* 章节表：优先用 GET /api/chapters（官方目标 + 外部章节），失败时回退到内置六章 + all。
+   外部章节 deployable=false（不能作为部署/安装目标），下拉里只列可部署项。 */
+function chapterList() {
+  const raw = Array.isArray(state.chapters) ? state.chapters : [];
+  const list = raw
+    .filter(function (c) { return c && c.id && c.deployable !== false; })
+    .map(function (c) { return { id: c.id, name: c.name || c.id }; });
+  if (list.length) return list;
+  return CHAPTERS.map(function (c) { return { id: c, name: c }; });
+}
+
+async function loadChapters() {
+  try { state.chapters = asList(await api('/api/chapters'), 'chapters'); }
+  catch (e) { state.chapters = null; /* 后端旧版本/临时失败：用内置表，页面仍可用 */ }
+}
+
+function currentChapter() {
+  const cur = state.currentChapter || 'root';
+  const ids = chapterList().map(function (c) { return c.id; });
+  return ids.indexOf(cur) >= 0 ? cur : 'root';
 }
 
 let toastTimer = null;
@@ -154,63 +176,67 @@ async function renderOverview(view) {
   const kv = function (k, v) {
     return el('div', { class: 'kv' }, el('span', { class: 'k', text: k }), el('span', { class: 'v', text: v }));
   };
+  const grid = el('div', { class: 'grid' },
+    kv('游戏根', s.gameRoot || '—'),
+    kv('平台', s.platform || '—'),
+    kv('章节后缀', s.chapterSuffix || '—'),
+    // WEB-01：mod 总数按 Id 聚合（叶子条目另列，解释 71 叶子 vs 39 mod）
+    kv('mod 总数', String(s.mods == null ? 0 : s.mods)),
+    kv('已启用 mod', String(s.enabled == null ? 0 : s.enabled)),
+    kv('当前配置档', s.active_profile || '（未使用）'),
+    kv('界面语言', s.lang || 'zh'),
+    kv('当前主题', s.theme || 'default'),
+    kv('版本', s.version || '—'),
+    kv('配置档', asList(s.profiles).join('、') || '（无）'));
+  if (s.leafMods != null && s.leafMods !== s.mods) grid.append(kv('mod 叶子条目', String(s.leafMods)));
+  if (s.partial) grid.append(kv('部分启用 mod', String(s.partial)));
   view.append(
     el('section', { class: 'panel' },
-      el('h2', { text: '总览' }),
-      el('div', { class: 'grid' },
-        kv('游戏根', s.gameRoot || '—'),
-        kv('平台', s.platform || '—'),
-        kv('章节后缀', s.chapterSuffix || '—'),
-        kv('mod 总数', String(s.mods == null ? 0 : s.mods)),
-        kv('已启用 mod', String(s.enabled == null ? 0 : s.enabled)),
-        kv('当前配置档', s.active_profile || '（未使用）'),
-        kv('界面语言', s.lang || 'zh'),
-        kv('当前主题', s.theme || 'default'),
-        kv('版本', s.version || '—'),
-        kv('配置档', asList(s.profiles).join('、') || '（无）'))),
+      el('h2', { text: '总览' }), grid),
     el('section', { class: 'panel' },
       el('h2', { text: '快捷操作' }),
       el('p', { class: 'muted', text: '网页界面与命令行走同一套模块，改完立即落盘；部署会调用主程序的部署流程。' }),
       el('div', { class: 'row' },
         el('button', { text: '刷新', onclick: function () { return load(); } }),
         el('button', { text: '部署 root', onclick: function () { return doDeploy('root'); } }),
-        el('button', { text: '部署当前章节', onclick: function () { return doDeploy(currentChapter()); } }))));
-}
-
-function currentChapter() {
-  const s = state.status || {};
-  const suf = String(s.chapterSuffix || '');
-  const m = suf.match(/chapter\d/);
-  return m ? m[0] : 'root';
+        el('button', { text: '部署当前章节（' + currentChapter() + '）', onclick: function () { return doDeploy(currentChapter()); } }))));
 }
 
 async function renderMods(view) {
   const data = await api('/api/mods');
   const list = asList(data, 'mods');
   const rows = list.map(function (m) {
-    const on = m.enabled !== false;
+    // enabledState = 后端按 Id 聚合后的三态：all / partial / none
+    const st = m.enabledState || (m.enabled === false ? 'none' : 'all');
+    const on = st === 'all';
+    const label = st === 'all' ? '已启用' : st === 'none' ? '已禁用' : '部分启用';
+    const badgeClass = st === 'all' ? 'on' : st === 'none' ? 'off' : '';
+    const chapters = Array.isArray(m.chapters) && m.chapters.length ? m.chapters.join(', ') : (m.chapter || '');
     return el('tr', null,
       el('td', { class: 'mono', text: m.id || '' }),
       el('td', { text: m.name || '' }),
       el('td', { class: 'mono', text: m.version || '' }),
       el('td', { text: m.author || '' }),
-      el('td', { text: m.chapter || '' }),
-      el('td', null, el('span', { class: 'badge ' + (on ? 'on' : 'off'), text: on ? '已启用' : '已禁用' })),
+      el('td', { text: chapters }),
+      el('td', null, el('span', { class: 'badge ' + badgeClass, text: label })),
       el('td', null, el('button', {
-        text: on ? '禁用' : '启用',
+        text: on ? '禁用' : (st === 'none' ? '启用' : '全部启用'),
         onclick: function () { return toggleMod(m.id, !on); }
       })));
   });
   view.append(el('section', { class: 'panel' },
-    el('h2', { text: 'mod 管理（' + list.length + '）' }),
-    el('p', { class: 'muted', text: '启用/禁用会直接改写 mod 的清单与目录名（与命令行的 mods on|off 同一条路径），禁用后游戏不再加载。' }),
+    el('h2', { text: 'mod 管理（' + list.length + ' 个，按 Id 聚合）' }),
+    el('p', { class: 'muted', text: '启用/禁用会直接改写 mod 的清单与目录名（与命令行的 mods on|off 同一条路径），禁用后游戏不再加载。多章节 mod 的启停会覆盖它的全部叶子。' }),
     table(['id', '名称', '版本', '作者', '章节', '状态', '操作'], rows)));
 }
 
 async function toggleMod(id, want) {
+  // WEB-05：禁用属于破坏性操作，必须二次确认；启用可以直接生效。
+  if (!want && !window.confirm('禁用后该 mod 不生效，继续？\n（多章节 mod 会同时禁用全部叶子）')) return;
   await guard(async function () {
-    await api('/api/mods/toggle', 'POST', { id: id, enabled: want });
-    toast((want ? '已启用 ' : '已禁用 ') + id, 'good');
+    const r = await api('/api/mods/toggle', 'POST', { id: id, enabled: want });
+    const changed = r && r.changed != null ? r.changed : 0;
+    toast((want ? '已启用 ' : '已禁用 ') + id + (changed ? '（' + changed + ' 个叶子）' : ''), 'good');
     await load();
   });
 }
@@ -339,7 +365,8 @@ async function applyRestore(id, hasData) {
 async function renderDownloads(view) {
   const box = el('input', { type: 'search', id: 'gb-q', placeholder: '搜索 GameBanana（如：Chapter 4 汉化）', style: 'min-width:320px' });
   const installChapter = el('select', { id: 'gb-chapter' });
-  for (const c of CHAPTERS) installChapter.append(el('option', { value: c, text: c }));
+  // WEB-03/WEB-09：与部署面板共用 GET /api/chapters 的动态章表（root + chapter1..5 + all）。
+  for (const c of chapterList()) installChapter.append(el('option', { value: c.id, text: c.name }));
   installChapter.value = currentChapter();
 
   const resultBox = el('div', { id: 'gb-results', class: 'muted', text: '输入关键词后回车搜索。' });
@@ -527,8 +554,10 @@ async function checkCoverage() {
 
 async function renderDeploy(view) {
   const chapter = el('select', { id: 'deploy-chapter' });
-  for (const c of CHAPTERS) chapter.append(el('option', { value: c, text: c }));
+  for (const c of chapterList()) chapter.append(el('option', { value: c.id, text: c.name }));
   chapter.value = currentChapter();
+  // 用户在部署面板选中的章节 = 本页「当前章节」（总览的快捷部署也用它），不再从 chapterSuffix 猜。
+  chapter.addEventListener('change', function () { state.currentChapter = chapter.value; });
   const out = el('div', { id: 'deploy-out' });
   view.append(el('section', { class: 'panel' },
     el('h2', { text: '部署' }),
@@ -601,12 +630,13 @@ async function refreshStatus() {
   try { paintMeta(await api('/api/status')); } catch (e) { /* 状态拉不到就先不管，面板自己会报错 */ }
 }
 
-function boot() {
+async function boot() {
   buildTabs();
   document.getElementById('btn-refresh').addEventListener('click', function () { return load(); });
   document.getElementById('btn-shutdown').addEventListener('click', shutdown);
   loadThemes().catch(function () { /* 主题拿不到就用内置配色 */ });
-  load();
+  await loadChapters();   // 先拿到动态章表，部署/下载下拉才不会闪回旧列表
+  await load();
   setInterval(refreshStatus, 15000);
 }
 
