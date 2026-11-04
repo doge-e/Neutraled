@@ -28,6 +28,8 @@ public sealed class EditorForm : Form
     private readonly Label _statusTool = new();
     /// <summary>状态栏常驻区：当前房间 / 尺寸 / 实例数。操作提示写在 _statusLeft，不会把这条覆盖掉。</summary>
     private readonly Label _statusRoom = new();
+    /// <summary>状态栏左栏的完整文本（含 sidecar / mod / data.win 绝对路径）：窄窗口下会截断，悬停可见。</summary>
+    private readonly ToolTip _statusTip = new() { AutoPopDelay = 30000, InitialDelay = 350, ReshowDelay = 100 };
     private readonly Button _pickTileSourceBtn = new();
     private readonly Button _paletteBtn = new();
     private TilePaletteDialog? _palette;
@@ -394,6 +396,7 @@ public sealed class EditorForm : Form
         EditorTool[] toolIds = { EditorTool.Select, EditorTool.Pan, EditorTool.Place, EditorTool.Erase, EditorTool.Tile,
                                  EditorTool.TileRect, EditorTool.TileLine, EditorTool.TileCircle, EditorTool.TileEllipse,
                                  EditorTool.TileFill, EditorTool.TileSelect };
+        var toolTips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 400 };
         for (int i = 0; i < tools.Length; i++)
         {
             // 工具变多后按钮要稍窄一点，否则 1520 宽下右半会被 FlowLayoutPanel 裁掉
@@ -401,6 +404,8 @@ public sealed class EditorForm : Form
             var btn = new Button { Text = tools[i], Width = w, Height = 30, Margin = new Padding(0, 0, 4, 0) };
             Theme.StyleButton(btn);
             var tool = toolIds[i];
+            // 右键擦除 / Alt 拾取笔刷只写在文档里，新人不一定发现（QA 体验 #9）→ 每个工具都给一条悬停说明。
+            toolTips.SetToolTip(btn, ToolHint(tool));
             btn.Click += (s, e) => SetTool(tool);
             _toolButtons.Add(btn);
             left.Controls.Add(btn);
@@ -474,6 +479,23 @@ public sealed class EditorForm : Form
         EditorTool.TileFill => "油漆桶 (K)",
         EditorTool.TileSelect => "瓦片选择 (S)",
         _ => tool.ToString(),
+    };
+
+    /// <summary>工具按钮的悬停说明（快捷键 + 鼠标约定）。</summary>
+    private static string ToolHint(EditorTool tool) => tool switch
+    {
+        EditorTool.Select => "选择 (V)：左键选中/拖动实例，框选多选，右键弹出快捷菜单（战斗/对话/剧情/文本覆盖）",
+        EditorTool.Pan => "平移 (H)：左键拖动视图（滚轮缩放，也可用空格临时平移）",
+        EditorTool.Place => "放置 (B)：左键在画布上放置选中的对象",
+        EditorTool.Erase => "擦除 (X)：左键删除点中的实例",
+        EditorTool.Tile => "瓦片 (T)：左键绘制 / 右键擦除 / Alt+左键拾取笔刷（先在本工具下选择图块来源）",
+        EditorTool.TileRect => "矩形填瓦片 (R)：按住左键拖出矩形，右键擦除同一矩形范围",
+        EditorTool.TileLine => "直线填瓦片 (L)：按住左键拖出直线，右键擦除",
+        EditorTool.TileCircle => "圆形填瓦片 (C)：按住左键拖出圆形，右键擦除",
+        EditorTool.TileEllipse => "椭圆填瓦片 (E)：按住左键拖出椭圆，右键擦除",
+        EditorTool.TileFill => "油漆桶 (K)：左键把连通区域填成当前图块，右键擦除",
+        EditorTool.TileSelect => "瓦片选择 (S)：左键框选一块瓦片区域当笔刷，右键擦除",
+        _ => ToolDisplayName(tool),
     };
 
     /// <summary>状态栏右侧显示当前工具与显示开关（矩阵 MG-020/024/053..055 的可读状态来源）。</summary>
@@ -1216,12 +1238,14 @@ public sealed class EditorForm : Form
             UpdateTitle();
             UpdateUndoState();
             UpdateStatus();
-            _statusLeft.Text = $"已加载 {Path.GetFileName(path)} — {_roomRows.Count} 个房间 / {_objects.Count} 个对象";
-            if (_startupNote.Length > 0) _statusLeft.Text += "  ·  " + _startupNote;
+            string loaded = $"已加载 {Path.GetFileName(path)} — {_roomRows.Count} 个房间 / {_objects.Count} 个对象";
+            if (_startupNote.Length > 0) loaded += "  ·  " + _startupNote;
             if (_fileRole == FileKind.Baseline)
-                _statusLeft.Text += $"  ·  {FileRole.BaselineBadge}（data.win 不改；对话/战斗/剧情保存到 Neutraled/editor 并生成 mod）";
+                loaded += "  ·  " + FileRole.BaselineBadge + "（data.win 不改；改动存 Neutraled/editor 并生成 mod）";
             else if (FileRole.IsLive(_fileRole))
-                _statusLeft.Text += $"  ·  {FileRole.LiveBadge}";
+                loaded += "  ·  " + FileRole.LiveBadge;
+            // 单行放不下的细节（data.win 绝对路径）挂 ToolTip（QA 体验 #7）。
+            SetStatusLine(loaded, "data.win: " + path + "\n" + loaded);
             RecentStore.Record(path);
         }
         catch (Exception ex)
@@ -1366,7 +1390,22 @@ public sealed class EditorForm : Form
         int instances = RoomEdit.AllInstances(_doc.Room).Count();
         int tiles = _doc.Room.Layers?.Sum(l => (l.AssetsData?.LegacyTiles?.Count ?? 0) + NativeTiles.CountNonZero(l)) ?? 0;
         _statusRoom.Text = $"{_doc.RoomName()} · {_doc.Room.Width}×{_doc.Room.Height} · {instances} 实例 · {tiles} 图块" + (_doc.Dirty ? "  * 未保存" : "");
-        if (_startupNote.Length > 0) _statusLeft.Text = _startupNote;
+        // 启动说明/回灌提示只在打开流程写一次（OpenPath 的「已加载 … · 启动: …」、OnShown 的基线说明）。
+        // 这里再写一次的话，保存后的「已保存编辑配置 …」会被启动说明冲掉（QA 体验：操作结果看不到）。
+    }
+
+    /// <summary>写状态栏左栏。窗口不宽时单行必然被截断，完整文本（含 sidecar / mod / data.win 绝对路径）挂 ToolTip。</summary>
+    private void SetStatusLine(string text, string? full = null)
+    {
+        _statusLeft.Text = text;
+        _statusTip.SetToolTip(_statusLeft, string.IsNullOrEmpty(full) ? text : full);
+    }
+
+    /// <summary>生成 mod 的状态栏后缀：只写 mod 目录名，完整路径挂 ToolTip（单行放不下必然截断）。</summary>
+    private string ModStatusSuffix(GenerateResult gen)
+    {
+        _statusTip.SetToolTip(_statusLeft, "mod: " + gen.ModDir);
+        return "；已生成 mod: " + Path.GetFileName(gen.ModDir.TrimEnd(Path.DirectorySeparatorChar));
     }
 
     private void UpdateTitle()
@@ -2733,7 +2772,7 @@ public sealed class EditorForm : Form
         }
         if (!_doc.RenameRoom(name)) return;
         UpdateStatus();
-        _statusLeft.Text = $"已重命名房间：{old} → {name}";
+        _statusLeft.Text = $"已重命名房间：{old} → {name}（不可撤销，Ctrl+Z 撤不回来）";
     }
 
     private void DeleteRoomAction()
@@ -2905,10 +2944,14 @@ public sealed class EditorForm : Form
             _fileRole = FileRole.Classify(path, root);
             string stats = $"战斗 {_battles?.File.Battles.Count ?? 0} 场 / 对话 {_battles?.File.Dialogues.Count ?? 0} 段 / 剧情 {_battles?.File.Cutscenes.Count ?? 0} 段 / 设置 {_battles?.File.Settings.Count ?? 0} 项 / 文本改写 {_battles?.File.TextOverrides.Count ?? 0} 条";
             if (diff != null && diff.ChangeCount > 0) stats += $" / 地图改动 {diff.ChangeCount} 处（{diff.Patches.Count} 个房间）";
-            if (writeData) _statusLeft.Text = $"已保存 {path}（{stats}）";
-            else _statusLeft.Text = $"已保存编辑配置（原版 data.win 未改动；{stats}）→ {sidecarPath}";
+            // 绝对路径会让单行超长被截断（QA 体验 #7）→ 主文本只放文件名，完整路径挂 ToolTip。
+            string status = writeData
+                ? $"已保存 {Path.GetFileName(path)}（{stats}）"
+                : $"已保存编辑配置（原版 data.win 未改动；{stats}）· {Path.GetFileName(sidecarPath)}";
+            string statusFull = (writeData ? "data.win: " + path + "\n" : "") + "sidecar: " + sidecarPath;
             if (diff != null && diff.ChangeCount > 0 && _battles != null && _settings.AutoGenerateMod)
-                _statusLeft.Text += "；地图改动已写入 mod 的 roomPatches";
+                status += "；地图改动已写入 mod 的 roomPatches";
+            SetStatusLine(status, statusFull);
             UpdateTitle();
             // 常驻房间面板（"当前房间 · 尺寸 · 实例 · 图块 · * 未保存"）由 UpdateStatus() 重算；
             // 保存成功后不刷新，面板会一直挂着已经失效的「* 未保存」（QA S10.20 实测）。
@@ -2916,7 +2959,13 @@ public sealed class EditorForm : Form
             if (_settings.AutoGenerateMod)
             {
                 var gen = AutoGenerateModNow(false);
-                if (gen != null) _statusLeft.Text += $"；已生成 mod: {gen.ModDir}";
+                if (gen != null)
+                {
+                    _statusTip.SetToolTip(_statusLeft, statusFull + "\nmod: " + gen.ModDir);
+                    SetStatusLine(status + $"；已生成 mod: {Path.GetFileName(gen.ModDir.TrimEnd(Path.DirectorySeparatorChar))}",
+                        statusFull + "\nmod: " + gen.ModDir);
+                }
+                // gen == null：AutoGenerateModNow 已经写好「配置有 N 个错误，未生成 mod（详见 …）」+ 错误明细 ToolTip，别覆盖
             }
         }
         catch (Exception ex)
@@ -2990,7 +3039,9 @@ public sealed class EditorForm : Form
                 {
                     _startupNote = target.FromDefault ? "默认启动: " + target.Source : "启动: " + target.Source;
                     if (_fileRole == FileKind.Baseline)
-                        _statusLeft.Text = "原版基线 — data.win 只读；对话/战斗/剧情可直接编辑（存到 Neutraled/editor 并生成 mod）";
+                        // 无参数/双击启动时也要让用户看到「确实加载了」（QA 体验 #6）：带上房间/对象数与文件名。
+                        SetStatusLine($"原版基线 — data.win 只读；已加载 {_roomRows.Count} 个房间 / {_objects.Count} 个对象；改动存 Neutraled/editor 并生成 mod",
+                            "data.win: " + target.Path + "（只读，保存只写 Neutraled/editor 并生成 mod）");
                     else UpdateStatus();
                 }
             }
@@ -3139,7 +3190,7 @@ public sealed class EditorForm : Form
                 if (_settings.AutoGenerateMod)
                 {
                     var gen = AutoGenerateModNow(false);
-                    if (gen != null) _statusLeft.Text += "；已生成 mod: " + gen.ModDir;
+                    if (gen != null) _statusLeft.Text += ModStatusSuffix(gen);
                 }
                 RebuildInspector();
             }
@@ -3166,7 +3217,7 @@ public sealed class EditorForm : Form
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        if (notify) _statusLeft.Text = "已保存编辑配置 " + sidecar;
+        if (notify) SetStatusLine("已保存编辑配置 · " + Path.GetFileName(sidecar), "sidecar: " + sidecar);
     }
 
     /// <summary>列出全部战斗；双击跳到绑定房间并进入编辑。</summary>
@@ -3242,7 +3293,7 @@ public sealed class EditorForm : Form
                 if (_settings.AutoGenerateMod)
                 {
                     var gen = AutoGenerateModNow(false);
-                    if (gen != null) _statusLeft.Text += "；已生成 mod: " + gen.ModDir;
+                    if (gen != null) _statusLeft.Text += ModStatusSuffix(gen);
                 }
                 RebuildInspector();
             }
@@ -3326,7 +3377,7 @@ public sealed class EditorForm : Form
                 if (_settings.AutoGenerateMod)
                 {
                     var gen = AutoGenerateModNow(false);
-                    if (gen != null) _statusLeft.Text += "；已生成 mod: " + gen.ModDir;
+                    if (gen != null) _statusLeft.Text += ModStatusSuffix(gen);
                 }
                 RebuildInspector();
             }
@@ -3423,7 +3474,8 @@ public sealed class EditorForm : Form
             System.IO.Compression.ZipFile.CreateFromDirectory(gen.ModDir, dst,
                 System.IO.Compression.CompressionLevel.Optimal, false);
             long kb = new FileInfo(dst).Length / 1024;
-            _statusLeft.Text = $"已导出 .ntlmod：{dst}（{kb} KB）";
+            SetStatusLine($"已导出 .ntlmod：{Path.GetFileName(dst)}（{kb} KB）",
+            "mod 包: " + dst + "\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-builder --mod-install");
             MessageBox.Show(this, "已导出 mod 包：\n" + dst + "\n\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-builder --mod-install。",
                 "导出 .ntlmod", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -3586,7 +3638,12 @@ public sealed class EditorForm : Form
             if (notify)
                 MessageBox.Show(this, "配置有错误，先修好：\n\n" + detail, "生成 Mod",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            else _statusLeft.Text += "；配置有 " + errors.Count + " 个错误，未生成 mod";
+            else
+            {
+                // 错误明细不适合塞进单行状态栏（会被截断）→ 主文本指路，明细挂 ToolTip（QA 体验 #3）。
+                _statusLeft.Text += "；配置有 " + errors.Count + " 个错误，未生成 mod（详见 战斗 → 立即重新生成 Mod…；悬停看明细）";
+                _statusTip.SetToolTip(_statusLeft, "配置错误：\n" + detail);
+            }
             return null;
         }
         var r = BattleGenerator.Generate(_battles, Path.Combine(GameRoot(), "Neutraled", "mods"), _doc.Game);
@@ -3649,7 +3706,7 @@ public sealed class EditorForm : Form
         if (_settings.AutoGenerateMod)
         {
             var gen = AutoGenerateModNow(false);
-            if (gen != null) _statusLeft.Text += "；已生成 mod: " + gen.ModDir;
+            if (gen != null) _statusLeft.Text += ModStatusSuffix(gen);
         }
         RebuildInspector();
     }

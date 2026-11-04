@@ -222,7 +222,9 @@ public sealed class BattleEditDialog : Form
         host.Controls.Add(_enemyGrid);
         var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 34, FlowDirection = FlowDirection.LeftToRight };
         var add = MakeBtn("添加敌人");
-        add.Click += (s, e) => AddEnemyRow(new EnemyDef());
+        // QA 实测：新建战斗已自动带 1 个空行，连点两次就得到 3 行完全一样的默认敌人（obj_bloxer_enemy / Enemy），
+        // 看起来像 bug。改成：重复对象自动加序号名，并守住 encounter 的 3 个上限。
+        add.Click += (s, e) => AddEnemyRowClick();
         var del = MakeBtn("删除选中");
         del.Click += (s, e) => { foreach (DataGridViewRow r in _enemyGrid.SelectedRows) _enemyGrid.Rows.Remove(r); };
         bar.Controls.Add(add);
@@ -541,6 +543,21 @@ public sealed class BattleEditDialog : Form
         };
         foreach (var n in ObjectNames()) col.Items.Add(n);
         return col;
+    }
+
+    private void AddEnemyRowClick()
+    {
+        var rows = _enemyGrid.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow).ToList();
+        if (rows.Count >= 3)
+        {
+            MessageBox.Show(this, "encounter 战斗最多 3 个敌人。要换成别的对象请直接改第一列；同种敌人多只时用第二列「名称」区分。",
+                "添加敌人", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var def = new EnemyDef();
+        int dup = rows.Count(r => string.Equals((r.Cells[0].Value ?? "").ToString(), def.Object, StringComparison.OrdinalIgnoreCase));
+        if (dup > 0) def.Name = def.Name + " " + (dup + 1).ToString();
+        AddEnemyRow(def);
     }
 
     private void AddEnemyRow(EnemyDef e)

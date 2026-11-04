@@ -445,7 +445,9 @@ public sealed class BattleProject
         c.Trigger.Room = room;
         c.Trigger.Radius = 64;
         c.Steps.Add(new CutsceneStep { Kind = "face", Actor = "player", Direction = "down" });
-        c.Steps.Add(new CutsceneStep { Kind = "dialogue", Lines = { "" } });
+        // 默认不再给「空文本的 dialogue」：那样打开新剧情不改任何东西、直接点保存就会被必填校验拦下
+        // （红字「对话步骤至少要写一行文本」），用户会以为编辑器坏了。给一条可编辑的等待步骤更直观。
+        c.Steps.Add(new CutsceneStep { Kind = "wait", Frames = 30, Note = "新剧情：按需插入对话 / 动作步骤" });
         File.Cutscenes.Add(c);
         return c;
     }
@@ -608,7 +610,7 @@ public sealed class BattleProject
                 }
             }
             if (c.Steps.Count == 0)
-                c.Steps.Add(new CutsceneStep { Kind = "dialogue", Lines = { "" } });
+                c.Steps.Add(new CutsceneStep { Kind = "wait", Frames = 30, Note = "空剧情：按需插入对话 / 动作步骤" });
         }
 
         for (int i = 0; i < File.Dialogues.Count; i++)
