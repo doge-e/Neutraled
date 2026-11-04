@@ -74,3 +74,4 @@ deploy-session.json
 gui-alerts.json
 gui-conflicts-ack.txt
 gui_lang.txt.migrated
+object-hooks.json

@@ -3,13 +3,13 @@ using static Neutraled.Builder.Lang;
 
 namespace Neutraled.Builder;
 
-/// <summary>缓存优化 —— 去重（B3）与增量部署（B4）。
+/// <summary>缓存优化 —— 硬链接去重（B3）。
 ///
 /// B3 去重：多份缓存里往往有大量相同文件（比如同一个 data.win 的多份副本）。
 ///         用一个「内容哈希 → 主副本」的中央池，其余全部改成硬链接，可省一半以上空间。
 ///
-/// B4 增量：把「输入函数重定向」「内置函数 Hook」这类耗时步骤的**结果**缓存起来，
-///         当 mod 集合、api 版本、目标章节都没变时直接复用，跳过反编译。
+/// 产物级「跳过整天部署」由 Cache.cs 的签名缓存负责（api 指纹 + 游戏版本 + 章节 + 启用 mod + 基底指纹），
+/// 所以不再单独缓存「输入函数重定向」的结果（B4 已移除）。
 /// </summary>
 public static class CacheOpt
 {
@@ -76,36 +76,10 @@ public static class CacheOpt
         return saved;
     }
 
-    /// <summary>B4：重定向结果缓存 —— 判断是否可以跳过耗时步骤</summary>
-    public static bool TryGetRedirectCache(string neutraledRoot, string chapter, string modsSignature, out string cachedJson)
-    {
-        cachedJson = "";
-        var path = Path.Combine(neutraledRoot, "cache", "redirect-" + chapter + ".json");
-        if (!File.Exists(path)) return false;
-        try
-        {
-            var txt = File.ReadAllText(path);
-            var doc = System.Text.Json.JsonDocument.Parse(txt);
-            if (doc.RootElement.TryGetProperty("sig", out var sig) && sig.GetString() == modsSignature)
-            {
-                cachedJson = txt;
-                return true;
-            }
-        }
-        catch { }
-        return false;
-    }
-
-    public static void SaveRedirectCache(string neutraledRoot, string chapter, string modsSignature, string json)
-    {
-        try
-        {
-            var dir = Path.Combine(neutraledRoot, "cache");
-            Directory.CreateDirectory(dir);
-            File.WriteAllText(Path.Combine(dir, "redirect-" + chapter + ".json"), json);
-        }
-        catch { }
-    }
+    // B4（重定向结果缓存）已移除（2026-11-05）：TryGetRedirectCache / SaveRedirectCache 从来没有调用点。
+    // 原因：整个产物级缓存（Cache.cs：api 指纹 + 游戏版本 + 章节 + 启用 mod + 基底指纹 → 硬链接复用）
+    // 已经覆盖「mod 集合/版本不变 → 跳过整次部署」，把输入重定向结果单独缓存没有收益；
+    // 而 mod 集合一变，重定向的代码块索引也会随之位移，跨签名复用结果反而不安全。
 
     // ---------- 辅助 ----------
     private static string HashFile(string path)

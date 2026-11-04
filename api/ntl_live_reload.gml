@@ -12,6 +12,8 @@
         ds_map_destroy(_entry);
     }
     ds_list_destroy(_mods);
+    // hook 脚本的 路径+mtime 编译缓存一并清空（避免热重载后仍跑旧 AST）
+    if (variable_global_exists("ntl_lua_fastcache")) { ds_map_destroy(global.ntl_lua_fastcache); global.ntl_lua_fastcache = ds_map_create(); }
     // 重建整张表后必须让 ntl_live_emit 重新按依赖排序（那个标志以前只置 1、从不重置）
     global.ntl_live_sorted = 0;
     ntl_live_init();

@@ -552,6 +552,14 @@ public static class Injector
 
         PhaseTimer.Mark("2.7 新增房间");
 
+        // ---------- 2\.7b\) 已有房间的差分补丁（mod.json 的 room_patches 段） ----------
+        //   ★ 地图编辑器「直接编辑原版 data」保存时生成：房间头字段 / 实例增删改 / 原生瓦片逐格写入。
+        //     放在 2.7 之后，这样同一次部署里 mod 新建的房间也能被后续补丁命中；
+        //     放在 2.8 之前，资源名守卫能检查到补丁引入的对象引用。
+        RoomPatches.Apply(data, mods);
+
+        PhaseTimer.Mark("2.7b 房间差分");
+
         // ---------- 2\.8\) 资源名守卫（只告警，不中止） ----------
         // 到这里产物的资源集合已经定型（精灵包 / references 复制 / patches / 新增对象 / 新增房间都进完了），
         // 正适合拿它当「这个名字在不在」的基准：层只带代码不带资源，字符串形式的引用运行期只会静默返回 -1。
@@ -1024,10 +1032,24 @@ public static class Injector
         var jsonItems = new List<string>();
         int applied = 0;
 
+        // ★ 2026-11-04 修复：原来按「每个声明」各补一次同一个事件代码 ——
+        //   ① 同一对象事件被声明多次时（pre + override）会重复包一层；
+        //   ② 生成的前置代码只调 "pre"/"post"，**从来不调 "override"** ⇒
+        //     mod.json 里 mode:"override" 的对象事件 Hook 永远不会接管（声明了但静默无效）。
+        //   现在按 object+event 分组，一次生成 pre / override / post 三个分派点。
+        var seen = new HashSet<string>();
         foreach (var d in decls)
         {
             // 事件代码块名：gml_Object_<obj>_<Event>
             var codeName = "gml_Object_" + d.Object + "_" + d.Event;
+            if (!seen.Add(codeName))
+            {
+                // 同一事件已补过：只登记声明，不再重复插入
+                jsonItems.Add("{\"object\":\"" + d.Object + "\",\"event\":\"" + d.Event +
+                              "\",\"mode\":\"" + d.Mode + "\",\"handler\":\"" + d.Handler.Replace("\\", "/") +
+                              "\",\"moddir\":\"" + d.ModDir.Replace("\\", "/") + "\"}");
+                continue;
+            }
             var code = data.Code.ByName(codeName);
             if (code == null)
             {
@@ -1040,6 +1062,8 @@ public static class Injector
             catch { continue; }
 
             var pre = "var _ntlOev = ntl_oev_run(\"" + d.Object + "\", \"" + d.Event + "\", id, \"pre\");\r\n" +
+                      "var _ntlOevO = ntl_oev_run(\"" + d.Object + "\", \"" + d.Event + "\", id, \"override\");\r\n" +
+                      "if (_ntlOevO[0] == 1) exit;\r\n" +
                       "if (_ntlOev[0] == 1) exit;\r\n";
             var post = "\r\nntl_oev_run(\"" + d.Object + "\", \"" + d.Event + "\", id, \"post\");\r\n";
 

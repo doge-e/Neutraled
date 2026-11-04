@@ -89,6 +89,75 @@ public sealed class ModRoom
     public List<ModRoomView> Views { get; set; } = new();
 }
 
+/// <summary>mod 对**已有房间**的差分补丁（地图编辑器在「直接编辑原版 data」模式下保存时生成）。
+/// ★ 为什么需要它：房间/实例/瓦片是 ROOM 段资源，patch（整脚本覆盖）、gml/（函数脚本）、
+///   objects（对象事件）三段都表达不了；直接改产物 data.win 又会破坏「mod 只是增量」的语义，
+///   所以把「相对原版基线的改动」变成可部署的补丁，由部署器注入到每个目标产物。
+///   只带**差异**，不整屋复制：改一个坐标就只写一个实例的一个字段。</summary>
+public sealed class ModRoomPatch
+{
+    /// <summary>目标房间名（原版 data 里已有的房间）。</summary>
+    public string Name { get; set; } = "";
+
+    // ---- 房间头字段（null = 不改） ----
+    public uint? Width { get; set; }
+    public uint? Height { get; set; }
+    public uint? Speed { get; set; }
+    public bool? Persistent { get; set; }
+    public int? Flags { get; set; }
+    public long? BackgroundColor { get; set; }
+    public bool? DrawBackgroundColor { get; set; }
+
+    /// <summary>新增实例（无 InstanceId 或冲突时由部署器分配）。</summary>
+    public List<ModRoomInstance> InstancesAdd { get; set; } = new();
+    /// <summary>修改已有实例：只写非 null 字段；按 InstanceId 定位。</summary>
+    public List<ModRoomInstance> InstancesModify { get; set; } = new();
+    /// <summary>删除已有实例：按 InstanceId。</summary>
+    public List<ModRoomInstanceRef> InstancesRemove { get; set; } = new();
+    /// <summary>原生瓦片逐格写入（0 = 擦除）；按图层名定位，缺省第一层原生瓦片层。</summary>
+    public List<ModRoomTileSet> TilesSet { get; set; } = new();
+}
+
+/// <summary>房间实例的字段集合：add 时用 Object/X/Y 等，modify 时只写改动字段。</summary>
+public sealed class ModRoomInstance
+{
+    public uint InstanceId { get; set; }
+    /// <summary>对象名（add 必填；modify 时可换对象）。</summary>
+    public string? Object { get; set; }
+    public int? X { get; set; }
+    public int? Y { get; set; }
+    /// <summary>所在实例图层名（缺省第一层）。</summary>
+    public string? Layer { get; set; }
+    public float? ScaleX { get; set; }
+    public float? ScaleY { get; set; }
+    public float? Rotation { get; set; }
+    public uint? Color { get; set; }
+    public int? ImageIndex { get; set; }
+    public float? ImageSpeed { get; set; }
+    public bool? Nonexistent { get; set; }
+}
+
+/// <summary>按 InstanceId 引用一个已有实例。</summary>
+public sealed class ModRoomInstanceRef
+{
+    public uint InstanceId { get; set; }
+}
+
+/// <summary>一组瓦片写入（同一图层）。</summary>
+public sealed class ModRoomTileSet
+{
+    public string? Layer { get; set; }
+    public List<ModRoomTileCell> Cells { get; set; } = new();
+}
+
+/// <summary>一个瓦片格：Value 低 28 位 tileId、高 4 位 flags（与 UTMT 房间编辑器一致，0=空）。</summary>
+public sealed class ModRoomTileCell
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public uint Value { get; set; }
+}
+
 /// <summary>mod.json 的 references 段。</summary>
 public sealed class ModReferences
 {
@@ -176,6 +245,9 @@ public sealed class ModEntry
 
     /// <summary>新增房间（见 ModRoom）。层由 --layer-from-base 自动生成；入口型 mod 的 room_goto 靠它落地。</summary>
     public List<ModRoom> Rooms { get; set; } = new();
+
+    /// <summary>已有房间的差分补丁（见 ModRoomPatch）；地图编辑器保存「原版 data 编辑」时生成。</summary>
+    public List<ModRoomPatch> RoomPatches { get; set; } = new();
 
     public string? RefSource { get; set; }
     public string? RefAssets { get; set; }
