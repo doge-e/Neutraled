@@ -57,7 +57,7 @@ $exe = Join-Path $installDir 'ntl-builder.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw ('installer not found: ' + $exe) }
 
 # ---- 2) src/：源码 + 运行期载荷 ----
-$copyDirs = @('api', 'docs', 'fonts', 'tools', 'bside', 'scripts', 'plugins', 'web', 'themes', 'templates', 'kristal', 'kristal-maps', 'live', 'sdk', 'builder', 'gui', 'studio')
+$copyDirs = @('api', 'docs', 'fonts', 'tools', 'bside', 'scripts', 'plugins', 'web', 'themes', 'templates', 'kristal', 'kristal-maps', 'live', 'sdk', 'builder', 'gui', 'studio', 'mapedit')
 foreach ($d in $copyDirs) {
     $s = Join-Path $N $d
     if (Test-Path -LiteralPath $s) { Copy-Item -LiteralPath $s -Destination (Join-Path $srcDir $d) -Recurse -Force; Write-Host ('  + ' + $d + '/') }

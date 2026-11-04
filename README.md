@@ -78,6 +78,7 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 | **内建字体补全** | 部署时按产物真正会用到的文本，自动把内置像素字体包的字形补进 `fnt_main` / `fnt_mainbig` / `fnt_small` / `fnt_legend`（只补真的缺的）；原版基底 + 中文 lang 包也不会再出现「整段文字空白」；译文本体由人工本地化组提供（见 docs/MANAGE.md §11.2、`--font-probe`） |
 | **Web UI** | 零依赖 HttpListener 静态页（`--web`，跨平台；WinForms GUI 仍是 Windows 原生前端） |
 | GUI / Studio | `ntl-gui.exe` 图形管理器、`ntl-studio.exe` 代码编辑器 |
+| **地图 / 战斗 / 剧情编辑器** | `mapedit/`（`ntl-mapedit.exe`）：直接打开原版 data 编辑房间/图层/实例/瓦片；原版对话改文（文本覆盖）、战斗与剧情编辑；保存即生成 Neutraled mod；左侧房间按剧情流程排序（支线缩进挂主线下） |
 
 > 术语：**mod** 与 **模组** 同义（本文档两种写法混用，指同一个对象）；**部署** = 由 builder 生成各章节 `data.win` 并切换产物，**安装** = 把 Neutraled 装进游戏目录、或把 mod 包导入 `mods/` —— 两者不是一回事。
 ## 文档
@@ -96,6 +97,7 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 | [docs/GB.md](docs/GB.md) | GameBanana 浏览、下载队列、黑名单 |
 | [docs/PLUGINS.md](docs/PLUGINS.md) | 插件开发（SDK、清单、权限、钩子） |
 | [docs/WEBUI.md](docs/WEBUI.md) | Web 界面（接口、端口、自动停止） |
+| [mapedit/README.md](mapedit/README.md) | 编辑器（mapedit/）：房间编辑 / 原版文本改写 / 战斗与剧情 / 启动方式 / 测试 |
 | [docs/UPDATE.md](docs/UPDATE.md) | 游戏更新：检测 / 提示 / 采纳新基线（Steam 更新后不静默降级） |
 
 ## 从源码构建
@@ -107,6 +109,7 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 dotnet build builder\Neutraled.Builder.csproj -c Release      # → ntl-builder.exe
 dotnet build gui\Neutraled.Gui.csproj -c Release              # → ntl-gui.exe
 dotnet build studio\Neutraled.Studio.csproj -c Release        # → ntl-studio.exe
+dotnet build mapedit\src\ntl-mapedit\ntl-mapedit.csproj -c Release  # → ntl-mapedit.exe（读 <游戏根>\UTMT\ 的 DLL；NTL_UTMT_DIR 可改）
 
 # 一键测试（静态套件；不启动游戏）
 test.bat                # = _test/fulltest-static.ps1：构建/lint/doctor/smoke/部署/验证/打包/安装往返

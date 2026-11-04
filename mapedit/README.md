@@ -2,17 +2,22 @@
 
 DELTARUNE（GameMaker 2023.6 / data.win）的房间编辑器：GUI + 命令行。用于查看与修改房间、图层、实例、瓦片、背景层属性，并把改动写回 data.win；同时支持**直接打开原版 data.win 编辑对话/战斗/剧情**（保存即生成 Neutraled mod，不改原版文件）、左侧房间列表按剧情流程排序，以及编辑整包 mods.json 清单。参考实现是 Celeste 的 Loenn，按 DELTARUNE 的数据模型重做（DR 没有 Celeste 的 map 级 bin，也没有 autotile 元数据）。
 
-- 工程目录：`E:/aiwork/out/DRMapEditor/`
+> **仓库位置（2026-11-04 起）**：本目录已并入 **Neutraled** 仓库（`git subtree add --prefix=mapedit`，保留 DRMapEditor 的全部提交历史）。
+> 权威源码 = `Neutraled/mapedit/`（即本目录）；`E:\aiwork\out\DRMapEditor` 保留为历史工作副本（Round1–Round3 的证据与截图在它的 `tmp/` 里）。
+> 下文出现的 `E:/aiwork/out/DRMapEditor/...` 绝对路径属于历史证据位置，**源码路径一律以本目录为准**。
+
+- 工程目录：`E:/steam/steamapps/common/DELTARUNE/Neutraled/mapedit/`
 - 源码：`src/ntl-mapedit/`
-- 参考：`ref/loenn-src/`（Loenn 的 tools/*.lua，只读参考）
-- 产物/测试输出：`tmp/`
-- 依赖：.NET 9（`ntl-mapedit.csproj` 为 `net9.0-windows`，WinForms），UndertaleModLib（项目自带的引用 DLL，见 csproj）
+- 参考：`ref/loenn-src/`（Loenn 的 tools/*.lua，只读参考；只在历史工作副本里）
+- 产物/测试输出：构建产物在 `src/ntl-mapedit/bin/`、`obj/`（已被 .gitignore 忽略）；测试输出建议放 `E:/aiwork/out/Neutraled2/mapedit/work/`
+- 依赖：.NET 9（`ntl-mapedit.csproj` 为 `net9.0-windows`，WinForms），UTMT 依赖 DLL（默认读 `<游戏根>\UTMT\`，可用环境变量 `NTL_UTMT_DIR` 指到别处）
 
 ## 构建 / 运行
 
 ```powershell
-& "C:/Program Files/dotnet/dotnet.exe" build E:/aiwork/out/DRMapEditor/src/ntl-mapedit/ntl-mapedit.csproj -c Release
-$exe = 'E:/aiwork/out/DRMapEditor/src/ntl-mapedit/bin/Release/net9.0-windows/ntl-mapedit.exe'
+$M = 'E:/steam/steamapps/common/DELTARUNE/Neutraled/mapedit'
+& "C:/Program Files/dotnet/dotnet.exe" build $M/src/ntl-mapedit/ntl-mapedit.csproj -c Release
+$exe = "$M/src/ntl-mapedit/bin/Release/net9.0-windows/ntl-mapedit.exe"
 & $exe gui 'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win'
 ```
 
@@ -21,10 +26,11 @@ $exe = 'E:/aiwork/out/DRMapEditor/src/ntl-mapedit/bin/Release/net9.0-windows/ntl
 测试统一用离线副本，**不要指向游戏正在用的 data.win**：
 
 ```powershell
-& $exe document-test  'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' 'E:/aiwork/out/DRMapEditor/tmp/doc-test-out.win'
-& $exe structure-test 'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' 'E:/aiwork/out/DRMapEditor/tmp/gui-test/ch1-struct-test.win'
-& $exe stress-test    'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' 'E:/aiwork/out/DRMapEditor/tmp/gui-test/ch1-stress.win'
-& $exe battle-test    'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' 'E:/aiwork/out/DRMapEditor/tmp/battle-test'
+$W = 'E:/aiwork/out/Neutraled2/mapedit/work'
+& $exe document-test  'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/doc-test-out.win"
+& $exe structure-test 'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/gui-test/ch1-struct-test.win"
+& $exe stress-test    'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/gui-test/ch1-stress.win"
+& $exe battle-test    'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/battle-test"
 & $exe manifest-test
 ```
 
