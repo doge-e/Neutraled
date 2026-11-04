@@ -491,13 +491,17 @@ public static List<ModEntry> ScanMods(string modsRoot, string chapter, bool incl
         }
 
         // 去重：同一 mod（Id + 章节）只保留第一个，重复的跳过并提示
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // ★ 2026-11-05：从 info 升级成响亮警告 —— 静默丢掉一个 mod 会让「改了却没生效」无从查起
+        //   （实测：--mod-install 曾按显示名建目录，于是 mods\battle.demo\… 与
+        //   mods\Neutraled Battle\… 并存，去重按枚举顺序丢掉了带 roomPatches 的新版）。
+        var seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var deduped = new List<ModEntry>();
         foreach (var m in result)
         {
             var key = m.Id + "|" + (m.Chapter ?? "");
-            if (seen.Add(key)) deduped.Add(m);
-            else Paths.Log(L("  [去重] {0} 已存在（{1}），跳过重复项", m.Id, m.Dir));
+            if (!seen.ContainsKey(key)) { seen[key] = m.Dir; deduped.Add(m); }
+            else Paths.Log(L("  [警告] mod id 重复（{0}，章节 {1}）：保留 {2}，跳过 {3} —— 请删掉多余目录",
+                m.Id, m.Chapter ?? "", seen[key], m.Dir));
         }
         lock (_scanCache) { _scanCache[_ck] = new List<ModEntry>(deduped); }
         if (!NoCacheWrite) ScanCacheSave(_cachePath, _token, deduped);

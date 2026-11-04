@@ -99,7 +99,14 @@ public static class ModInstall
             Console.WriteLine(L("  名称: {0}  作者: {1}  版本: {2}  id: {3}", name, author, version, id));
 
             // ---------- 4) 目标目录 ----------
-            var safeName = Sanitize(name);
+            // ★ 2026-11-05 修（B6）：目录名必须用 **mod id**，不能用显示名 name。
+            //   约定是 mods/<id>/<作者>/<叶子>/mod.json（手装、--import-mod、MER 生成的 mod 全都如此），
+            //   用显示名会造出 mods/<显示名>/... 与已有的 mods/<id>/... 并存 → 同一个 id 被扫描两次
+            //   （--mod-list 出两行、Mods.cs:493-500 去重按枚举顺序丢其中一个），部署结果取决于目录名
+            //   排序而不是版本，实测把「带 roomPatches 的新版」丢掉、产物悄悄回退到旧版（walk-through：
+            //   先装到 mods\Neutraled Battle\... 后，产物宽度从 328 退回 320）。
+            var dirKey = string.IsNullOrWhiteSpace(id) ? name : id;
+            var safeName = Sanitize(dirKey);
             var safeAuthor = Sanitize(author);
             // ★ 2026-09-26 修（B2）：以前直接写进 mods/<name>/<author>/（**没有叶子层**），而扫描器
             //   Mods.cs:300-329 只认 mods/<mod>/<author>/<叶子>/mod.json（Mods.cs:454-456：叶子必须是
@@ -124,11 +131,28 @@ public static class ModInstall
                 Console.WriteLine(L("          已按 root 目标安装 —— 章节 mod 请把包改名成 <名字>-chapterN.ntlmod，"));
                 Console.WriteLine(L("          或在 mod.json 里加 \"chapter\": \"chapterN\"，否则它不会进入对应章节产物。"));
             }
-            var targetRoot = Path.Combine(modsRoot, safeName, safeAuthor, leaf);
             Console.WriteLine(L("  部署目标（叶子）: {0}", leaf));
 
             // 检测已安装（按 id）
             var existing = FindInstalled(ntlRoot).FirstOrDefault(x => x.Id == id);
+
+            // ★ 2026-11-05：更新已有 mod 时**装回它原来的位置**，不要按 id/名字另造一个目录。
+            //   否则手装（作者自定目录名）的 mod 被 --mod-install 更新一次就会变成两份，
+            //   再被 Mods.cs:493-505 的去重按枚举顺序丢一份 → 用户看到的是「更新没生效」。
+            string targetRoot;
+            if (existing != null && !string.IsNullOrEmpty(existing.Dir))
+            {
+                var existingLeaf = Path.GetFileName(existing.Dir.TrimEnd('\\', '/'));
+                var existingModRoot = Path.GetDirectoryName(existing.Dir.TrimEnd('\\', '/'));
+                targetRoot = (existingModRoot != null && existingLeaf == leaf)
+                    ? existing.Dir
+                    : (existingModRoot != null ? Path.Combine(existingModRoot, leaf) : Path.Combine(modsRoot, safeName, safeAuthor, leaf));
+                Console.WriteLine(L("  更新已有安装: {0}", targetRoot));
+            }
+            else
+            {
+                targetRoot = Path.Combine(modsRoot, safeName, safeAuthor, leaf);
+            }
             if (existing != null && !force)
             {
                 Console.WriteLine(L("  已安装（版本 {0}）→ 将更新到 {1}", existing.Version, version));
