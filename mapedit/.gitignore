@@ -1,0 +1,35 @@
+﻿# DRMapEditor —— 只收源码，不收测试/临时输出与大体积产物
+
+# 构建产物 / 依赖二进制
+**/bin/
+**/obj/
+*.exe
+*.dll
+*.pdb
+*.deps.json
+*.runtimeconfig.json
+
+# 临时与测试输出（体积大、可重建）
+tmp/
+audit/
+*.win
+*.ios
+*.png
+*.jpg
+*.zip
+*.sav
+*.ntlsave
+*.tmp
+*.log
+
+# 第三方参考源码（Loenn，MIT；按需本地放置，不入本仓库）
+ref/
+
+# 会话/环境元数据
+SESSION.txt
+
+# 编辑器
+.vs/
+.vscode/
+.idea/
+Thumbs.db
