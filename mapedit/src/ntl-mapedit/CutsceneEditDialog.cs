@@ -509,26 +509,28 @@ public sealed class CutsceneEditDialog : Form
             return false;
         }
         if (_grid.Rows.Count == 0) { Fail("至少需要 1 个剧情步骤"); return false; }
+        int rowNo = 0;
         foreach (DataGridViewRow row in _grid.Rows)
         {
+            rowNo++;
             var kind = Cell(row, "kind");
             var text = Cell(row, "text");
             if (kind == "dialogue" && text.Replace("|", "").Trim().Length == 0)
             {
-                Fail("对话步骤至少要写一行文本（多行用 | 分隔）");
+                FailAt(row, "text", rowNo, "对话步骤至少要写一行文本（多行用 | 分隔）");
                 return false;
             }
             if (kind == "sound" && Cell(row, "sound").Trim().Length == 0)
             {
-                Fail("sound 步骤需要在「音效」列填资源名（例如 snd_heal_c）");
+                FailAt(row, "sound", rowNo, "sound 步骤需要在「音效」列填资源名（例如 snd_heal_c）");
                 return false;
             }
             if ((kind == "event" || kind == "script") && Cell(row, "script").Trim().Length == 0)
             {
-                Fail("event/script 步骤需要填「原版脚本 / 事件」（可用工具条的「插入原版代码…」挑选）");
+                FailAt(row, "script", rowNo, "event/script 步骤需要填「原版脚本 / 事件」（可用工具条的「插入原版代码…」挑选）");
                 return false;
             }
-            if (text.Contains('%')) { Fail("文本不能包含 %（原版对话分页符）"); return false; }
+            if (text.Contains('%')) { FailAt(row, "text", rowNo, "文本不能包含 %（原版对话分页符）"); return false; }
         }
         Fail("");
         return true;
@@ -538,6 +540,22 @@ public sealed class CutsceneEditDialog : Form
     {
         _issues.Text = text;
         _issues.ForeColor = text.Length == 0 ? Theme.TextDim : Theme.Red;
+    }
+
+    /// <summary>报错并定位到具体步骤行 + 可编辑单元格（保存失败时不用自己找是哪一行）。</summary>
+    private void FailAt(DataGridViewRow row, string col, int rowNo, string text)
+    {
+        Fail("第 " + rowNo + " 行：" + text);
+        try
+        {
+            _grid.ClearSelection();
+            row.Selected = true;
+            _grid.CurrentCell = row.Cells[col];
+            _grid.FirstDisplayedScrollingRowIndex = Math.Max(0, row.Index);
+            _grid.Focus();
+            _grid.BeginEdit(true);
+        }
+        catch { /* 定位失败不影响校验结果 */ }
     }
 
     /// <summary>把对话框内容写回被编辑的 CutsceneDef（OK 后由调用方保存 sidecar）。</summary>

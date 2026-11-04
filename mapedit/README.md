@@ -36,9 +36,10 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 
 ## GUI 功能
 
+- 底部状态栏：左侧常驻「当前房间 · 尺寸 · 实例数 · 图块数」（有未保存改动时追加 `* 未保存`），其后是操作提示区（放置/拖拽/保存/撤销等消息只覆盖提示区，不会再冲掉房间信息）；右侧是坐标 / 缩放 / 当前工具。
 - 左侧：房间列表（默认**按剧情线性流程排序**：主线编号「01/02/…」、支线紧跟其前置主线并缩进并标「支线」、测试/旧版房间收进底部「特殊 / 测试 / 旧版」分组；视图 → 「房间按剧情流程排序」可切回 data.win 原始顺序；筛选框中输入关键词时平铺为原始顺序）、图层列表（点眼睛图标切换可见性）。
 - 中间：画布（滚轮缩放、`F` 适应窗口、拖拽平移、网格/辅助线显示开关、`V/H` 等工具）。
-- 右侧：属性面板（可滚动），按当前选择切换：
+- 右侧：「属性」标题行右侧常驻三个快捷按钮「战斗 / 对话 / 剧情」——选中实体后不必滚动属性面板，直接为它新建战斗/对话/剧情（等价于画布右键菜单里的同名项）。下面是可滚动的属性面板，按当前选择切换：
   - **房间**：名称、宽度/高度（16–10000，提交后左侧列表/标题/状态栏同步）、背景色、绘制背景色；「原版房间（只读）」段显示有无房间创建代码 + 「查看房间创建代码…」。
   - **目标图层**：名称/类型只读、深度（改完自动按深度重排图层）、偏移 X/Y、图层可见。
   - **背景层**：精灵只读 + 「选择背景精灵…」、背景可见/水平平铺/垂直平铺/拉伸铺满、背景色。
@@ -108,14 +109,18 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 
 ## 直接编辑原版 data（推荐用法）
 
-**打开原版基线也能编辑内容**：文件 → 打开游戏章节 → 原版基线（只读），或直接 `gui <backup/chapterN_windows/data.win>`。data.win 本身仍然不被改写（原版文件与 Steam 校验安全），但**对话/战斗/剧情/设置项/文本改写**都可以直接编辑并保存：
+**打开原版基线也能编辑内容**：文件 → 打开游戏章节 → 原版基线（只读），或直接 `gui <backup/chapterN_windows/data.win>`。data.win 本身仍然不被改写（原版文件与 Steam 校验安全），但**房间/地图、对话、战斗、剧情、设置项、文本改写**都可以直接编辑并保存：
 
 - 编辑配置写到 **`游戏根/Neutraled/editor/baseline_<leaf>.ntlbattle.json`**（原版基线）或 **`<data.win>.ntlbattle.json`**（游戏文件），不会写进 `backup/`。
+- **地图/房间改动也进 mod**：保存时把当前编辑结果与「打开时的基线」逐项比对（房间宽高/speed/persistent/flags/背景色、实例增删与 x/y/缩放/旋转/颜色/图层、原生瓦片逐格 set/erase、新增空房间），差分成 `roomPatches` / `rooms` 写进 sidecar 与生成的 `mod.json`；Neutraled 部署时由 `builder/RoomPatches.cs` 应用到产物 data.win。**保存不会再提示「另存 data.win」**，编辑一律落 sidecar + mod。限制：改名/删除原版房间、增删图层、旧式 LegacyTiles 改动暂不支持（会响亮警告）。
+- **新增空白房间也能进 mod**（`rooms` 段，只支持空壳；内容要用对象在运行时创建）。保存前校验「新房间是否与已有房间重名」是拿**打开时的基线**比，不是拿编辑中的数据比——否则新房间在内存里必然存在，会被误判成「已有同名房间」而永远生成失败（QA 全量测试抓到，已修 + 回归断言）。
+- **改名/删除引擎特殊房间会二次确认**：名字以 `ROOM_` 开头（`ROOM_INITIALIZE` / `ROOM_TEST` …）是原版靠固定名字找的初始化/测试房间，改名或删除可能导致游戏无法启动；弹窗点「是」才继续。
 - **保存（Ctrl+S）即自动生成 Mod**：保存配置后立即导出到 `游戏根/Neutraled/mods/battle.demo/<author>/<leaf>/`（可在「战斗 → 保存时自动生成 Mod」关掉，或「立即重新生成 Mod…」手动触发）。生成的 mod 默认 `enabled: true`，重新部署/启动后生效。
+- **导出 `.ntlmod`**：战斗菜单「导出 .ntlmod…」把生成目录打成 `游戏根/Neutraled/editor/export/<id>-<leaf>.ntlmod`（与 `ntl-builder --pack` 同格式的 zip；不写进 `mods/`，避免被扫描成第二个 mod）。
 - **原版对话文本改写（Ctrl+Shift+E）**：列出当前房间里所有原版对话行（对象 / 事件 / 条件 / lang key / 原文），只改「改写文本」列即可。不改 GML，而是按 lang key 用 Neutraled 的 `ntl_set_lang_string` 覆盖（生成 mod 的 `ntlb_apply_text_overrides`，游戏就绪后生效）。清空某行 = 恢复原文。限制：只能改**有 lang key** 的行（运行期拼出来的文本没有 key，改不了）；文本里不能含 `%`（原版 `obj_writer` 分页符）。
-- **非简单剧情用代码引用**：剧情步骤新增 `event`（在指定原版对象的最近实例上执行它的某个事件，如 `obj_readable` 的 `Other_10`）与 `script`（直接执行原版脚本，如 `gml_Script_scr_sideb_active`）。剧情编辑器工具条「插入原版代码…」会列出当前房间所有实例对象的原版事件（含继承与事件号），点选即插入一步，不需要自己记脚本名。
+- **非简单剧情用代码引用**：剧情步骤新增 `event`（在指定原版对象的最近实例上执行它的某个事件，如 `obj_readable` 的 `Other_10`）与 `script`（直接执行原版脚本，如 `gml_Script_scr_sideb_active`）。剧情编辑器工具条「插入原版代码…」会列出当前房间所有实例对象的原版事件（含继承与事件号），点选即插入一步，不需要自己记脚本名。保存时如果有步骤参数没填（例如 `dialogue` 步骤没写文本），红字会带「第 N 行」并自动选中那一行、进入对应单元格编辑，不用自己找。
 - **右键直达**：选择工具下右键画布上的实体，菜单里直接有「编辑此实体的战斗/对话/剧情…」与「编辑本房间原版对话（文本覆盖）…」，不用先去菜单栏找。
-- 状态栏会显示「原版基线 · 只读（data.win 不改；对话/战斗/剧情保存到 Neutraled/editor 并生成 mod）」，提示的只读仅指 data.win 本体。
+- 状态栏会显示「原版基线 · 只读（data.win 不改；对话/战斗/剧情/地图保存到 Neutraled/editor 并生成 mod）」，提示的只读仅指 data.win 本体。
 
 ## 战斗编辑（绑定地图实体）
 
@@ -195,8 +200,10 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 | `roundtrip <src> <dst>` | data.win 读写往返 |
 | `edit-test` / `tile-test` | 早期编辑/瓦片测试 |
 | `types` / `io` / `delegates` | 反射 UndertaleModLib API（排障用） |
-| `battle-test [data.win] [outDir]` | 战斗/对话/剧情/设置项/文本改写自检（**83 项**）：示例工程（encounter 3 回合 + 随机弹幕 / overworld 3 种 pattern / 1 段纯对话 / 1 段 9 步剧情含 sound·shake·waitinput·event / 4 个设置项 / 1 条文本改写）、sidecar 往返（含 triggerMode/persistOnce/mode/sound gain）、Validate（新步骤类型与音效参数校验）、choice 缺选项报错、生成 mod 的 gml/objects/data 数量（对象事件 13 个含文本对象）、`ntlb_*` 新函数（once / in_interact_zone / show_text / text_create·step·draw）、main.gml 调用文本覆盖、设置面板动作文件数、内嵌 JSON 对话/设置/剧情/文本改写、mod.json 入口、JSON 可反解析 |
-| `battle-demo [data.win] [modsDir] [leaf]` | 生成演示用战斗+对话+剧情+设置 mod（默认 leaf=chapter1，真机验证用 chapter2），可直接 deploy |
+| `battle-test [data.win] [outDir]` | 战斗/对话/剧情/设置项/文本改写/地图差分自检（**97 项**）：示例工程（encounter 3 回合 + 随机弹幕 / overworld 3 种 pattern / 1 段纯对话 / 1 段 9 步剧情含 sound·shake·waitinput·event / 4 个设置项 / 1 条文本改写 / 1 组 roomPatches + 1 个新房间）、sidecar 往返（含 triggerMode/persistOnce/mode/sound gain、roomPatches/rooms）、Validate（新步骤类型、音效参数、房间差分校验、新增房间必须以基线比对否则误报）、choice 缺选项报错、生成 mod 的 gml/objects/data 数量（对象事件 13 个含文本对象）、`ntlb_*` 新函数、main.gml 调用文本覆盖、设置面板动作文件数、内嵌 JSON、mod.json 含 `roomPatches`/`rooms` 且 `files/Neutraled/editor/roomPatches.json` 存在、README 含地图段落、JSON 可反解析 |
+| `battle-demo [data.win] [modsDir] [leaf]` | 生成演示用战斗+对话+剧情+设置+地图差分 mod（默认 leaf=chapter1，真机验证用 chapter2），可直接 deploy |
+| `room-probe <data.win> <roomName> [instId]` | 只读探针：打印房间 width/height/speed/layers/instances/tiles；给 instId 时打印该实例 object/x/y/scale/rotation/color/layer（验证 roomPatches 真的进了产物） |
+| `mapedit-test <data.win> <workDir>` | 编辑器数据层自检：编辑模型/基线闸门/房间流程排序（147=主线+支线+分组）/roomdiff 闭环（diff→apply→再 diff 为空）/启动默认目标 |
 | `manifest-test [modsDir] [outJson]` | mods 清单逻辑自检（8 项）：扫描真实 mods、id 唯一、校验、写盘/重读、.bak、重复与缺 id 检出 |
 | `resource-browser-test <data.win>` | 资源浏览器只读自检：12 类资源逐类计数 + 抽样名称/概要/详情非空 + 源文件 SHA256 不变（ch1 537 项 PASS、ch2 645、ch5 714） |
 | `render-stats <data.win> <room> [scale] [out.json]` | 渲染覆盖统计（逐层绘制数/unsupported/黑像素占比）；ch5 room_town_north 黑像素 1.06%、ch4 room_dw_castle_town 48.96%（残黑是 TILES 层真实美术，覆盖 70.00%、unsupported 0） |
@@ -205,7 +212,7 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 
 - `document-test`：ch1..ch5 每章 **194 PASS / 0 FAIL**（A2 修复后由 lead 独立复跑；日志 `tmp/lead-verify-doctest`）。
 - `resource-browser-test`：ch1 **537** / ch2 **645** / ch5 **714** 项全 PASS，测试前后源 data.win SHA256 与大小不变。
-- `battle-test`：**84 PASS / 0 FAIL**（含剧情 `event`/`script` 步骤、文本改写往返、对话绑定房间/触发器；最近一次跑在 `tmp/round3/work`）。
+- `battle-test`：**97 PASS / 0 FAIL**（含剧情 `event`/`script` 步骤、文本改写往返、对话绑定房间/触发器、新增房间基线比对回归；跑在 `E:/aiwork/out/Neutraled2/mapedit/work/r4/bt`）。
 - `mapedit-test`：PASS（原版基线可直接编辑：sidecar 落到 `Neutraled/editor/baseline_<leaf>.ntlbattle.json`、data.win SHA 不变；房间流程排序 147/147、支线紧随前置主线；日志 `tmp/round3/work`）。
 - `manifest-test`：8 项 PASS（真实 mods 目录扫到 38 个 mod、校验 0 错误、重读 38/38、重复 id 检出 2 条；日志 `tmp/manifest-test.log`）。
 - `vanilla-scan-test`：PASS（ch1 副本 `tmp/round2/vst-final4-ch1.json`；ch2 live `tmp/round2/vst-final4-ch2.json`）：ch1 obj_readable_room1 对白 **428 行 = 可阅读 405 + 运行期 23**（msc 80、实例坐标 196,99 下可达 11、未知 4）、ch1 obj_npc_room 510 行（msc 98）、ch2 obj_readable_room1 **722 行 = 689 + 33**（msc 88）、ch2 obj_npc_room **824 行**（msc 164、含参数 3）；控制码残字 0；`room == 2` 判定 True、`global.filechoice` Unknown、`scr_text` 文本含调用点条件、else 行 truth=False、非交互 `Other_*` 标注、章节推断 1/2、继承事件 47/353 对象（ch2 有继承交互事件 `obj_npc_butler ← obj_npc_room`）。
@@ -263,7 +270,7 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 ### B. 当前实现的取舍（能补，但要改代码 / 接线）
 
 - **生成 mod 绑一个章节叶子（leaf）**：`mods/<id>/<author>/<leaf>/`，默认 `chapter1`；「战斗 → 生成战斗 mod…」会先弹窗选 `root/chapter1..chapter5`（写回 sidecar 的 `mod.leaf`；CLI 用 `battle-demo <data.win> <modsDir> <leaf>`）。弹幕 type 必须按该 leaf 章节填。
-- **生成 mod 是快照**：编辑只写 sidecar（游戏文件 `<data.win>.ntlbattle.json` / 原版基线 `Neutraled/editor/baseline_<leaf>.ntlbattle.json`）；保存时会按「保存时自动生成 Mod」自动导出（默认开），导出的仍是快照，必须让 Neutraled 重新部署才进游戏。
+- **生成 mod 是快照**：编辑只写 sidecar（游戏文件 `<data.win>.ntlbattle.json` / 原版基线 `Neutraled/editor/baseline_<leaf>.ntlbattle.json`），地图改动以 `roomPatches` 写在同一个 sidecar；保存时会按「保存时自动生成 Mod」自动导出（默认开），导出的仍是快照，必须让 Neutraled 重新部署才进游戏。非原版目标（游戏文件）以「打开时快照」为差分基线，其地图改动只写回 data.win（推荐直接编辑原版 data，等同走 mod）。
 - **战斗敌人最多 3 个**（原版 3 个怪物槽）；**ACT 只能设名字（最多 6 个）**，行为仍是原版默认，不能给单个 ACT 配自定义效果；**初始紧张度**在战斗首帧写入 `global.tension`（按 `scr_gamestart` 的 250 上限 clamp）。
 - **effects 的 `message`** 同时写 `dr-api.log` 与屏幕文本（约 150 帧，`ntlb_show_text`）；`healPercent` 只作用于 3 名队员；`gotoRoom` 是 `room_goto`（无过渡特效）；`startBattle` 在当前房间直接再开一场；**队伍全灭会判失败并执行 defeat effects**（随后仍走原版 game over）。
 - **overworld 弹幕是自建子弹**：只有 rain/ring/aim/wall 4 种简易模式，直线移动 + `point_distance<14` 判命中，没有墙体碰撞/寻路，也不接管原版 overworld 敌人。

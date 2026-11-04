@@ -47,6 +47,30 @@ public static class BattleSelfTest
             badChoice.File.Settings.Add(new SettingDef { Id = "bad.choice", Type = "choice", Options = new() });
             Check(badChoice.Validate(gd).Any(i => i.IsError && i.Message.Contains("choice 类型至少需要 2 个选项")),
                 "validate: choice 缺选项会报错");
+
+            // 回归（QA full1 抓到）：新增房间的「有没有同名房间」必须跟差分基线比。
+            // 编辑器中 assets = 编辑后的数据（新房间已经在里面），拿它当对照会把每个新房间都判成「已有同名房间」
+            // → 保存永远生成不了 mod。这里复现真实编辑态：edited 里先 Apply 新增房间，再用 baseline 当对照。
+            if (gd != null && dataWin != null)
+            {
+                try
+                {
+                    var newRoomProj = BuildProject(gd, out _);
+                    var edited = new GameData(dataWin);
+                    var applyNew = RoomPatchApply.Apply(edited.Data, null, newRoomProj.File.NewRooms);
+                    Check(applyNew.RoomsAdded == 1, "validate: 新增房间已应用到编辑数据（模拟编辑器内存态）");
+                    var editedIssues = newRoomProj.Validate(edited, gd);
+                    Check(editedIssues.All(i => !i.IsError),
+                        "validate: 新增房间以基线比对 0 错误（真实编辑态）" + DescribeIssues(editedIssues));
+                    var noBaseIssues = newRoomProj.Validate(edited, null);
+                    Check(noBaseIssues.Any(i => i.IsError && i.Message.Contains("已经有同名房间")),
+                        "validate: 不传基线时新增房间会误报（回归保护：必须传 baseline）");
+                }
+                catch (Exception ex)
+                {
+                    Check(false, "validate: 新增房间基线比对自检异常 " + ex.Message);
+                }
+            }
             Check(project.File.Dialogues.Count == 1 && project.File.Settings.Count == 4,
                 "validate: 自检工程带 1 段对话 + 4 个设置项");
             Check(project.File.Cutscenes.Count == 1 && project.File.Cutscenes[0].Steps.Count == 9,
@@ -72,6 +96,15 @@ public static class BattleSelfTest
                   && reloaded.File.TextOverrides[0].Key == "obj_readable_Step_0_gml_5_0"
                   && reloaded.File.TextOverrides[0].Text == "自检文本改写",
                 "sidecar: 原版文本改写持久化");
+            Check(reloaded.File.RoomPatches.Count == 1 && reloaded.File.RoomPatches[0].Name == expectedRoom
+                  && reloaded.File.RoomPatches[0].InstancesAdd.Count == 1
+                  && reloaded.File.RoomPatches[0].InstancesModify.Count == 1
+                  && reloaded.File.RoomPatches[0].InstancesRemove.Count == 1
+                  && reloaded.File.RoomPatches[0].TilesSet.Count == 1
+                  && reloaded.File.RoomPatches[0].TilesSet[0].Cells.Count == 1,
+                "sidecar: 地图差分补丁持久化");
+            Check(reloaded.File.NewRooms.Count == 1 && reloaded.File.NewRooms[0].Name == "room_ntl_selftest_new",
+                "sidecar: 新增房间持久化");
             Check(reloaded.File.Cutscenes[0].Steps.Any(s => s.Kind == "sound" && s.Sound == "snd_text" && Math.Abs(s.Gain - 0.5) < 0.001),
                 "sidecar: 剧情音效步骤保留 sound/gain");
             Check(reloaded.File.Cutscenes[0].Steps.Any(s => s.Kind == "shake" && s.Frames == 20),
@@ -168,7 +201,25 @@ public static class BattleSelfTest
                 Check(root.TryGetProperty("id", out var idEl) && idEl.GetString() == project.File.Mod.Id, "generate: mod.json id");
                 Check(root.TryGetProperty("objects", out var objs) && objs.GetArrayLength() >= 4, "generate: mod.json objects >= 4（含文本对象）");
                 Check(root.TryGetProperty("main", out var mainEl) && mainEl.GetString() == "main", "generate: mod.json main=main");
+                var hasPatch = root.TryGetProperty("roomPatches", out var patches) && patches.ValueKind == JsonValueKind.Array;
+                Check(hasPatch && patches.GetArrayLength() == 1, "generate: mod.json 带 roomPatches 段");
+                if (hasPatch && patches.GetArrayLength() == 1)
+                {
+                    var p0 = patches[0];
+                    Check(p0.TryGetProperty("name", out var pn) && pn.GetString() == expectedRoom, "generate: roomPatches 目标房间");
+                    Check(p0.TryGetProperty("instancesAdd", out var ia) && ia.ValueKind == JsonValueKind.Array && ia.GetArrayLength() == 1,
+                        "generate: roomPatches 新增实例已序列化");
+                    Check(p0.TryGetProperty("tilesSet", out var ts) && ts.ValueKind == JsonValueKind.Array && ts.GetArrayLength() == 1,
+                        "generate: roomPatches 瓦片写入已序列化");
+                    Check(p0.TryGetProperty("width", out _) == false, "generate: roomPatches 没改的字段不写（width 缺省）");
+                }
+                Check(root.TryGetProperty("rooms", out var roomsEl) && roomsEl.ValueKind == JsonValueKind.Array
+                      && roomsEl.GetArrayLength() == 1 && roomsEl[0].GetProperty("name").GetString() == "room_ntl_selftest_new",
+                    "generate: mod.json 带 rooms 段（新房间）");
             }
+
+            string roomPatchCopy = Path.Combine(result.ModDir, "files", "Neutraled", "editor", "roomPatches.json");
+            Check(File.Exists(roomPatchCopy), "generate: files/Neutraled/editor/roomPatches.json 已随包");
 
             string shipped = Path.Combine(result.ModDir, "files", "Neutraled", "ntl_battle", "battles.json");
             Check(File.Exists(shipped), "generate: files/ 里也随包一份 battles.json");
@@ -180,6 +231,8 @@ public static class BattleSelfTest
             Check(File.ReadAllText(readme).Contains("Mod 设置项") && File.ReadAllText(readme).Contains("纯对话")
                   && File.ReadAllText(readme).Contains("简单剧情"),
                 "generate: README 写明对话/设置项/剧情用法");
+            Check(File.ReadAllText(readme).Contains("地图/房间改动") && File.ReadAllText(readme).Contains("roomPatches"),
+                "generate: README 写明地图改动段");
 
             // 2b) 运行时模板的两个真机回归修复（防回退；两个坑都表现为「功能静默不生效」）
             string battleTick = File.ReadAllText(Path.Combine(gmlDir, "ntlb_battle_tick.gml"));
@@ -419,6 +472,28 @@ public static class BattleSelfTest
             EventName = "Step_0",
             Original = "原文（自检）",
         });
+
+        // 地图/房间差分：改房间头字段 + 新增/修改/删除实例 + 一格瓦片，另加一个空房间。
+        // 这些只进 mod.json 的 roomPatches / rooms 段，由 builder 部署时注入产物。
+        project.File.RoomPatches.Add(new RoomPatch
+        {
+            Name = roomName,
+            Speed = 30,
+            InstancesAdd =
+            {
+                new RoomInstancePatch { Object = "obj_readable", X = 64, Y = 96, Layer = "" },
+            },
+            InstancesModify =
+            {
+                new RoomInstancePatch { InstanceId = instanceId, X = 200, Y = 160 },
+            },
+            InstancesRemove = { new RoomInstanceRef { InstanceId = instanceId + 900 } },
+            TilesSet =
+            {
+                new RoomTileSet { Layer = "", Cells = { new RoomTileCell { X = 1, Y = 1, Value = 0 } } },
+            },
+        });
+        project.File.NewRooms.Add(new NewRoomDef { Name = "room_ntl_selftest_new", Width = 640, Height = 480 });
 
         // Mod 设置项：bool 两个（战斗/对话开关）、int（弹幕伤害 %）、choice（演示难度）。
         project.File.Settings.Add(new SettingDef

@@ -158,12 +158,24 @@ public static class BattleGenerator
         }
 
         // 5) mod.json
-        var modJson = BuildModJson(file.Mod, enemyObj, bulletObj, owObj, textObj);
+        var modJson = BuildModJson(file, enemyObj, bulletObj, owObj, textObj);
         File.WriteAllText(Path.Combine(modDir, "mod.json"), modJson, new UTF8Encoding(false));
 
         // 6) files/ 给人看的副本
         File.WriteAllText(Path.Combine(filesDir, "battles.json"), BattleJson.Serialize(file), new UTF8Encoding(false));
         result.DataFiles++;
+        if (file.RoomPatches.Count > 0 || file.NewRooms.Count > 0)
+        {
+            var editorDir = Path.Combine(modDir, "files", "Neutraled", "editor");
+            Directory.CreateDirectory(editorDir);
+            var roomJson = new StringBuilder();
+            roomJson.AppendLine("{");
+            roomJson.AppendLine("  \"roomPatches\": " + IndentJson(BattleJson.Serialize(file.RoomPatches), 2) + ",");
+            roomJson.AppendLine("  \"rooms\": " + IndentJson(BattleJson.Serialize(file.NewRooms), 2));
+            roomJson.AppendLine("}");
+            File.WriteAllText(Path.Combine(editorDir, "roomPatches.json"), roomJson.ToString(), new UTF8Encoding(false));
+            result.DataFiles++;
+        }
 
         // 7) README
         File.WriteAllText(Path.Combine(modDir, "README.md"), BuildReadme(file, modId, prefix), new UTF8Encoding(false));
@@ -188,8 +200,9 @@ public static class BattleGenerator
     private static string JsonStr(string s) =>
         "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") + "\"";
 
-    private static string BuildModJson(BattleModInfo mod, string enemyObj, string bulletObj, string owObj, string textObj)
+    private static string BuildModJson(BattlesFile file, string enemyObj, string bulletObj, string owObj, string textObj)
     {
+        var mod = file.Mod;
         var sb = new StringBuilder();
         sb.AppendLine("{");
         sb.AppendLine("  \"id\": " + JsonStr(mod.Id) + ",");
@@ -229,9 +242,33 @@ public static class BattleGenerator
             ("Step", 0, "objects/gml_Object_" + owObj + "_Step_0.gml"),
             ("Draw", 0, "objects/gml_Object_" + owObj + "_Draw_0.gml"),
         });
-        sb.AppendLine("  ]");
+        sb.Append("  ]");
+        // 房间差分 / 新增房间：由部署器（builder/RoomPatches.cs）从 mod.json 读取并注入产物。
+        // 只在有内容时输出这两个键，保持旧的 mod.json 形状不变。
+        var extra = new List<string>();
+        if (file.RoomPatches.Count > 0)
+            extra.Add("  \"roomPatches\": " + IndentJson(BattleJson.Serialize(file.RoomPatches), 2));
+        if (file.NewRooms.Count > 0)
+            extra.Add("  \"rooms\": " + IndentJson(BattleJson.Serialize(file.NewRooms), 2));
+        if (extra.Count == 0)
+        {
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine(",");
+            for (int i = 0; i < extra.Count; i++) sb.AppendLine(extra[i] + (i == extra.Count - 1 ? "" : ","));
+        }
         sb.AppendLine("}");
         return sb.ToString();
+    }
+
+    /// <summary>把一段 JSON 按行缩进，用于嵌进手写的 mod.json。</summary>
+    private static string IndentJson(string json, int spaces)
+    {
+        var pad = new string(' ', spaces);
+        var lines = (json ?? "").Replace("\r\n", "\n").Split('\n');
+        return string.Join("\n", lines.Select(l => pad + l));
     }
 
     private static void AppendObject(StringBuilder sb, string name, (string type, int subtype, string file)[] events)
@@ -264,6 +301,8 @@ public static class BattleGenerator
         sb.AppendLine("- 部署叶子: " + file.Mod.Leaf);
         sb.AppendLine("- 战斗配置: gml/ntlb_data.gml（内嵌 JSON，运行时 json_parse 读取），另有一份可读副本在 files/Neutraled/ntl_battle/battles.json");
         sb.AppendLine("- 生成对象: " + prefix + "_enemy / " + prefix + "_bullet / " + prefix + "_ow / " + prefix + "_text（屏幕文本提示）");
+        if (file.RoomPatches.Count > 0 || file.NewRooms.Count > 0)
+            sb.AppendLine("- 地图/房间改动: mod.json 的 roomPatches / rooms 段（另有一份可读副本在 files/Neutraled/editor/roomPatches.json），由部署器注入产物");
         sb.AppendLine();
         sb.AppendLine("## 用法");
         sb.AppendLine();
@@ -276,6 +315,32 @@ public static class BattleGenerator
         sb.AppendLine("   - setting list / setting set <id> <值> / setting reset <id>");
         sb.AppendLine("4. 也可以给战斗/对话/剧情配 Trigger.room / requiredFlag / radius，让它在进入房间时自动触发。");
         sb.AppendLine();
+        if (file.RoomPatches.Count > 0 || file.NewRooms.Count > 0)
+        {
+            sb.AppendLine("## 地图/房间改动（mod.json 的 roomPatches / rooms 段）");
+            sb.AppendLine();
+            sb.AppendLine("只记录相对原版 data.win 的差异；部署时由 builder 注入每个目标产物，原版 backup 与编辑器打开的 data.win 都不被改写。");
+            sb.AppendLine();
+            foreach (var rp in file.RoomPatches)
+            {
+                var bits = new List<string>();
+                if (rp.InstancesAdd.Count > 0) bits.Add("新增实例 " + rp.InstancesAdd.Count);
+                if (rp.InstancesModify.Count > 0) bits.Add("修改实例 " + rp.InstancesModify.Count);
+                if (rp.InstancesRemove.Count > 0) bits.Add("删除实例 " + rp.InstancesRemove.Count);
+                if (rp.TilesSet.Count > 0) bits.Add("瓦片写入 " + rp.TilesSet.Sum(t => t.Cells.Count) + " 格");
+                if (rp.Width != null) bits.Add("宽 " + rp.Width);
+                if (rp.Height != null) bits.Add("高 " + rp.Height);
+                if (rp.Speed != null) bits.Add("speed " + rp.Speed);
+                if (rp.Persistent != null) bits.Add("persistent " + (rp.Persistent.Value ? "1" : "0"));
+                if (rp.Flags != null) bits.Add("flags " + rp.Flags);
+                if (rp.BackgroundColor != null) bits.Add("背景色 " + rp.BackgroundColor);
+                if (rp.DrawBackgroundColor != null) bits.Add("绘制背景色 " + (rp.DrawBackgroundColor.Value ? "1" : "0"));
+                sb.AppendLine("- " + rp.Name + " —— " + string.Join("，", bits));
+            }
+            foreach (var nr in file.NewRooms)
+                sb.AppendLine("- 新房间 " + nr.Name + "（" + nr.Width + "x" + nr.Height + "，空房间）");
+            sb.AppendLine();
+        }
         sb.AppendLine("## 战斗列表");
         sb.AppendLine();
         foreach (var b in file.Battles)

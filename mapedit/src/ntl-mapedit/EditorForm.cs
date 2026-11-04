@@ -26,12 +26,21 @@ public sealed class EditorForm : Form
     private readonly Label _statusCoords = new();
     private readonly Label _statusZoom = new();
     private readonly Label _statusTool = new();
+    /// <summary>状态栏常驻区：当前房间 / 尺寸 / 实例数。操作提示写在 _statusLeft，不会把这条覆盖掉。</summary>
+    private readonly Label _statusRoom = new();
     private readonly Button _pickTileSourceBtn = new();
     private readonly Button _paletteBtn = new();
     private TilePaletteDialog? _palette;
     private ContextMenuStrip? _canvasMenu;
     /// <summary>与当前 data.win 同目录的战斗配置（&lt;win&gt;.ntlbattle.json）。</summary>
     private BattleProject? _battles;
+    /// <summary>算地图/房间差分的基线 data.win：原版基线用原文件本身；其它目标用打开时的快照（多次保存都相对原版累计差分）。</summary>
+    private string? _diffBaseWin;
+    /// <summary>最近一次算出的房间差分（保存/生成时复用，避免重复读 data.win）。</summary>
+    private RoomDiffResult? _lastRoomDiff;
+    /// <summary>差分基线（打开时的原版 data.win）加载出来的游戏数据：生成前校验「新增房间」要拿它比对——</summary>
+    /// <remarks>不能拿当前编辑中的数据比：新增房间本来就存在于内存里，比出来永远是「已有同名房间」= 永远生成失败。</remarks>
+    private GameData? _baselineGame;
     /// <summary>当前 data.win 的原版代码扫描器（懒反编译，只读）。</summary>
     private VanillaCode? _vanilla;
     private readonly Dictionary<string, VanillaObjectInfo> _vanillaCache = new();
@@ -277,6 +286,7 @@ public sealed class EditorForm : Form
         battleMenu.DropDownItems.Add(Theme.Item("mods 清单（mods.json）…", (s, e) => ShowModsManifest()));
         battleMenu.DropDownItems.Add(new ToolStripSeparator());
         battleMenu.DropDownItems.Add(Theme.Item("保存战斗配置（仅写 sidecar）", (s, e) => SaveBattles(true)));
+        battleMenu.DropDownItems.Add(Theme.Item("导出 .ntlmod…", (s, e) => ExportNtlmod()));
 
         var help = TopMenu("帮助(&H)");
         help.DropDownItems.Add(Theme.Item("快捷键…", (s, e) => ShowHelp()));
@@ -659,7 +669,38 @@ public sealed class EditorForm : Form
         var insHeader = Theme.Header("属性", 344);
         insHeader.Dock = DockStyle.Fill;
         insHeader.Margin = new Padding(0);
-        panel.Controls.Add(insHeader, 0, 0);
+        // 三个「为此实体新建…」按钮原来排在属性网格末尾，属性一多就被挤出 AutoScroll 视口（要滚动才能看见，
+        // UIA 也会按滚动外坐标点到别处）。改成标题行右侧的常驻快捷按钮，选中实体后随时可点。
+        var insTop = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0), BackColor = Theme.Bg1,
+        };
+        insTop.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        insTop.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
+        insTop.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var insQuick = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false, AutoSize = false, BackColor = Theme.Bg1, Margin = new Padding(0),
+            Padding = new Padding(0, 2, 6, 2),
+        };
+        foreach (var (label, tip, action) in new (string, string, Action)[]
+        {
+            ("战斗", "为选中实体新建战斗（也可在画布右键 → 编辑此实体的战斗…）", EditSelectedBattle),
+            ("对话", "为选中实体新建纯对话（也可在画布右键 → 编辑此实体的对话…）", EditSelectedDialogue),
+            ("剧情", "为选中实体新建剧情（也可在画布右键 → 编辑此实体的剧情…）", EditSelectedCutscene),
+        })
+        {
+            var btn = new Button { Text = label, Width = 62, Height = 22, Margin = new Padding(2, 0, 2, 0) };
+            Theme.StyleButton(btn);
+            btn.Click += (s, e) => action();
+            var tipRef = new ToolTip();
+            tipRef.SetToolTip(btn, tip);
+            insQuick.Controls.Add(btn);
+        }
+        insTop.Controls.Add(insHeader, 0, 0);
+        insTop.Controls.Add(insQuick, 1, 0);
+        panel.Controls.Add(insTop, 0, 0);
 
         _inspector.Dock = DockStyle.Fill;
         _inspector.AutoScroll = true;
@@ -1019,7 +1060,17 @@ public sealed class EditorForm : Form
         _statusTool.TextAlign = ContentAlignment.MiddleRight;
         _statusTool.ForeColor = Theme.TextDim;
         _statusTool.Font = Theme.UI(8.5f);
+        // 常驻「当前房间」条：原来房间信息写在 _statusLeft，任何操作提示（拖拽/放置/保存）都会把它冲掉，
+        // 自动化与用户都无法据此判断当前在编辑哪个房间 → 拆成独立面板常驻显示。
+        _statusRoom.Dock = DockStyle.Left;
+        _statusRoom.Width = 330;
+        _statusRoom.Text = "未打开文件";
+        _statusRoom.TextAlign = ContentAlignment.MiddleLeft;
+        _statusRoom.Padding = new Padding(10, 0, 0, 0);
+        _statusRoom.ForeColor = Theme.Text;
+        _statusRoom.Font = Theme.Mono(8.5f);
         bar.Controls.Add(_statusLeft);
+        bar.Controls.Add(_statusRoom);
         bar.Controls.Add(_statusTool);
         bar.Controls.Add(_statusCoords);
         bar.Controls.Add(_statusZoom);
@@ -1141,6 +1192,12 @@ public sealed class EditorForm : Form
             _canvas.Attach(_doc);
             _fileRole = FileRole.Classify(path, FindGameRoot());
             _warnedDeployed = false;
+            // 原版 data 直接编辑：sidecar 里的地图/房间差分回灌到内存（继续编辑可见）；
+            // 差分基线：原版基线用原文件本身，其它目标用打开时的快照。
+            _lastRoomDiff = null;
+            _baselineGame = null;
+            _diffBaseWin = CaptureDiffBase(path, gameRootForSidecar);
+            RestoreRoomPatchState(path, gameRootForSidecar);
             RebuildRoomList();
             RebuildObjectList();
             RebuildLayers();
@@ -1160,6 +1217,7 @@ public sealed class EditorForm : Form
             UpdateUndoState();
             UpdateStatus();
             _statusLeft.Text = $"已加载 {Path.GetFileName(path)} — {_roomRows.Count} 个房间 / {_objects.Count} 个对象";
+            if (_startupNote.Length > 0) _statusLeft.Text += "  ·  " + _startupNote;
             if (_fileRole == FileKind.Baseline)
                 _statusLeft.Text += $"  ·  {FileRole.BaselineBadge}（data.win 不改；对话/战斗/剧情保存到 Neutraled/editor 并生成 mod）";
             else if (FileRole.IsLive(_fileRole))
@@ -1301,13 +1359,14 @@ public sealed class EditorForm : Form
     {
         if (_doc?.Room == null)
         {
+            _statusRoom.Text = "未打开文件";
             _statusLeft.Text = "就绪 — 文件 → 打开 data.win";
             return;
         }
         int instances = RoomEdit.AllInstances(_doc.Room).Count();
         int tiles = _doc.Room.Layers?.Sum(l => (l.AssetsData?.LegacyTiles?.Count ?? 0) + NativeTiles.CountNonZero(l)) ?? 0;
-        _statusLeft.Text = $"{_doc.RoomName()} — {_doc.Room.Width}×{_doc.Room.Height} · {instances} 个实例 · {tiles} 个图块";
-        if (_startupNote.Length > 0) _statusLeft.Text += "  ·  " + _startupNote;
+        _statusRoom.Text = $"{_doc.RoomName()} · {_doc.Room.Width}×{_doc.Room.Height} · {instances} 实例 · {tiles} 图块" + (_doc.Dirty ? "  * 未保存" : "");
+        if (_startupNote.Length > 0) _statusLeft.Text = _startupNote;
     }
 
     private void UpdateTitle()
@@ -2604,6 +2663,19 @@ public sealed class EditorForm : Form
         return true;
     }
 
+    /// <summary>
+    /// 引擎特殊房间（ROOM_INITIALIZE / ROOM_TEST…）：原版靠固定名字找它们，改名/删除会让游戏启动或流程崩。
+    /// 只是提醒，不硬拦——改完马上改回去也可能是有意操作。
+    /// </summary>
+    internal static bool IsEngineRoom(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        name = name.Trim();
+        // ★ 必须区分大小写：原版普通房间全是 room_xxx（小写），只有引擎房是 ROOM_ 大写。
+        // 用 OrdinalIgnoreCase 会把 room_krisroom 之类全部误判成引擎房（QA 全量测试抓到）。
+        return name.StartsWith("ROOM_", StringComparison.Ordinal);
+    }
+
     private void NewRoomDialog(bool withContent)
     {
         if (_doc?.Room == null) return;
@@ -2652,6 +2724,13 @@ public sealed class EditorForm : Form
             MessageBox.Show(this, error, "房间名不合法", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+        if (IsEngineRoom(old) || IsEngineRoom(name))
+        {
+            var warn = MessageBox.Show(this,
+                $"「{old}」是引擎特殊房间（章节初始化/测试用），原版靠固定名字找它。\n改名后原版流程可能找不到它，游戏可能无法启动。\n\n仍然要改名吗？",
+                "重命名房间", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (warn != DialogResult.Yes) return;
+        }
         if (!_doc.RenameRoom(name)) return;
         UpdateStatus();
         _statusLeft.Text = $"已重命名房间：{old} → {name}";
@@ -2666,8 +2745,11 @@ public sealed class EditorForm : Form
             MessageBox.Show(this, "至少要保留一个房间。", "删除房间", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
+        string engineWarn = IsEngineRoom(name)
+            ? "\n\n⚠ 这是引擎特殊房间（章节初始化/测试用），删除后原版流程可能找不到它，游戏可能无法启动。"
+            : "";
         var r = MessageBox.Show(this,
-            $"删除房间「{name}」？\n\n删除会同时从 RoomOrder 里移除它；这个操作不进撤销栈。\n保存后才会写回 data.win。",
+            $"删除房间「{name}」？\n\n删除会同时从 RoomOrder 里移除它；这个操作不进撤销栈。\n保存后才会写回 data.win。" + engineWarn,
             "删除房间", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
         if (r != DialogResult.Yes) return;
         if (!_doc.DeleteRoom()) return;
@@ -2781,47 +2863,10 @@ public sealed class EditorForm : Form
             return;
         }
 
-        // 原版基线：data.win 只读，但对话 / 战斗 / 剧情 / 文本改写可以照常编辑并生成 mod。
+        // 所有保存都产出 Neutraled mod：原版基线 data.win 只读，地图/房间改动做差分写进 sidecar 的
+        // roomPatches / rooms 段，再生成 mod；其它目标是可写的中间量，地图改动直接写回 data.win（不做差分，避免叠加）。
         bool writeData = true;
-        if (targetKind == FileKind.Baseline)
-        {
-            if (_doc.Dirty)
-            {
-                var r = MessageBox.Show(this,
-                    "这是原版基线（backup/），data.win 本身不能原地保存。\n\n" +
-                    "对话 / 战斗 / 剧情 / 文本改写会保存到 Neutraled/editor/ 并生成 Neutraled mod，原版文件不受影响。\n" +
-                    "地图 / 房间 / 实例的改动只能另存为到 backup 之外。\n\n" +
-                    "点「是」另存为 data.win（保存地图改动）；点「否」只保存对话/战斗/剧情配置；点「取消」放弃。",
-                    FileRole.BaselineBadge, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information);
-                if (r == DialogResult.Cancel)
-                {
-                    _statusLeft.Text = "保存已取消";
-                    return;
-                }
-                if (r == DialogResult.Yes)
-                {
-                    using var dlg = new SaveFileDialog
-                    {
-                        Title = "另存为（原版基线 data.win 只读）",
-                        Filter = "data.win|*.win|所有文件|*.*",
-                        FileName = Path.GetFileName(path),
-                    };
-                    try { dlg.InitialDirectory = Path.GetDirectoryName(path); } catch { }
-                    if (dlg.ShowDialog(this) != DialogResult.OK) return;
-                    path = dlg.FileName;
-                    if (FileRole.Classify(path, root) == FileKind.Baseline)
-                    {
-                        MessageBox.Show(this,
-                            "目标仍在原版基线目录（backup/）里，已拒绝写入。请选择 backup 之外的位置。",
-                            FileRole.BaselineBadge, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
-                    }
-                    targetKind = FileRole.Classify(path, root);
-                }
-                else writeData = false;
-            }
-            else writeData = false; // 没有地图改动：不写 data.win，只落 sidecar + 生成 mod
-        }
+        if (targetKind == FileKind.Baseline) writeData = false;
 
         if (writeData && FileRole.IsLive(targetKind) && !_warnedDeployed)
         {
@@ -2847,16 +2892,27 @@ public sealed class EditorForm : Form
                     return;
                 }
             }
+            // 地图/房间改动一律变成 roomPatches / rooms 差分写进 sidecar（data.win 只是中间量）。
+            var diff = (_doc.Dirty || _lastRoomDiff == null) ? ApplyRoomDiff(false) : _lastRoomDiff;
             // sidecar：原版基线写 Neutraled/editor/baseline_<leaf>.ntlbattle.json（不碰 backup），其余写在 data.win 旁边。
             string sidecarPath = BattleProject.SidecarForEdit(path, root);
             var side = _battles?.Save(sidecarPath, true, root);
             if (side.HasValue && !side.Value.Ok)
                 throw new InvalidOperationException(side.Value.Error ?? "编辑配置保存被拒绝");
+            // 原版基线不写 data.win（writeData=false），Dirty 不会由 EditorDocument.Save 清掉；
+            // 房间差分与编辑配置此时都已落到 sidecar，显式清掉「* 未保存」，否则用户会以为没保存。
+            if (!writeData) _doc.MarkSaved();
             _fileRole = FileRole.Classify(path, root);
             string stats = $"战斗 {_battles?.File.Battles.Count ?? 0} 场 / 对话 {_battles?.File.Dialogues.Count ?? 0} 段 / 剧情 {_battles?.File.Cutscenes.Count ?? 0} 段 / 设置 {_battles?.File.Settings.Count ?? 0} 项 / 文本改写 {_battles?.File.TextOverrides.Count ?? 0} 条";
+            if (diff != null && diff.ChangeCount > 0) stats += $" / 地图改动 {diff.ChangeCount} 处（{diff.Patches.Count} 个房间）";
             if (writeData) _statusLeft.Text = $"已保存 {path}（{stats}）";
             else _statusLeft.Text = $"已保存编辑配置（原版 data.win 未改动；{stats}）→ {sidecarPath}";
+            if (diff != null && diff.ChangeCount > 0 && _battles != null && _settings.AutoGenerateMod)
+                _statusLeft.Text += "；地图改动已写入 mod 的 roomPatches";
             UpdateTitle();
+            // 常驻房间面板（"当前房间 · 尺寸 · 实例 · 图块 · * 未保存"）由 UpdateStatus() 重算；
+            // 保存成功后不刷新，面板会一直挂着已经失效的「* 未保存」（QA S10.20 实测）。
+            UpdateStatus();
             if (_settings.AutoGenerateMod)
             {
                 var gen = AutoGenerateModNow(false);
@@ -3341,6 +3397,43 @@ public sealed class EditorForm : Form
         RebuildInspector();
     }
 
+    /// <summary>把当前内容打包成 .ntlmod（Neutraled 的 mod 安装包 = 叶子目录的 zip，丢进 mods/ 或 --mod-install 安装）。</summary>
+    private void ExportNtlmod()
+    {
+        if (_doc == null || _battles == null)
+        {
+            MessageBox.Show(this, "请先打开一个 data.win。", "导出 .ntlmod", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var gen = AutoGenerateModNow(false);
+        if (gen == null)
+        {
+            MessageBox.Show(this, "还没有可导出的内容（战斗 / 对话 / 剧情 / 文本改写 / 地图改动都为空）。", "导出 .ntlmod",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        string leaf = string.IsNullOrWhiteSpace(_battles.File.Mod.Leaf) ? BattleProject.ChapterLeaf(_doc.FilePath) : _battles.File.Mod.Leaf;
+        string modId = string.IsNullOrWhiteSpace(_battles.File.Mod.Id) ? "battle.demo" : _battles.File.Mod.Id;
+        string dir = Path.Combine(GameRoot(), "Neutraled", "editor", "export");
+        string dst = Path.Combine(dir, modId + "-" + leaf + ".ntlmod");
+        try
+        {
+            Directory.CreateDirectory(dir);
+            if (File.Exists(dst)) File.Delete(dst);
+            System.IO.Compression.ZipFile.CreateFromDirectory(gen.ModDir, dst,
+                System.IO.Compression.CompressionLevel.Optimal, false);
+            long kb = new FileInfo(dst).Length / 1024;
+            _statusLeft.Text = $"已导出 .ntlmod：{dst}（{kb} KB）";
+            MessageBox.Show(this, "已导出 mod 包：\n" + dst + "\n\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-builder --mod-install。",
+                "导出 .ntlmod", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "导出失败：\n" + ex.Message, "导出 .ntlmod", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            _statusLeft.Text = "导出 .ntlmod 失败：" + ex.Message;
+        }
+    }
+
     /// <summary>把配置生成成可部署的 Neutraled mod（mods/ 目录下）；保存文档时也会自动调用。</summary>
     private void GenerateBattleMod()
     {
@@ -3373,7 +3466,91 @@ public sealed class EditorForm : Form
 
     private static bool HasAnyContent(BattleProject battles) =>
         battles.File.Battles.Count > 0 || battles.File.Dialogues.Count > 0
-        || battles.File.Cutscenes.Count > 0 || battles.File.TextOverrides.Count > 0;
+        || battles.File.Cutscenes.Count > 0 || battles.File.TextOverrides.Count > 0
+        || battles.File.RoomPatches.Count > 0 || battles.File.NewRooms.Count > 0;
+
+    /// <summary>
+    /// 地图/房间差分的基线 data.win：只有原版基线才做差分（原文件当基线，改动以 roomPatches 进 mod）。
+    /// 其它目标（游戏文件/部署产物）保存时直接把改动写回 data.win，不做差分——否则同一份改动会
+    /// 「写进 data.win + 再进 mod 的 roomPatches」，部署后叠加两次（实例重复创建）。
+    /// </summary>
+    private string? CaptureDiffBase(string path, string? root)
+    {
+        try
+        {
+            if (FileRole.Classify(path, root) == FileKind.Baseline) return path;
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 打开文件时回灌 sidecar 里的地图/房间差分。原版基线：改到内存里，保存时再按「原版 vs 内存」重算；
+    /// 其它目标：以打开时文件为基线，若 sidecar 已有旧差分则不动它（数据.win 照常写回，避免差分叠加）。
+    /// </summary>
+    private void RestoreRoomPatchState(string path, string? root)
+    {
+        if (_doc == null || _battles == null || _diffBaseWin == null) return;
+        bool isBaseline = FileRole.Classify(path, root) == FileKind.Baseline;
+        if (!isBaseline)
+        {
+            if (_battles.File.RoomPatches.Count > 0 || _battles.File.NewRooms.Count > 0)
+                _startupNote = "sidecar 里有地图差分，但本目标保存时直接把改动写回 data.win（地图改动只在编辑原版 data 时进 mod）";
+            return;
+        }
+        if (_battles.File.RoomPatches.Count == 0 && _battles.File.NewRooms.Count == 0) return;
+        try
+        {
+            var applied = RoomPatchApply.Apply(_doc.Game.Data, _battles.File.RoomPatches, _battles.File.NewRooms);
+            if (applied.RoomsPatched > 0 || applied.RoomsAdded > 0)
+                _startupNote = $"已回灌 {applied.Describe()}";
+            if (applied.Warnings.Count > 0)
+                _startupNote = $"回灌地图改动有 {applied.Warnings.Count} 条警告（{applied.Warnings[0]}）";
+        }
+        catch (Exception ex)
+        {
+            _startupNote = "回灌地图改动失败：" + ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// 用「打开时的基线 data.win」与当前内存房间对比，得到 roomPatches / rooms 差分并写进编辑配置。
+    /// 保存与生成 mod 前都会调用（这样 data.win 只是中间量，地图改动也能进 mod）。
+    /// </summary>
+    private RoomDiffResult? ApplyRoomDiff(bool notify)
+    {
+        if (_doc == null || _battles == null) return null;
+        if (string.IsNullOrEmpty(_diffBaseWin) || !File.Exists(_diffBaseWin))
+        {
+            if (notify) _statusLeft.Text += "；没有房间差分基线，地图改动不会进 mod";
+            return null;
+        }
+        try
+        {
+            var baseGame = new GameData(_diffBaseWin);
+            _baselineGame = baseGame;
+            var diff = RoomDiff.Build(baseGame.Data, _doc.Game.Data);
+            _battles.File.RoomPatches = diff.Patches;
+            _battles.File.NewRooms = diff.NewRooms;
+            _lastRoomDiff = diff;
+            if (notify)
+            {
+                _statusLeft.Text = diff.ChangeCount > 0
+                    ? $"房间差分：{diff.Patches.Count} 个房间 / {diff.ChangeCount} 处改动 / 新增房间 {diff.NewRooms.Count} 个"
+                    : "房间差分：没有地图改动";
+                if (diff.Warnings.Count > 0) _statusLeft.Text += $"；警告 {diff.Warnings.Count} 条";
+            }
+            return diff;
+        }
+        catch (Exception ex)
+        {
+            _statusLeft.Text += "；计算房间差分失败：" + ex.Message;
+            return null;
+        }
+    }
 
     /// <summary>
     /// 按当前 sidecar 重新生成 Neutraled mod（不弹叶子选择，用 Mod.Leaf；未设置时按打开的章节推断）。
@@ -3392,7 +3569,16 @@ public sealed class EditorForm : Form
         }
         if (string.IsNullOrWhiteSpace(_battles.File.Mod.Leaf))
             _battles.File.Mod.Leaf = BattleProject.ChapterLeaf(_doc.FilePath);
-        var issues = _battles.Validate(_doc.Game);
+        // 生成前把最新的地图/房间差分写进配置（保存文档、单独点「立即重新生成」时都能带上）。
+        if (_doc.Dirty || _lastRoomDiff == null) ApplyRoomDiff(false);
+        // 非原版基线：地图改动直接写回 data.win，不该再进 mod（否则部署后实例重复）；清掉可能残留的差分。
+        if (string.IsNullOrEmpty(_diffBaseWin))
+        {
+            _battles.File.RoomPatches.Clear();
+            _battles.File.NewRooms.Clear();
+        }
+        // 基线（原版 data.win）用于「新增房间是否真的不存在」这类判断；没有基线时退回当前数据。
+        var issues = _battles.Validate(_doc.Game, _baselineGame);
         var errors = issues.Where(i => i.IsError).ToList();
         if (errors.Count > 0)
         {
@@ -3410,7 +3596,8 @@ public sealed class EditorForm : Form
             var msg = "已生成 mod：\n" + r.ModDir + "\n\nGML " + r.GmlFiles + " 个 / 对象事件 " + r.ObjectFiles + " 个 / 数据 " + r.DataFiles + " 个"
                 + "\n战斗 " + _battles.File.Battles.Count + " 场 / 对话 " + _battles.File.Dialogues.Count + " 段 / 剧情 "
                 + _battles.File.Cutscenes.Count + " 段 / 设置项 " + _battles.File.Settings.Count + " 项 / 文本改写 "
-                + _battles.File.TextOverrides.Count + " 条";
+                + _battles.File.TextOverrides.Count + " 条 / 地图改动 " + (_lastRoomDiff?.ChangeCount ?? 0) + " 处（"
+                + _battles.File.RoomPatches.Count + " 个房间 / 新增 " + _battles.File.NewRooms.Count + " 个）";
             if (warns.Count > 0) msg += "\n\n警告：\n" + string.Join("\n", warns.Select(i => "· " + i.Message));
             MessageBox.Show(this, msg, "生成 Mod", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }

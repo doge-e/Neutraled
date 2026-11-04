@@ -85,6 +85,11 @@ public static class MapeditSelfTest
                 "classify: gameRoot 未知时 backup 目录仍是 Baseline（堵住绕过口）");
             Check(FileRole.Badge(FileKind.Baseline) == "原版基线 · 只读", "badge: baseline 文案");
             Check(FileRole.Badge(FileKind.LiveChapter) == "游戏文件 · 可保存", "badge: live 文案");
+            Check(EditorForm.IsEngineRoom("ROOM_INITIALIZE"), "engine-room: ROOM_INITIALIZE 视为引擎房");
+            Check(!EditorForm.IsEngineRoom("room_krisroom"), "engine-room: 普通 room_* 不视为引擎房（区分大小写回归）");
+            Check(!EditorForm.IsEngineRoom("room_initialize"), "engine-room: 小写 room_initialize 不误判");
+            Check(!EditorForm.IsEngineRoom(""), "engine-room: 空名不是引擎房");
+            Check(!EditorForm.IsEngineRoom(null), "engine-room: null 不是引擎房");
 
             var realRoot2 = FileRole.FindGameRoot();
             if (realRoot2 != null)
@@ -275,6 +280,42 @@ public static class MapeditSelfTest
             Check(liveSideReloaded.File.Battles.Count == 1 &&
                   liveSideReloaded.File.Battles[0].Id == "fixture-live",
                 "live sidecar: 重读内容正确");
+
+            // ---------------- 房间差分：diff -> RoomPatchApply -> 再 diff 为空（地图改动进 mod，data.win 只是中间量）----------------
+            var editedWin = Path.Combine(fixture, "edited_chapter1.win");
+            File.Copy(baselineWin, editedWin);
+            RoomDiffResult roomDiff;
+            string diffRoom;
+            using (var baseGd = new GameData(baselineWin))
+            using (var editGd = new GameData(editedWin))
+            {
+                var first = editGd.Rooms.First();
+                diffRoom = GameData.Name(first.Name);
+                first.Width += 16;
+                RoomEdit.CreateBlankRoom(editGd.Data, editGd.Data.Rooms[0], "room_ntl_diff_new");
+                roomDiff = RoomDiff.Build(baseGd.Data, editGd.Data);
+                Check(roomDiff.Patches.Count == 1 && roomDiff.Patches[0].Name == diffRoom
+                      && roomDiff.Patches[0].Width == first.Width,
+                    "roomdiff: 房间头改动被检出（名字 + 新宽度）");
+                Check(roomDiff.NewRooms.Count == 1 && roomDiff.NewRooms[0].Name == "room_ntl_diff_new",
+                    "roomdiff: 新房间进入 rooms 段");
+                Check(roomDiff.ChangeCount >= 2, "roomdiff: ChangeCount 含房间头与新增房间");
+            }
+            using (var baseGd = new GameData(baselineWin))
+            using (var editGd = new GameData(editedWin))
+            {
+                // 内存里重放同一份编辑（editedWin 只是磁盘副本，编辑本身没写盘），再验证回灌闭环。
+                editGd.Rooms.First().Width += 16;
+                RoomEdit.CreateBlankRoom(editGd.Data, editGd.Data.Rooms[0], "room_ntl_diff_new");
+                var applied = RoomPatchApply.Apply(baseGd.Data, roomDiff.Patches, roomDiff.NewRooms);
+                Check(applied.RoomsPatched == 1, "roomdiff: RoomPatchApply 回灌房间头");
+                Check(applied.RoomsAdded == 1, "roomdiff: RoomPatchApply 回灌新房间");
+                var again = RoomDiff.Build(baseGd.Data, editGd.Data);
+                if (again.ChangeCount != 0 || again.NewRooms.Count != 0)
+                    Note("again-diff: patches=" + again.Patches.Count + " newRooms=" + again.NewRooms.Count + " changes=" + again.ChangeCount);
+                Check(again.ChangeCount == 0 && again.NewRooms.Count == 0,
+                    "roomdiff: 回灌后再 diff 为空（幂等闭环）");
+            }
 
             // ---------------- 启动默认目标：最近文件 -> live chapter1，绝不 backup ----------------
             var recentFile = Path.Combine(fixture, "recent.json");

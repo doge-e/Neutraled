@@ -307,6 +307,7 @@ public static class Program
             Console.WriteLine("  ntl-mapedit settings-test <workDir>                      - 默认启动章节设置自检（读写/坏文件自愈/解析优先级）");
             Console.WriteLine("  ntl-mapedit battle-test [data.win] [outDir]              - 战斗配置校验/sidecar 往返/生成 mod 的自检");
             Console.WriteLine("  ntl-mapedit battle-demo [data.win] [modsDir]             - 生成可直接部署的示例战斗 mod（默认 Neutraled/mods）");
+            Console.WriteLine("  ntl-mapedit room-probe <data.win> <roomName> [instId]   - 只读探针：房间宽高/图层/实例/瓦片数，给 instId 时打印该实例字段");
             Console.WriteLine("  ntl-mapedit manifest-test [modsDir] [outJson]            - mods.json 整包清单扫描/校验/保存重读自检");
             Console.WriteLine("  ntl-mapedit edit-test | tile-test <src> <dst>            - 早期编辑/瓦片测试");
             Console.WriteLine("  ntl-mapedit save-roundtrip <src> <dst>                   - 经 EditorDocument 打开→不修改→Save，校验 SHA256 不变");
@@ -1507,6 +1508,53 @@ public static class Program
                 return 0;
             }
             finally { gd?.Dispose(); }
+        }
+        if (args[0] == "room-probe")
+        {
+            // 只读探针：打印某个房间的头字段与实例/瓦片数量（验证 roomPatches 是否真的进了产物 data.win）。
+            NoExtra("room-probe <data.win> <roomName> [instanceId]", 4);
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("用法: ntl-mapedit room-probe <data.win> <roomName>");
+                return 2;
+            }
+            if (!File.Exists(args[1]))
+            {
+                Console.Error.WriteLine("[room-probe] data.win 不存在: " + args[1]);
+                return 2;
+            }
+            using var probe = new GameData(args[1]);
+            var probed = probe.Data.Rooms.FirstOrDefault(r => GameData.Name(r.Name) == args[2]);
+            if (probed == null)
+            {
+                Console.WriteLine("ROOM-PROBE MISSING " + args[2]);
+                return 1;
+            }
+            Console.WriteLine("room=" + args[2]
+                + " width=" + probed.Width + " height=" + probed.Height
+                + " speed=" + probed.Speed
+                + " layers=" + (probed.Layers?.Count ?? 0)
+                + " instances=" + RoomEdit.AllInstances(probed).Count()
+                + " tiles=" + RoomEdit.AllTiles(probed).Count());
+            if (args.Length > 3)
+            {
+                // 可选第 3 参数：按实例 ID 打印字段（验证 roomPatches 的 instancesModify/Add 是否真的落进产物）。
+                uint wantId = uint.Parse(args[3]);
+                var found = RoomEdit.AllInstances(probed).FirstOrDefault(i => i.Inst.InstanceID == wantId);
+                if (found.Inst == null)
+                {
+                    Console.WriteLine("instance " + wantId + " MISSING");
+                    return 1;
+                }
+                var inst = found.Inst;
+                Console.WriteLine("instance " + wantId + " object=" + GameData.Name(inst.ObjectDefinition?.Name)
+                    + " x=" + inst.X + " y=" + inst.Y
+                    + " sx=" + inst.ScaleX + " sy=" + inst.ScaleY
+                    + " rot=" + inst.Rotation + " color=" + inst.Color
+                    + " layer=" + GameData.Name(found.Layer?.LayerName));
+                return 0;
+            }
+            return 0;
         }
         if (args[0] == "battle-test")
         {

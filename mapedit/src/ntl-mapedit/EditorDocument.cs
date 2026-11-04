@@ -1172,6 +1172,17 @@ public sealed class EditorDocument : IDisposable
         StateChanged?.Invoke();
     }
 
+    /// <summary>
+    /// 标记「改动已落盘」。写 data.win 的路径由 Save() 自己清 Dirty；编辑原版基线时 data.win 只读、
+    /// 改动写进 sidecar 与生成的 mod，所以需要显式清掉，否则标题与状态栏会一直挂着「* 未保存」。
+    /// </summary>
+    public void MarkSaved()
+    {
+        if (!Dirty) return;
+        Dirty = false;
+        StateChanged?.Invoke();
+    }
+
     // ----------------------------------------------------------------- save
 
     /// <summary>

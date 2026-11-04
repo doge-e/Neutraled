@@ -20,6 +20,12 @@ public sealed class BattlesFile
     public List<SettingDef> Settings { get; set; } = new();
     /// <summary>原版对话文本覆盖：按 lang key 改写原版台词（不改 data.win，生成 mod 后由 ntl_set_lang_string 生效）。</summary>
     public List<TextOverrideDef> TextOverrides { get; set; } = new();
+
+    /// <summary>地图/房间差分：相对原版基线的改动（保存时重新 diff 得到，生成 mod.json 的 roomPatches 段）。</summary>
+    public List<RoomPatch> RoomPatches { get; set; } = new();
+
+    /// <summary>编辑时新建的房间（roomPatches 表达不了「新建」，走 builder 的 rooms 段；只支持空房间）。</summary>
+    public List<NewRoomDef> NewRooms { get; set; } = new();
 }
 
 /// <summary>
@@ -668,9 +674,48 @@ public sealed class BattleProject
             if (t.Key.Length == 0 || t.Text.Length == 0 || !seenTextKeys.Add(t.Key))
                 File.TextOverrides.RemoveAt(i);
         }
+
+        // 地图/房间差分：名字 trim、null 列表补空、空 patch 丢掉（只留真改动）。
+        File.RoomPatches ??= new List<RoomPatch>();
+        for (int i = File.RoomPatches.Count - 1; i >= 0; i--)
+        {
+            var rp = File.RoomPatches[i];
+            rp.Name = (rp.Name ?? "").Trim();
+            rp.InstancesAdd ??= new List<RoomInstancePatch>();
+            rp.InstancesModify ??= new List<RoomInstancePatch>();
+            rp.InstancesRemove ??= new List<RoomInstanceRef>();
+            rp.TilesSet ??= new List<RoomTileSet>();
+            foreach (var ts in rp.TilesSet)
+            {
+                ts.Layer = string.IsNullOrWhiteSpace(ts.Layer) ? null : ts.Layer.Trim();
+                ts.Cells ??= new List<RoomTileCell>();
+            }
+            rp.TilesSet.RemoveAll(ts => ts.Cells.Count == 0);
+            foreach (var ip in rp.InstancesAdd.Concat(rp.InstancesModify))
+            {
+                ip.Object = string.IsNullOrWhiteSpace(ip.Object) ? null : ip.Object.Trim();
+                ip.Layer = string.IsNullOrWhiteSpace(ip.Layer) ? null : ip.Layer.Trim();
+            }
+            if (rp.Name.Length == 0 || rp.IsEmpty) File.RoomPatches.RemoveAt(i);
+        }
+        File.NewRooms ??= new List<NewRoomDef>();
+        for (int i = File.NewRooms.Count - 1; i >= 0; i--)
+        {
+            var nr = File.NewRooms[i];
+            nr.Name = (nr.Name ?? "").Trim();
+            if (nr.Width == 0) nr.Width = 640;
+            if (nr.Height == 0) nr.Height = 480;
+            if (nr.Speed == 0) nr.Speed = 30;
+            if (nr.Name.Length == 0) File.NewRooms.RemoveAt(i);
+        }
     }
 
-    public List<ValidationIssue> Validate(GameData? assets = null)
+    /// <summary>
+    /// 校验编辑配置。assets = 当前打开的游戏数据（查对象/房间是否存在）；
+    /// baseline = 差分基线（原版 data.win，可选）：房间补丁的目标房间与新增房间的「是否已有」都应对它判断，
+    /// 否则新增房间在内存里本来就存在，会被误判成「已有同名房间」而永远生成不了 mod。
+    /// </summary>
+    public List<ValidationIssue> Validate(GameData? assets = null, GameData? baseline = null)
     {
         var list = new List<ValidationIssue>();
         void Err(string m) => list.Add(new ValidationIssue { IsError = true, Message = m });
@@ -687,8 +732,8 @@ public sealed class BattleProject
         if (string.IsNullOrWhiteSpace(m.Author)) Warn("mod.author 为空，会生成到 mods/<id>/Neutraled/ 下");
 
         if (File.Battles.Count == 0 && File.Dialogues.Count == 0 && File.Cutscenes.Count == 0
-            && File.TextOverrides.Count == 0)
-            Err("至少需要一场战斗、一段对话、一段剧情或一条原版文本改写（否则生成的 mod 没有任何内容）");
+            && File.TextOverrides.Count == 0 && File.RoomPatches.Count == 0 && File.NewRooms.Count == 0)
+            Err("至少需要一场战斗、一段对话、一段剧情、一条原版文本改写或一处地图/房间改动（否则生成的 mod 没有任何内容）");
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var b in File.Battles)
         {
@@ -835,6 +880,61 @@ public sealed class BattleProject
             else if (t.Text.Contains('%')) Warn($"原版文本改写 {key}: 文本里的 % 是原版对话翻页符，会被运行时删掉");
             if (key.StartsWith("gml_", StringComparison.Ordinal) || key.Contains(' '))
                 Warn($"原版文本改写 {key}: 不像 lang key（原版 key 一般形如 obj_xxx_Draw_0_gml_12_0）");
+        }
+
+        // ---------------- 地图/房间差分
+        var patchedRooms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rp in File.RoomPatches)
+        {
+            var name = (rp.Name ?? "").Trim();
+            if (name.Length == 0) { Err("地图改动：目标房间名不能为空"); continue; }
+            if (!patchedRooms.Add(name)) Err($"地图改动：房间 {name} 出现多条补丁（合并成一条再保存）");
+            if (rp.IsEmpty) Warn($"地图改动 {name}: 没有任何改动（保存时会被丢掉）");
+            var patchLookup = baseline ?? assets;
+            if (patchLookup != null && !patchLookup.Rooms.Any(x => string.Equals(GameData.Name(x.Name), name, StringComparison.OrdinalIgnoreCase)))
+                Err($"地图改动 {name}: data.win 里没有这个房间（已改名或删除的房间暂不支持）");
+            if (rp.Width != null && rp.Width == 0) Err($"地图改动 {name}: 宽度不能为 0");
+            if (rp.Height != null && rp.Height == 0) Err($"地图改动 {name}: 高度不能为 0");
+            var addIds = new HashSet<uint>();
+            foreach (var ai in rp.InstancesAdd)
+            {
+                if (string.IsNullOrWhiteSpace(ai.Object)) Err($"地图改动 {name}: 新增实例缺少对象名");
+                else if (assets != null && !assets.GameObjects.Any(o => string.Equals(GameData.Name(o.Name), ai.Object, StringComparison.OrdinalIgnoreCase)))
+                    Err($"地图改动 {name}: data.win 里没有对象 {ai.Object}");
+                if (ai.InstanceId != 0 && !addIds.Add(ai.InstanceId))
+                    Err($"地图改动 {name}: 新增实例 ID 重复 {ai.InstanceId}");
+            }
+            foreach (var mi in rp.InstancesModify)
+            {
+                if (mi.InstanceId == 0) { Err($"地图改动 {name}: 修改实例必须带 InstanceId"); continue; }
+                if (string.IsNullOrWhiteSpace(mi.Object) && mi.X == null && mi.Y == null && mi.Layer == null
+                    && mi.ScaleX == null && mi.ScaleY == null && mi.Rotation == null && mi.Color == null
+                    && mi.ImageIndex == null && mi.ImageSpeed == null && mi.Nonexistent == null)
+                    Warn($"地图改动 {name}: 实例 {mi.InstanceId} 没写任何字段（不会产生改动）");
+            }
+            var removeIds = new HashSet<uint>();
+            foreach (var ri in rp.InstancesRemove)
+            {
+                if (ri.InstanceId == 0) Err($"地图改动 {name}: 删除实例必须带 InstanceId");
+                else if (!removeIds.Add(ri.InstanceId)) Warn($"地图改动 {name}: 删除实例 {ri.InstanceId} 重复");
+            }
+            foreach (var ts in rp.TilesSet)
+            {
+                if (ts.Cells.Count == 0) Warn($"地图改动 {name}: 有一组瓦片写入是空的");
+            }
+        }
+        var newRoomNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var nr in File.NewRooms)
+        {
+            var name = (nr.Name ?? "").Trim();
+            if (name.Length == 0) { Err("新增房间：名字不能为空"); continue; }
+            if (!newRoomNames.Add(name)) Err($"新增房间：名字重复 {name}");
+            if (patchedRooms.Contains(name)) Err($"新增房间 {name}: 同一名字又出现在地图改动里（新房间不能再打补丁）");
+            var roomLookup = baseline ?? assets;
+            if (roomLookup != null && roomLookup.Rooms.Any(x => string.Equals(GameData.Name(x.Name), name, StringComparison.OrdinalIgnoreCase)))
+                Err($"新增房间 {name}: data.win 里已经有同名房间（改名，或改用地图改动）");
+            if (nr.Width == 0 || nr.Height == 0) Err($"新增房间 {name}: 宽高不能为 0");
+            Warn($"新增房间 {name}: rooms 段只支持空房间（没有实例/瓦片/层），内容需要用对象在运行时创建");
         }
         return list;
     }
