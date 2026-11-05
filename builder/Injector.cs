@@ -484,10 +484,13 @@ public static class Injector
         //   ★ 为什么需要本节：房间不属于任何代码条目 —— patch（要目标已存在）、gml/（只能加函数脚本）、
         //     objects 段（只管对象事件）三段都碰不到它，而靠 room_goto(N) 进自己房间的 mod
         //     （dojo：dj_open() 里 room_goto(147)）少了这个房间，入口在第一跳就断掉。
-        //   索引 = **RoomOrder 的下标**：把房间追加到 data.Rooms 与 RoomOrder 的末尾，新房间的编号
-        //   正好等于原房间数（vanilla ch1 有 147 个 ⇒ room_dojo 拿到 147 ✓ 与 dojo 源里的硬编码一致）。
-        //   只建**空房间**：入口型 mod 的房间就是一块画布（room_dojo 640x480，实例/图块/层全 0，
-        //   场地全靠 obj_dojo 自己的 Draw）；带实例/图块/层的房间需要完整序列化，层不给，由转换报告指出。
+        //   索引 = **data.Rooms（ROOM 资源表）的下标**（不是 RoomOrder 的下标；本机两表同序所以结果一样，
+        //   但字节码里的房间常量解出来用的是 data.Rooms 下标，写清楚免得以后有人只改 RoomOrder）：
+        //   把房间追加到 data.Rooms 与 RoomOrder 的末尾，新房间的编号正好等于原房间数
+        //   （vanilla ch1 有 147 个 ⇒ room_dojo 拿到 147 ✓ 与 dojo 源里的硬编码一致）。
+        //   房间默认只建**空壳**（入口型 mod 的房间就是一块画布，场地全靠 obj_dojo 自己的 Draw）；
+        //   mod.json 的 rooms 条目若带 layers（地图编辑器「新增房间」保存时生成），则由
+        //   RoomPatches.FillRoom 铺初始图层/实例/瓦片 —— 这样「新建房间 + 摆东西」也能完全用 mod 表达。
         //   GMS2 房间的 8 个默认视图 / 8 个默认背景由 new UndertaleRoom() 自带，只需覆盖启用视图的字段。
         int roomNew = 0, roomSkip = 0, roomBad2 = 0;
         foreach (var m in mods)
@@ -542,6 +545,11 @@ public static class Injector
                 }
                 data.Rooms.Add(room);
                 data.GeneralInfo.RoomOrder.Add(new UndertaleResourceById<UndertaleRoom, UndertaleChunkROOM>(room));
+                if (rd.Layers.Count > 0)
+                {
+                    int filled = RoomPatches.FillRoom(data, m, room, rd);
+                    Paths.Log(L("      初始内容: {0} 个图层", filled));
+                }
                 roomNew++;
                 Paths.Log(L("    +房间 {0}（{1}x{2} 速度 {3} 标志 {4}）⇒ room_goto 索引 {5}",
                     rd.Name, rd.Width, rd.Height, rd.Speed, rd.Flags, data.Rooms.Count - 1));

@@ -70,11 +70,12 @@ public sealed class ModRoomView
     public string? Object { get; set; }
 }
 
-/// <summary>mod 新增的房间（基本属性 + 启用视图）。
+/// <summary>mod 新增的房间（基本属性 + 启用视图 + 初始图层/实例/瓦片）。
 /// ★ 为什么需要它：房间在指令级 diff 里**根本不出现**（它是 ROOM 段的资源，不是代码条目），
 ///   而 dojo 靠 room_goto(147) 进自己新建的房间 —— 只做「对象 + 事件」时房间表里没有第 148 个房间，
-///   真机上入口直接断掉。这里只表达**空房间**（无实例/图块/层/创建代码/启用背景，如 room_dojo
-///   完全靠 obj_dojo 自己 Draw）；有内容的房间需要完整的房间序列化，暂由报告指出，不静默丢。</summary>
+///   真机上入口直接断掉。原先只表达**空房间**（room_dojo 完全靠 obj_dojo 自己 Draw）；
+///   现在 <see cref="Layers"/> 可以带初始内容（地图编辑器「新增房间 + 摆实例/画瓦片」导出），
+///   由部署器在建好房间后按图层规格铺进去（见 RoomPatches.FillRoom）。</summary>
 public sealed class ModRoom
 {
     public string Name { get; set; } = "";
@@ -87,6 +88,8 @@ public sealed class ModRoom
     public long BackgroundColor { get; set; }
     public bool DrawBackgroundColor { get; set; } = true;
     public List<ModRoomView> Views { get; set; } = new();
+    /// <summary>新房间的初始图层（含实例 / 原生瓦片 / 旧式瓦片）；空 = 纯空房间。</summary>
+    public List<ModRoomLayer> Layers { get; set; } = new();
 }
 
 /// <summary>mod 对**已有房间**的差分补丁（地图编辑器在「直接编辑原版 data」模式下保存时生成）。
@@ -116,6 +119,20 @@ public sealed class ModRoomPatch
     public List<ModRoomInstanceRef> InstancesRemove { get; set; } = new();
     /// <summary>原生瓦片逐格写入（0 = 擦除）；按图层名定位，缺省第一层原生瓦片层。</summary>
     public List<ModRoomTileSet> TilesSet { get; set; } = new();
+
+    /// <summary>房间改名（旧名 = <see cref="Name"/>，新名 = 这里）。最后应用；重名会被拒绝。</summary>
+    public string? Rename { get; set; }
+    /// <summary>把这间房从房间顺序（GeneralInfo.RoomOrder）里摘除：保留房间资源与编号，
+    /// 静态 room_goto(编号) 仍能进，但 room_goto_next/previous 的门链会跳过它。
+    /// 物理删除原版房间不可行（房间编号 = ROOM 表下标，删中间房间会让其后编号全体 -1，而原版
+    /// bytecode 里的房间常量是裸 int、不会被重写）——所以"删除房间"在产品里一律表达为这个字段。</summary>
+    public bool? RemoveFromOrder { get; set; }
+    /// <summary>新增图层（可带初始内容：实例 / 原生瓦片 / 旧式瓦片）；同名已存在则跳过并警告。</summary>
+    public List<ModRoomLayer> LayersAdd { get; set; } = new();
+    /// <summary>删除图层（按名字；会连同层内实例/旧式瓦片一起删；最后一个图层不删）。</summary>
+    public List<string> LayersRemove { get; set; } = new();
+    /// <summary>整层替换旧式（LegacyTiles）瓦片：先清空该层再按列表重建（旧式瓦片没有逐格网格可差分）。</summary>
+    public List<ModRoomLegacyTiles> LegacyTilesSet { get; set; } = new();
 }
 
 /// <summary>房间实例的字段集合：add 时用 Object/X/Y 等，modify 时只写改动字段。</summary>
@@ -156,6 +173,51 @@ public sealed class ModRoomTileCell
     public int X { get; set; }
     public int Y { get; set; }
     public uint Value { get; set; }
+}
+
+/// <summary>一个图层规格：新增图层 / 新房间初始图层共用的表达（含可选的初始内容）。
+/// type = instances / tiles / assets；内容按 type 取对应字段。</summary>
+public sealed class ModRoomLayer
+{
+    public string Name { get; set; } = "";
+    /// <summary>instances（实例层）/ tiles（原生瓦片层）/ assets（旧式瓦片层）。</summary>
+    public string Type { get; set; } = "instances";
+    public int Depth { get; set; }
+    public bool? Visible { get; set; }
+    /// <summary>tiles 层用的 tileset（background 资源名）；缺省自动挑一个带 Texture 与 GMS2TileWidth/Height 的。</summary>
+    public string? Tileset { get; set; }
+    /// <summary>instances 层的初始实例。</summary>
+    public List<ModRoomInstance> Instances { get; set; } = new();
+    /// <summary>tiles 层的初始原生瓦片格（0 = 空）。</summary>
+    public List<ModRoomTileCell> Tiles { get; set; } = new();
+    /// <summary>assets 层的初始旧式瓦片。</summary>
+    public List<ModRoomTileDef> LegacyTiles { get; set; } = new();
+}
+
+/// <summary>旧式瓦片（UndertaleRoom.Tile）的可移植字段：图源与几何，不含对象引用。
+/// Sprite / Background 二选一（GMS2 房间一般是 sprite 图块，老格式用 background）。</summary>
+public sealed class ModRoomTileDef
+{
+    /// <summary>原图块 ID（保留以便差分/回灌对齐；冲突或 0 时由部署器另分配）。</summary>
+    public int? InstanceId { get; set; }
+    public int X { get; set; }
+    public int Y { get; set; }
+    public string? Sprite { get; set; }
+    public string? Background { get; set; }
+    public int SourceX { get; set; }
+    public int SourceY { get; set; }
+    public uint Width { get; set; } = 16;
+    public uint Height { get; set; } = 16;
+    public float? ScaleX { get; set; }
+    public float? ScaleY { get; set; }
+    public uint? Color { get; set; }
+}
+
+/// <summary>整层旧式瓦片替换（旧式瓦片没有网格索引，只能按层整体重建）。</summary>
+public sealed class ModRoomLegacyTiles
+{
+    public string? Layer { get; set; }
+    public List<ModRoomTileDef> Tiles { get; set; } = new();
 }
 
 /// <summary>mod.json 的 references 段。</summary>

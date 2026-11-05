@@ -94,6 +94,7 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 | [docs/PROJECT.md](docs/PROJECT.md) | 项目状态 + 测试指南（lint/doctor/smoke 各自抓什么） |
 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | 自动生成的 API 文档 |
 | [docs/CHAPTER_DEV.md](docs/CHAPTER_DEV.md) | 从零做一个自己的章节 |
+| [docs/ROOM_PATCHES.md](docs/ROOM_PATCHES.md) | 房间/地图差分：mod.json 的 `roomPatches` / `rooms` 全字段、改名 vs 摘除、验证清单 |
 | [docs/GB.md](docs/GB.md) | GameBanana 浏览、下载队列、黑名单 |
 | [docs/PLUGINS.md](docs/PLUGINS.md) | 插件开发（SDK、清单、权限、钩子） |
 | [docs/WEBUI.md](docs/WEBUI.md) | Web 界面（接口、端口、自动停止） |
