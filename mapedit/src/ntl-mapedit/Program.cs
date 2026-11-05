@@ -309,6 +309,7 @@ public static class Program
             Console.WriteLine("  ntl-mapedit battle-demo [data.win] [modsDir]             - 生成可直接部署的示例战斗 mod（默认 Neutraled/mods）");
             Console.WriteLine("  ntl-mapedit room-probe <data.win> <roomName> [instId]   - 只读探针：房间宽高/图层/实例/瓦片数，给 instId 时打印该实例字段");
             Console.WriteLine("  ntl-mapedit manifest-test [modsDir] [outJson]            - mods.json 整包清单扫描/校验/保存重读自检");
+            Console.WriteLine("  ntl-mapedit install-ntlmod <gameRoot> <pkg.ntlmod> [leaf] - 把 .ntlmod 装进 Neutraled/mods/<id>/<author>/<leaf>");
             Console.WriteLine("  ntl-mapedit edit-test | tile-test <src> <dst>            - 早期编辑/瓦片测试");
             Console.WriteLine("  ntl-mapedit save-roundtrip <src> <dst>                   - 经 EditorDocument 打开→不修改→Save，校验 SHA256 不变");
             Console.WriteLine("  ntl-mapedit roundtrip <src data.win> <dst data.win>      - data.win 读写往返");
@@ -1536,6 +1537,26 @@ public static class Program
                 + " layers=" + (probed.Layers?.Count ?? 0)
                 + " instances=" + RoomEdit.AllInstances(probed).Count()
                 + " tiles=" + RoomEdit.AllTiles(probed).Count());
+            // 图层明细（验证 roomPatches 的 layersAdd/LayersRemove / 新房间初始图层是否落进产物）。
+            if (probed.Layers != null)
+                foreach (var l in probed.Layers)
+                {
+                    string kind = l.LayerType.ToString();
+                    int inst = l.InstancesData?.Instances?.Count ?? 0;
+                    int leg = l.AssetsData?.LegacyTiles?.Count ?? 0;
+                    string tiles = "-";
+                    if (l.TilesData?.TileData != null)
+                    {
+                        int nz = 0;
+                        foreach (var row in l.TilesData.TileData)
+                            if (row != null) foreach (var v in row) if ((v & NativeTiles.IndexMask) != 0) nz++;
+                        tiles = nz + "/" + (l.TilesData.TilesX * l.TilesData.TilesY)
+                            + (l.TilesData.Background != null ? ":" + GameData.Name(l.TilesData.Background.Name) : "");
+                    }
+                    Console.WriteLine("  layer=\"" + GameData.Name(l.LayerName) + "\" type=" + kind
+                        + " depth=" + l.LayerDepth + " visible=" + l.IsVisible
+                        + " instances=" + inst + " legacy=" + leg + " tiles=" + tiles);
+                }
             if (args.Length > 3)
             {
                 // 可选第 3 参数：按实例 ID 打印字段（验证 roomPatches 的 instancesModify/Add 是否真的落进产物）。
@@ -1620,6 +1641,16 @@ public static class Program
             }
             Console.WriteLine(fails == 0 ? "MANIFEST-TEST PASS" : $"MANIFEST-TEST FAIL ({fails})");
             return fails == 0 ? 0 : 1;
+        }
+        if (args[0] == "install-ntlmod")
+        {
+            // .ntlmod 装机闭环：解到 Neutraled/mods/<id>/<author>/<leaf>（与 builder --mod-install 同布局）。
+            Need("install-ntlmod <gameRoot> <package.ntlmod> [leaf]", 3);
+            NoExtra("install-ntlmod <gameRoot> <package.ntlmod> [leaf]", 4);
+            string? leafHint = args.Length > 3 ? args[3] : null;
+            var res = NtlmodInstaller.Install(args[1], args[2], leafHint);
+            Console.WriteLine("[install-ntlmod] " + res.Message);
+            return res.Ok ? 0 : 1;
         }
         if (args[0] == "structure-test")
         {

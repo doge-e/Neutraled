@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Security.Cryptography;
 
 namespace NtlMapEdit;
@@ -316,6 +317,46 @@ public static class MapeditSelfTest
                 Check(again.ChangeCount == 0 && again.NewRooms.Count == 0,
                     "roomdiff: 回灌后再 diff 为空（幂等闭环）");
             }
+
+            // ---------------- .ntlmod 装机闭环：导出包 -> Neutraled/mods/<id>/<author>/<leaf> ----------------
+            string pkgDir = Path.Combine(fixture, "packages");
+            Directory.CreateDirectory(pkgDir);
+            string mkPkg(string fileName, string json, params (string Name, string Content)[] files)
+            {
+                string p = Path.Combine(pkgDir, fileName);
+                if (File.Exists(p)) File.Delete(p);
+                using var zip = ZipFile.Open(p, ZipArchiveMode.Create);
+                var me = zip.CreateEntry("mod.json");
+                using (var w = new StreamWriter(me.Open())) w.Write(json);
+                foreach (var f in files)
+                {
+                    var en = zip.CreateEntry(f.Name);
+                    using var ws = new StreamWriter(en.Open());
+                    ws.Write(f.Content);
+                }
+                return p;
+            }
+            string pkg = mkPkg("ntl.selftest-chapter1.ntlmod",
+                "{\"id\":\"ntl.selftest\",\"author\":\"doge-e\",\"chapter\":\"chapter1\"}",
+                ("gml/main.gml", "function main() {}\n"), ("files/marker.txt", "ok"));
+            string gameRootSelftest = Path.Combine(fixture, "ntlmod-game");
+            var inst = NtlmodInstaller.Install(gameRootSelftest, pkg);
+            Check(inst.Ok, "ntlmod: 安装成功（未传 leaf，取自包名后缀）");
+            string wantLeaf = Path.Combine(gameRootSelftest, "Neutraled", "mods", "ntl.selftest", "doge-e", "chapter1");
+            Check(string.Equals(Path.GetFullPath(inst.Target), Path.GetFullPath(wantLeaf), StringComparison.OrdinalIgnoreCase),
+                "ntlmod: 按 id/author/leaf 落位（与 builder --mod-install 同布局）");
+            Check(File.Exists(Path.Combine(wantLeaf, "mod.json")) && File.Exists(Path.Combine(wantLeaf, "gml", "main.gml")),
+                "ntlmod: 包内条目已解出");
+            File.WriteAllText(Path.Combine(wantLeaf, "gml", "stale.gml"), "removed by reinstall");
+            var inst2 = NtlmodInstaller.Install(gameRootSelftest, pkg);
+            Check(inst2.Ok && !File.Exists(Path.Combine(wantLeaf, "gml", "stale.gml")),
+                "ntlmod: 重复安装整体替换（旧文件不残留，避免旧脚本覆盖新包）");
+            Check(!NtlmodInstaller.Install(gameRootSelftest, pkg, "chapter9").Ok, "ntlmod: 非法 leaf 被拒");
+            string pkgNoLeaf = mkPkg("noleaf.ntlmod", "{\"id\":\"ntl.noleaf\",\"author\":\"doge-e\"}", ("mod.marker", "x"));
+            Check(!NtlmodInstaller.Install(gameRootSelftest, pkgNoLeaf).Ok, "ntlmod: 无法确定叶子时拒装（不默认 root）");
+            Check(NtlmodInstaller.LeafFromFileName("battle.demo-chapter1.ntlmod") == "chapter1"
+                && NtlmodInstaller.LeafFromFileName("pkg-root.ntlmod") == "root"
+                && NtlmodInstaller.LeafFromFileName("plain.ntlmod") == "", "ntlmod: 包名后缀解析叶子");
 
             // ---------------- 启动默认目标：最近文件 -> live chapter1，绝不 backup ----------------
             var recentFile = Path.Combine(fixture, "recent.json");

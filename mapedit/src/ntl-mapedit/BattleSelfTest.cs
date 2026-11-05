@@ -1,4 +1,5 @@
 using System.Text.Json;
+using UndertaleModLib.Models;
 
 namespace NtlMapEdit;
 
@@ -70,6 +71,20 @@ public static class BattleSelfTest
                 {
                     Check(false, "validate: 新增房间基线比对自检异常 " + ex.Message);
                 }
+            }
+            // 回归（QA full10 抓到）：改名房间后，战斗/对话/剧情里指向旧名的绑定房间与触发房间必须一起改。
+            // 否则基线编辑时 assets 里已没有旧名 → Validate 报「data.win 里没有房间 <旧名>」→ 保存成功但 mod 永远生成不了。
+            if (gd != null)
+            {
+                var renameProj = BuildProject(gd, out string oldRoomName);
+                int refs = renameProj.File.RenameRoomReferences(oldRoomName, oldRoomName + "_renamed");
+                Check(refs >= 6, "rename: 战斗/对话/剧情的房间引用一起改名（" + refs + " 处）");
+                Check(!renameProj.File.Battles.Any(b => b.Room == oldRoomName || b.Trigger.Room == oldRoomName)
+                      && !renameProj.File.Dialogues.Any(d => d.Room == oldRoomName || d.Trigger.Room == oldRoomName)
+                      && !renameProj.File.Cutscenes.Any(c => c.Room == oldRoomName || c.Trigger.Room == oldRoomName),
+                    "rename: 旧房间名不再出现在配置里");
+                Check(renameProj.File.Battles.All(b => b.Room == oldRoomName + "_renamed"),
+                    "rename: 战斗绑定房间改成新名");
             }
             Check(project.File.Dialogues.Count == 1 && project.File.Settings.Count == 4,
                 "validate: 自检工程带 1 段对话 + 4 个设置项");
@@ -269,6 +284,205 @@ public static class BattleSelfTest
             Check(generatedDialogue != null && generatedDialogue.Room == expectedRoom, "generate: 对话绑定房间自动带上");
             Check(generatedDialogue != null && generatedDialogue.Trigger.Room == expectedRoom, "generate: 对话 trigger.room 自动填充");
             Check(generatedDialogue != null && generatedDialogue.InstanceId == project.File.Dialogues[0].InstanceId, "generate: 对话实例 ID 保留");
+
+            // 3b) 地图差分新增能力：房间改名 / 图层增删（带内容）/ 旧式瓦片整层替换 /
+            //     新增房间带初始层 / 删除原版房间 = 从房间顺序摘除（removeFromOrder）
+            if (gd != null && dataWin != null)
+            {
+                GameData? editGd = null;
+                GameData? orderGd = null;
+                try
+                {
+                    editGd = new GameData(dataWin);
+                    var editedData = editGd.Data;
+                    var baseOrder = gd.Data.GeneralInfo?.RoomOrder;
+                    var editedOrder = editedData.GeneralInfo?.RoomOrder;
+                    Check(baseOrder != null && editedOrder != null && baseOrder.Count > 0, "roomdiff: data 带房间顺序表");
+                    if (baseOrder != null && editedOrder != null && baseOrder.Count > 0)
+                    {
+                        int baseOrderCount = baseOrder.Count;
+                        int baseRoomCount = gd.Data.Rooms.Count;
+                        var lastRoom = editedData.Rooms[editedData.Rooms.Count - 1];
+                        string removedName = GameData.Name(lastRoom.Name);
+
+                        // (a) 房间保留、只从 edited 的 RoomOrder 摘除（= 编辑器里删除原版房间的可逆表达）
+                        for (int i = editedOrder.Count - 1; i >= 0; i--)
+                            if (editedOrder[i] != null && ReferenceEquals(editedOrder[i].Resource, lastRoom))
+                                editedOrder.RemoveAt(i);
+                        var orderDiff = RoomDiff.Build(gd.Data, editedData);
+                        Check(orderDiff.Patches.Any(p => p.Name == removedName && p.RemoveFromOrder == true),
+                            "roomdiff: 房间保留、仅从 RoomOrder 摘除 → 产出 removeFromOrder");
+                        Check(orderDiff.NewRooms.Count == 0, "roomdiff: 摘除顺序不会产生新房间");
+
+                        orderGd = new GameData(dataWin);
+                        var orderApplied = RoomPatchApply.Apply(orderGd.Data, orderDiff.Patches, null);
+                        int orderAfter = orderGd.Data.GeneralInfo?.RoomOrder?.Count ?? 0;
+                        Check(orderApplied.RoomsRemovedFromOrder == 1 && orderAfter == baseOrderCount - 1,
+                            "roompatch: removeFromOrder 回灌后房间顺序 -1");
+                        Check(orderGd.Data.Rooms.Count == baseRoomCount
+                              && orderGd.Data.Rooms.Any(r => GameData.Name(r.Name) == removedName),
+                            "roompatch: removeFromOrder 保留房间资源（data.Rooms 条数不变）");
+
+                        var twice = RoomPatchApply.Apply(orderGd.Data, orderDiff.Patches, null);
+                        int orderTwice = orderGd.Data.GeneralInfo?.RoomOrder?.Count ?? 0;
+                        Check(twice.RoomsRemovedFromOrder == 0 && orderTwice == baseOrderCount - 1,
+                            "roompatch: removeFromOrder 重复回灌不重复摘除（幂等）");
+
+                        // 「保存 → 重开（已摘除）→ 再保存」：相对原版基线仍要产出该补丁，不能悄悄放回顺序
+                        var orderRediff = RoomDiff.Build(gd.Data, orderGd.Data);
+                        Check(orderRediff.ChangeCount == 1
+                              && orderRediff.Patches.Any(p => p.Name == removedName && p.RemoveFromOrder == true),
+                            "roomdiff: 回灌后数据再 diff 仍产出 removeFromOrder（保存→重开→再保存不丢）");
+
+                        // (b) 改名 + 图层增删（带实例/原生瓦片/旧式瓦片）+ 新增房间带初始层
+                        UndertaleRoom? tr = null;
+                        int trIdx = -1;
+                        for (int i = 0; i < editedData.Rooms.Count - 1 && i < gd.Data.Rooms.Count - 1; i++)
+                        {
+                            var cand = editedData.Rooms[i];
+                            if (cand?.Layers != null && cand.Layers.Count >= 2) { tr = cand; trIdx = i; break; }
+                        }
+                        Check(tr != null && trIdx >= 0, "roomdiff: 找到可测的多图层房间（>=2 层）");
+                        if (tr != null && trIdx >= 0)
+                        {
+                            var btr = gd.Data.Rooms[trIdx];
+                            string oldRoom = GameData.Name(tr.Name);
+                            string newName = oldRoom + "_rp_rename";
+
+                            // 两侧对称加一个空 assets 层：旧式瓦片要「基线已有同名层」才能整层替换
+                            var eAssets = RoomEdit.AddAssetsLayer(editedData, tr, "ntl_rp_assets", 200);
+                            RoomEdit.AddAssetsLayer(gd.Data, btr, "ntl_rp_assets", 200);
+                            var spr = editGd.Sprites.FirstOrDefault(s => s?.Textures != null && s.Textures.Count > 0);
+                            Check(spr != null, "roomdiff: 找到可用于旧式瓦片的精灵");
+                            if (spr != null)
+                            {
+                                var tile = RoomEdit.AddTile(editedData, tr, eAssets, RoomEdit.MakeTileBrush(editedData, spr), 5, 7);
+                                Check(tile != null, "roomdiff: 旧式瓦片已加入编辑数据");
+                            }
+
+                            // 删一个非 assets 图层（房间至少还有一层）
+                            var delLayer = tr.Layers.FirstOrDefault(l => l != null
+                                && l.LayerType != UndertaleRoom.LayerType.Assets && !ReferenceEquals(l, eAssets));
+                            string delName = delLayer == null ? "" : GameData.Name(delLayer.LayerName);
+                            Check(delLayer != null && RoomEdit.RemoveLayer(tr, delLayer), "roomdiff: 删除一个原版图层");
+
+                            RoomEdit.RenameRoom(editedData, tr, newName);
+
+                            var eInst = RoomEdit.AddInstanceLayer(editedData, tr, "ntl_rp_inst", 210);
+                            var obj = editGd.GameObjects.FirstOrDefault(o => o != null
+                                && !string.IsNullOrWhiteSpace(GameData.Name(o.Name)));
+                            Check(obj != null && RoomEdit.AddInstance(editedData, tr, eInst, obj, 40, 60,
+                                    RoomEdit.NextInstanceId(editedData)) != null,
+                                "roomdiff: 新增实例层并放入 1 个实例");
+
+                            var eTiles = RoomEdit.AddTileLayer(editedData, tr, "ntl_rp_tiles", 211);
+                            var rows = eTiles?.TilesData?.TileData;
+                            Check(rows != null && rows.Length > 1 && rows[0].Length > 1, "roomdiff: 新增原生瓦片层（可写格）");
+                            if (rows != null && rows.Length > 1 && rows[0].Length > 1)
+                            {
+                                rows[0][0] = 5;
+                                rows[1][1] = 6;
+                                eTiles!.TilesData!.TileDataUpdated();
+                            }
+
+                            // 新房间也要带初始内容（实例层 + 瓦片层）
+                            var newRoom = RoomEdit.CreateBlankRoom(editedData, editedData.Rooms[0], "room_ntl_rp_new");
+                            var niLayer = RoomEdit.AddInstanceLayer(editedData, newRoom, "ntl_rp_new_inst", 300);
+                            if (obj != null)
+                                RoomEdit.AddInstance(editedData, newRoom, niLayer, obj, 80, 90, RoomEdit.NextInstanceId(editedData));
+                            var ntLayer = RoomEdit.AddTileLayer(editedData, newRoom, "ntl_rp_new_tiles", 301);
+                            var nRows = ntLayer?.TilesData?.TileData;
+                            if (nRows != null && nRows.Length > 0 && nRows[0].Length > 0)
+                            {
+                                nRows[0][0] = 7;
+                                ntLayer!.TilesData!.TileDataUpdated();
+                            }
+
+                            // 再把改名后的房间也从顺序摘除：验证 removeFromOrder 与其它差分字段并存
+                            for (int i = editedOrder.Count - 1; i >= 0; i--)
+                                if (editedOrder[i] != null && ReferenceEquals(editedOrder[i].Resource, tr))
+                                    editedOrder.RemoveAt(i);
+
+                            var diff = RoomDiff.Build(gd.Data, editedData);
+                            var renamed = diff.Patches.FirstOrDefault(p => p.Name == oldRoom);
+                            Check(renamed != null && renamed.Rename == newName, "roomdiff: 房间改名进差分");
+                            Check(renamed != null && renamed.LayersRemove.Contains(delName), "roomdiff: 删除图层进差分");
+                            Check(renamed != null && renamed.RemoveFromOrder == true, "roomdiff: 顺序摘除与改名/图层字段并存");
+                            Check(renamed != null && renamed.LayersAdd.Any(l => l.Name == "ntl_rp_inst" && l.Instances.Count == 1),
+                                "roomdiff: 新增实例层带 1 个实例");
+                            Check(renamed != null && renamed.LayersAdd.Any(l => l.Name == "ntl_rp_tiles" && l.Tiles.Count >= 2),
+                                "roomdiff: 新增瓦片层带 2 格内容");
+                            Check(renamed != null && renamed.LegacyTilesSet.Any(lt => lt.Layer == "ntl_rp_assets" && lt.Tiles.Count == 1),
+                                "roomdiff: 旧式瓦片整层替换进差分");
+                            var newDef = diff.NewRooms.FirstOrDefault(n => n.Name == "room_ntl_rp_new");
+                            Check(newDef != null && newDef.Layers.Count > 0, "roomdiff: 新房间带初始图层进差分");
+                            Check(diff.ChangeCount > 0, "roomdiff: 改动计数 > 0");
+
+                            // 生成 mod 前先校验（此时 gd 还是基线，还没回灌）
+                            var rpProj = BuildProject(gd, out _);
+                            rpProj.File.RoomPatches = diff.Patches;
+                            rpProj.File.NewRooms = diff.NewRooms;
+                            rpProj.Normalize();
+                            var rpIssues = rpProj.Validate(gd);
+                            Check(rpIssues.All(i => !i.IsError), "generate: 新差分字段 validate 0 错误" + DescribeIssues(rpIssues));
+
+                            string modsDir2 = Path.Combine(dir, "mods2");
+                            var rpResult = BattleGenerator.Generate(rpProj, modsDir2, gd);
+                            using (var rpDoc = JsonDocument.Parse(File.ReadAllText(Path.Combine(rpResult.ModDir, "mod.json"))))
+                            {
+                                var root = rpDoc.RootElement;
+                                var p0 = root.GetProperty("roomPatches").EnumerateArray()
+                                    .FirstOrDefault(x => x.GetProperty("name").GetString() == oldRoom);
+                                Check(p0.ValueKind == JsonValueKind.Object
+                                      && p0.TryGetProperty("rename", out var rn) && rn.GetString() == newName,
+                                    "generate: mod.json 带 rename");
+                                Check(p0.ValueKind == JsonValueKind.Object
+                                      && p0.TryGetProperty("layersAdd", out var la) && la.ValueKind == JsonValueKind.Array && la.GetArrayLength() >= 2,
+                                    "generate: mod.json 带 layersAdd");
+                                Check(p0.ValueKind == JsonValueKind.Object
+                                      && p0.TryGetProperty("layersRemove", out var lr) && lr.ValueKind == JsonValueKind.Array && lr.GetArrayLength() >= 1,
+                                    "generate: mod.json 带 layersRemove");
+                                Check(p0.ValueKind == JsonValueKind.Object
+                                      && p0.TryGetProperty("legacyTilesSet", out var lts) && lts.ValueKind == JsonValueKind.Array && lts.GetArrayLength() >= 1,
+                                    "generate: mod.json 带 legacyTilesSet");
+                                Check(p0.ValueKind == JsonValueKind.Object && p0.TryGetProperty("removeFromOrder", out var rfo)
+                                      && rfo.ValueKind == JsonValueKind.True,
+                                    "generate: mod.json 带 removeFromOrder");
+                                var nr0 = root.GetProperty("rooms").EnumerateArray()
+                                    .FirstOrDefault(x => x.GetProperty("name").GetString() == "room_ntl_rp_new");
+                                Check(nr0.ValueKind == JsonValueKind.Object
+                                      && nr0.TryGetProperty("layers", out var nls) && nls.GetArrayLength() > 0,
+                                    "generate: mod.json 新房间带 layers");
+                            }
+                            string rpReadme = File.ReadAllText(Path.Combine(rpResult.ModDir, "README.md"));
+                            Check(rpReadme.Contains("改名") && rpReadme.Contains("图层") && rpReadme.Contains("摘除"),
+                                "generate: README 写明改名/图层/摘除");
+
+                            // 回灌：一次应用改名 + 图层增删 + 旧式瓦片 + 新房间 + 两条顺序摘除
+                            var applied = RoomPatchApply.Apply(gd.Data, diff.Patches, diff.NewRooms);
+                            Check(applied.RoomsPatched >= 1 && applied.RoomsRenamed == 1, "roompatch: 改名回灌");
+                            Check(applied.RoomsRemovedFromOrder == 2, "roompatch: 顺序摘除回灌（改名房间 + 摘除房间）");
+                            Check(applied.LayersRemoved >= 1 && applied.LayersAdded >= 2, "roompatch: 图层增删回灌");
+                            Check(applied.LegacyTilesWritten >= 1, "roompatch: 旧式瓦片回灌");
+                            Check(applied.RoomsAdded == 1, "roompatch: 新房间回灌");
+
+                            var again = RoomDiff.Build(gd.Data, editedData);
+                            Check(again.ChangeCount == 0 && again.NewRooms.Count == 0,
+                                "roomdiff: 回灌后再 diff 为空（已摘除顺序的不重复叠加）"
+                                + (again.ChangeCount > 0 ? "（ChangeCount=" + again.ChangeCount + "）" : ""));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Check(false, "roomdiff: 改名/图层/旧式瓦片/摘除顺序自检异常 " + ex.Message);
+                }
+                finally
+                {
+                    orderGd?.Dispose();
+                    editGd?.Dispose();
+                }
+            }
 
             // 4) 清理
             try { Directory.Delete(dir, true); } catch { }

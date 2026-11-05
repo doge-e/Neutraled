@@ -26,6 +26,45 @@ public sealed class BattlesFile
 
     /// <summary>编辑时新建的房间（roomPatches 表达不了「新建」，走 builder 的 rooms 段；只支持空房间）。</summary>
     public List<NewRoomDef> NewRooms { get; set; } = new();
+
+    /// <summary>
+    /// 房间改名后，把配置里所有指向旧名的引用（战斗/对话/剧情的绑定房间与触发房间、结束效果的去向房间、
+    /// 文本覆盖的来源房间）一起改成新名。不做这一步的话：基线里改名后 assets 中已无旧名，Validate 会报
+    /// 「data.win 里没有房间 X」并阻断 mod 生成（真机/QA full10 实测踩过）。
+    /// </summary>
+    public int RenameRoomReferences(string oldName, string newName)
+    {
+        if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) return 0;
+        if (string.Equals(oldName, newName, StringComparison.Ordinal)) return 0;
+        int n = 0;
+        string Fix(string s)
+        {
+            if (!string.Equals(s, oldName, StringComparison.Ordinal)) return s;
+            n++;
+            return newName;
+        }
+        foreach (var t in TextOverrides) t.Room = Fix(t.Room);
+        foreach (var b in Battles)
+        {
+            b.Room = Fix(b.Room);
+            b.Trigger.Room = Fix(b.Trigger.Room);
+            b.Victory.GotoRoom = Fix(b.Victory.GotoRoom);
+            b.Defeat.GotoRoom = Fix(b.Defeat.GotoRoom);
+        }
+        foreach (var d in Dialogues)
+        {
+            d.Room = Fix(d.Room);
+            d.Trigger.Room = Fix(d.Trigger.Room);
+            d.End.GotoRoom = Fix(d.End.GotoRoom);
+        }
+        foreach (var c in Cutscenes)
+        {
+            c.Room = Fix(c.Room);
+            c.Trigger.Room = Fix(c.Trigger.Room);
+            c.End.GotoRoom = Fix(c.End.GotoRoom);
+        }
+        return n;
+    }
 }
 
 /// <summary>
@@ -512,7 +551,26 @@ public sealed class BattleProject
     {
         var text = System.IO.File.ReadAllText(path);
         var f = BattleJson.Deserialize<BattlesFile>(text) ?? throw new InvalidDataException("battles.json 解析失败");
-        return new BattleProject { File = f, SourcePath = Path.GetFullPath(path) };
+        var p = new BattleProject { File = f, SourcePath = Path.GetFullPath(path) };
+        // 老 sidecar 可能带着「房间已改名、但触发还指向旧名」的坏引用（修好同步逻辑之前存的）→ 开档时补一次。
+        p.MigrateRenamedRoomReferences();
+        return p;
+    }
+
+    /// <summary>
+    /// 把 roomPatches 里「已改名房间」的旧名引用迁移到新名。读盘后跑一次，历史配置也能正常生成 mod；
+    /// 返回改动的引用数（0 = 没有需要迁移的）。
+    /// </summary>
+    public int MigrateRenamedRoomReferences()
+    {
+        int n = 0;
+        foreach (var p in File.RoomPatches)
+        {
+            if (string.IsNullOrWhiteSpace(p.Name) || string.IsNullOrWhiteSpace(p.Rename)) continue;
+            if (string.Equals(p.Name, p.Rename, StringComparison.Ordinal)) continue;
+            n += File.RenameRoomReferences(p.Name, p.Rename);
+        }
+        return n;
     }
 
     /// <summary>
@@ -683,10 +741,14 @@ public sealed class BattleProject
         {
             var rp = File.RoomPatches[i];
             rp.Name = (rp.Name ?? "").Trim();
+            rp.Rename = string.IsNullOrWhiteSpace(rp.Rename) ? null : rp.Rename.Trim();
             rp.InstancesAdd ??= new List<RoomInstancePatch>();
             rp.InstancesModify ??= new List<RoomInstancePatch>();
             rp.InstancesRemove ??= new List<RoomInstanceRef>();
             rp.TilesSet ??= new List<RoomTileSet>();
+            rp.LayersAdd ??= new List<RoomLayer>();
+            rp.LayersRemove ??= new List<string>();
+            rp.LegacyTilesSet ??= new List<RoomLegacyTiles>();
             foreach (var ts in rp.TilesSet)
             {
                 ts.Layer = string.IsNullOrWhiteSpace(ts.Layer) ? null : ts.Layer.Trim();
@@ -698,6 +760,21 @@ public sealed class BattleProject
                 ip.Object = string.IsNullOrWhiteSpace(ip.Object) ? null : ip.Object.Trim();
                 ip.Layer = string.IsNullOrWhiteSpace(ip.Layer) ? null : ip.Layer.Trim();
             }
+            for (int j = rp.LayersRemove.Count - 1; j >= 0; j--)
+            {
+                var ln = (rp.LayersRemove[j] ?? "").Trim();
+                if (ln.Length == 0) rp.LayersRemove.RemoveAt(j);
+                else rp.LayersRemove[j] = ln;
+            }
+            NormalizeLayers(rp.LayersAdd);
+            for (int j = rp.LegacyTilesSet.Count - 1; j >= 0; j--)
+            {
+                var lt = rp.LegacyTilesSet[j];
+                if (lt == null) { rp.LegacyTilesSet.RemoveAt(j); continue; }
+                lt.Layer = string.IsNullOrWhiteSpace(lt.Layer) ? null : lt.Layer.Trim();
+                lt.Tiles ??= new List<RoomTileDef>();
+                NormalizeTileDefs(lt.Tiles);
+            }
             if (rp.Name.Length == 0 || rp.IsEmpty) File.RoomPatches.RemoveAt(i);
         }
         File.NewRooms ??= new List<NewRoomDef>();
@@ -707,8 +784,52 @@ public sealed class BattleProject
             nr.Name = (nr.Name ?? "").Trim();
             if (nr.Width == 0) nr.Width = 640;
             if (nr.Height == 0) nr.Height = 480;
-            if (nr.Speed == 0) nr.Speed = 30;
+            // Speed 不补默认值：0 是合法房间速度（GameMaker 视作默认 30），builder 也原样保留；
+            // 补成 30 会让「diff → 回灌 → 再 diff」在新房间上产生假差异（回灌后 30 vs 编辑态 0）。
+            nr.Layers ??= new List<RoomLayer>();
+            NormalizeLayers(nr.Layers);
             if (nr.Name.Length == 0) File.NewRooms.RemoveAt(i);
+        }
+    }
+
+    /// <summary>图层规格归一：名字/类型/图块集 trim，列表补空，空名/无图源的瓦片定义丢掉。</summary>
+    private static void NormalizeLayers(List<RoomLayer>? layers)
+    {
+        if (layers == null) return;
+        for (int i = layers.Count - 1; i >= 0; i--)
+        {
+            RoomLayer? l = layers[i];
+            if (l == null) { layers.RemoveAt(i); continue; }
+            l.Name = (l.Name ?? "").Trim();
+            l.Type = (l.Type ?? "").Trim();
+            if (l.Type.Length == 0) l.Type = "instances";
+            l.Tileset = string.IsNullOrWhiteSpace(l.Tileset) ? null : l.Tileset.Trim();
+            l.Instances ??= new List<RoomInstancePatch>();
+            l.Tiles ??= new List<RoomTileCell>();
+            l.LegacyTiles ??= new List<RoomTileDef>();
+            foreach (var ip in l.Instances)
+            {
+                ip.Object = string.IsNullOrWhiteSpace(ip.Object) ? null : ip.Object.Trim();
+                ip.Layer = string.IsNullOrWhiteSpace(ip.Layer) ? null : ip.Layer.Trim();
+            }
+            NormalizeTileDefs(l.LegacyTiles);
+            if (l.Name.Length == 0) layers.RemoveAt(i);
+        }
+    }
+
+    /// <summary>旧式瓦片定义归一（Width/Height 默认 16；没有 sprite/background 的定义无法落地，丢掉）。</summary>
+    private static void NormalizeTileDefs(List<RoomTileDef>? defs)
+    {
+        if (defs == null) return;
+        for (int i = defs.Count - 1; i >= 0; i--)
+        {
+            RoomTileDef? d = defs[i];
+            if (d == null) { defs.RemoveAt(i); continue; }
+            d.Sprite = string.IsNullOrWhiteSpace(d.Sprite) ? null : d.Sprite.Trim();
+            d.Background = string.IsNullOrWhiteSpace(d.Background) ? null : d.Background.Trim();
+            if (d.Width == 0) d.Width = 16;
+            if (d.Height == 0) d.Height = 16;
+            if (d.Sprite == null && d.Background == null) defs.RemoveAt(i);
         }
     }
 
@@ -893,7 +1014,11 @@ public sealed class BattleProject
             if (!patchedRooms.Add(name)) Err($"地图改动：房间 {name} 出现多条补丁（合并成一条再保存）");
             if (rp.IsEmpty) Warn($"地图改动 {name}: 没有任何改动（保存时会被丢掉）");
             var patchLookup = baseline ?? assets;
-            if (patchLookup != null && !patchLookup.Rooms.Any(x => string.Equals(GameData.Name(x.Name), name, StringComparison.OrdinalIgnoreCase)))
+            bool roomExists = patchLookup == null
+                || patchLookup.Rooms.Any(x => string.Equals(GameData.Name(x.Name), name, StringComparison.OrdinalIgnoreCase));
+            if (!roomExists && rp.RemoveFromOrder == true)
+                Warn($"地图改动 {name}: data.win 里没有这个房间（从房间顺序摘除会跳过）");
+            else if (!roomExists)
                 Err($"地图改动 {name}: data.win 里没有这个房间（已改名或删除的房间暂不支持）");
             if (rp.Width != null && rp.Width == 0) Err($"地图改动 {name}: 宽度不能为 0");
             if (rp.Height != null && rp.Height == 0) Err($"地图改动 {name}: 高度不能为 0");
@@ -924,6 +1049,39 @@ public sealed class BattleProject
             {
                 if (ts.Cells.Count == 0) Warn($"地图改动 {name}: 有一组瓦片写入是空的");
             }
+            foreach (var layerName in rp.LayersRemove)
+                if (string.IsNullOrWhiteSpace(layerName))
+                    Warn($"地图改动 {name}: 有一个空的图层删除条目（会被忽略）");
+            var addLayerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var la in rp.LayersAdd)
+            {
+                var ln = (la.Name ?? "").Trim();
+                if (ln.Length == 0) { Warn($"地图改动 {name}: 新增图层缺 name（会被忽略）"); continue; }
+                if (!addLayerNames.Add(ln)) Warn($"地图改动 {name}: 新增图层 {ln} 名字重复");
+                var lt = (la.Type ?? "").Trim().ToLowerInvariant();
+                if (lt != "instances" && lt != "tiles" && lt != "assets")
+                    Warn($"地图改动 {name}: 图层 {ln} 的类型 {la.Type} 不支持（只支持 instances/tiles/assets，部署时会跳过）");
+                foreach (var ai in la.Instances)
+                {
+                    if (string.IsNullOrWhiteSpace(ai.Object)) Warn($"地图改动 {name}: 图层 {ln} 里有实例缺对象名");
+                    else if (assets != null && !assets.GameObjects.Any(o => string.Equals(GameData.Name(o.Name), ai.Object, StringComparison.OrdinalIgnoreCase)))
+                        Warn($"地图改动 {name}: 图层 {ln} 的实例对象 {ai.Object} 在 data.win 里不存在");
+                }
+            }
+            foreach (var lt in rp.LegacyTilesSet)
+                if (lt.Tiles.Count == 0)
+                    Warn($"地图改动 {name}: 旧式瓦片替换 {lt.Layer ?? "(第一层)"} 是空列表（会清空该层）");
+            if (!string.IsNullOrWhiteSpace(rp.Rename))
+            {
+                var renamed = rp.Rename.Trim();
+                if (string.Equals(renamed, name, StringComparison.Ordinal))
+                    Warn($"地图改动 {name}: rename 与 name 相同（不会改名）");
+                var renameLookup = baseline ?? assets;
+                if (renameLookup != null && renameLookup.Rooms.Any(x => string.Equals(GameData.Name(x.Name), renamed, StringComparison.OrdinalIgnoreCase)))
+                    Warn($"地图改动 {name}: 改名目标 {renamed} 已存在于 data.win（部署时会跳过改名）");
+                if (rp.RemoveFromOrder == true)
+                    Warn($"地图改动 {name}: 同时改名 + 从房间顺序摘除（两者都会应用；摘除用旧名定位）");
+            }
         }
         var newRoomNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var nr in File.NewRooms)
@@ -936,7 +1094,19 @@ public sealed class BattleProject
             if (roomLookup != null && roomLookup.Rooms.Any(x => string.Equals(GameData.Name(x.Name), name, StringComparison.OrdinalIgnoreCase)))
                 Err($"新增房间 {name}: data.win 里已经有同名房间（改名，或改用地图改动）");
             if (nr.Width == 0 || nr.Height == 0) Err($"新增房间 {name}: 宽高不能为 0");
-            Warn($"新增房间 {name}: rooms 段只支持空房间（没有实例/瓦片/层），内容需要用对象在运行时创建");
+            var newLayerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var la in nr.Layers)
+            {
+                var ln = (la.Name ?? "").Trim();
+                if (ln.Length == 0) { Warn($"新增房间 {name}: 有图层缺 name（会被忽略）"); continue; }
+                if (!newLayerNames.Add(ln)) Warn($"新增房间 {name}: 图层 {ln} 名字重复");
+                var lt = (la.Type ?? "").Trim().ToLowerInvariant();
+                if (lt != "instances" && lt != "tiles" && lt != "assets")
+                    Warn($"新增房间 {name}: 图层 {ln} 的类型 {la.Type} 不支持（只支持 instances/tiles/assets，部署时会跳过）");
+                foreach (var ai in la.Instances)
+                    if (string.IsNullOrWhiteSpace(ai.Object))
+                        Warn($"新增房间 {name}: 图层 {ln} 里有实例缺对象名");
+            }
         }
         return list;
     }

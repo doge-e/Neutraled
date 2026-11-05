@@ -112,12 +112,14 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 **打开原版基线也能编辑内容**：文件 → 打开游戏章节 → 原版基线（只读），或直接 `gui <backup/chapterN_windows/data.win>`。data.win 本身仍然不被改写（原版文件与 Steam 校验安全），但**房间/地图、对话、战斗、剧情、设置项、文本改写**都可以直接编辑并保存：
 
 - 编辑配置写到 **`游戏根/Neutraled/editor/baseline_<leaf>.ntlbattle.json`**（原版基线）或 **`<data.win>.ntlbattle.json`**（游戏文件），不会写进 `backup/`。
-- **地图/房间改动也进 mod**：保存时把当前编辑结果与「打开时的基线」逐项比对（房间宽高/speed/persistent/flags/背景色、实例增删与 x/y/缩放/旋转/颜色/图层、原生瓦片逐格 set/erase、新增空房间），差分成 `roomPatches` / `rooms` 写进 sidecar 与生成的 `mod.json`；Neutraled 部署时由 `builder/RoomPatches.cs` 应用到产物 data.win。**保存不会再提示「另存 data.win」**，编辑一律落 sidecar + mod。限制：改名/删除原版房间、增删图层、旧式 LegacyTiles 改动暂不支持（会响亮警告）。
-- **新增空白房间也能进 mod**（`rooms` 段，只支持空壳；内容要用对象在运行时创建）。保存前校验「新房间是否与已有房间重名」是拿**打开时的基线**比，不是拿编辑中的数据比——否则新房间在内存里必然存在，会被误判成「已有同名房间」而永远生成失败（QA 全量测试抓到，已修 + 回归断言）。
-- **改名/删除引擎特殊房间会二次确认**：名字以 `ROOM_` 开头（`ROOM_INITIALIZE` / `ROOM_TEST` …）是原版靠固定名字找的初始化/测试房间，改名或删除可能导致游戏无法启动；弹窗点「是」才继续。
-- **房间改名不进撤销栈**（`Ctrl+Z` 撤不回来），改名后状态栏会提示「（不可撤销）」；要撤销只能手动改回原名。
+- **地图/房间改动也进 mod**：保存时把当前编辑结果与「打开时的基线」逐项比对（房间宽高/speed/persistent/flags/背景色、**房间改名**、实例增删与 x/y/缩放/旋转/颜色/图层、原生瓦片逐格 set/erase、**图层增删**、**旧式 LegacyTiles 整层替换**、新增房间），差分成 `roomPatches` / `rooms` 写进 sidecar 与生成的 `mod.json`；Neutraled 部署时由 `builder/RoomPatches.cs` 应用到产物 data.win。字段与语义的权威口径见 **[docs/ROOM_PATCHES.md](../docs/ROOM_PATCHES.md)**。**保存不会再提示「另存 data.win」**，编辑一律落 sidecar + mod。
+- **删除原版房间 = 从流程顺序摘除（可逆）**：房间编号 = ROOM 资源表下标，物理删除会让其后所有房间编号 -1，而原版字节码里的房间常量是裸 int、不会被重写（会静默跳错房间）。所以基线编辑里「删除房间」只把房间从 `RoomOrder` 摘除：房间资源与编号保留，门链 `room_goto_next/previous` 会跳过它，保存时写进 `removeFromOrder`；列表里该房间用灰字 + 「已摘除」角标标出，随时可用「房间 → 恢复房间到流程顺序」放回。静态 `room_goto(编号)` 仍能进这间房（这是文档写明的边界，不是 bug）。
+- **新增房间可带内容**（`rooms[].layers`：实例 / 原生瓦片 / 旧式瓦片），编号追加在 ROOM 表末尾（ch1 第一个新房间 = 147，dojo 那类 `room_goto(147)` 约定不变）。保存前校验「新房间是否与已有房间重名」是拿**打开时的基线**比，不是拿编辑中的数据比——否则新房间在内存里必然存在，会被误判成「已有同名房间」而永远生成失败（QA 全量测试抓到，已修 + 回归断言）。
+- **改名/删除引擎特殊房间会二次确认**：名字以 `ROOM_` 开头（`ROOM_INITIALIZE` / `ROOM_TEST` …）是原版靠固定名字找的初始化/测试房间，改名或摘除可能导致游戏无法启动；弹窗点「是」才继续。
+- **房间改名不进撤销栈**（`Ctrl+Z` 撤不回来），改名后状态栏会提示「（不可撤销）」；基线编辑时改名保存进 mod 的 `roomPatches.rename`（原版 data.win 不动），要撤销只能手动改回原名。
+- **改名会自动同步已有绑定的房间名**：战斗 / 对话 / 剧情里指向旧房名的`绑定房间`与`触发房间`（含结束效果的「传送到房间」）以及文本覆盖的来源房间，全部改写成新名，状态栏追加「；同步 N 处触发/绑定房间名」。不做这一步的话，改名后校验会报「data.win 里没有房间 <旧名>」并把 mod 生成整段拦掉（保存看着成功、mod 一直不更新）。读入旧 sidecar 时也会自动补一次迁移，历史配置照常能生成。
 - **保存（Ctrl+S）即自动生成 Mod**：保存配置后立即导出到 `游戏根/Neutraled/mods/battle.demo/<author>/<leaf>/`（可在「战斗 → 保存时自动生成 Mod」关掉，或「立即重新生成 Mod…」手动触发）。生成的 mod 默认 `enabled: true`，重新部署/启动后生效。
-- **导出 `.ntlmod`**：战斗菜单「导出 .ntlmod…」把生成目录打成 `游戏根/Neutraled/editor/export/<id>-<leaf>.ntlmod`（与 `ntl-builder --pack` 同格式的 zip；不写进 `mods/`，避免被扫描成第二个 mod）。
+- **导出 / 安装 `.ntlmod`**：战斗菜单「导出 .ntlmod…」把生成目录打成 `游戏根/Neutraled/editor/export/<id>-<leaf>.ntlmod`（与 `ntl-builder --pack` 同格式的 zip；不写进 `mods/`，避免被扫描成第二个 mod）；导出成功后会问「现在同时安装到 Neutraled/mods/ 吗？」，或走「战斗 → 安装 .ntlmod 到 mods/…」/ CLI `install-ntlmod <游戏根> <包> [leaf]`。叶子按 显式参数 → 包名后缀（`<id>-chapterN.ntlmod`）→ `mod.json` 的 chapter 决定，落到 `mods/<id>/<author>/<leaf>`（重复安装整体替换，不留旧文件）。
 - **原版对话文本改写（Ctrl+Shift+E）**：列出当前房间里所有原版对话行（对象 / 事件 / 条件 / lang key / 原文），只改「改写文本」列即可。不改 GML，而是按 lang key 用 Neutraled 的 `ntl_set_lang_string` 覆盖（生成 mod 的 `ntlb_apply_text_overrides`，游戏就绪后生效）。清空某行 = 恢复原文。限制：只能改**有 lang key** 的行（运行期拼出来的文本没有 key，改不了）；文本里不能含 `%`（原版 `obj_writer` 分页符）。
 - **非简单剧情用代码引用**：剧情步骤新增 `event`（在指定原版对象的最近实例上执行它的某个事件，如 `obj_readable` 的 `Other_10`）与 `script`（直接执行原版脚本，如 `gml_Script_scr_sideb_active`）。剧情编辑器工具条「插入原版代码…」会列出当前房间所有实例对象的原版事件（含继承与事件号），点选即插入一步，不需要自己记脚本名。保存时如果有步骤参数没填（例如 `dialogue` 步骤没写文本），红字会带「第 N 行」并自动选中那一行、进入对应单元格编辑，不用自己找。
 - **右键直达**：选择工具下右键画布上的实体，菜单里直接有「编辑此实体的战斗/对话/剧情…」与「编辑本房间原版对话（文本覆盖）…」，不用先去菜单栏找。

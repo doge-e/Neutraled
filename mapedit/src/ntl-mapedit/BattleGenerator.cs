@@ -302,7 +302,7 @@ public static class BattleGenerator
         sb.AppendLine("- 战斗配置: gml/ntlb_data.gml（内嵌 JSON，运行时 json_parse 读取），另有一份可读副本在 files/Neutraled/ntl_battle/battles.json");
         sb.AppendLine("- 生成对象: " + prefix + "_enemy / " + prefix + "_bullet / " + prefix + "_ow / " + prefix + "_text（屏幕文本提示）");
         if (file.RoomPatches.Count > 0 || file.NewRooms.Count > 0)
-            sb.AppendLine("- 地图/房间改动: mod.json 的 roomPatches / rooms 段（另有一份可读副本在 files/Neutraled/editor/roomPatches.json），由部署器注入产物");
+            sb.AppendLine("- 地图/房间改动: mod.json 的 roomPatches / rooms 段（改名 / 图层增删（可带实例/瓦片）/ 旧式瓦片整层替换 / 摘除原版房间 / 新房间带初始层；另有一份可读副本在 files/Neutraled/editor/roomPatches.json），由部署器注入产物");
         sb.AppendLine();
         sb.AppendLine("## 用法");
         sb.AppendLine();
@@ -320,10 +320,19 @@ public static class BattleGenerator
             sb.AppendLine("## 地图/房间改动（mod.json 的 roomPatches / rooms 段）");
             sb.AppendLine();
             sb.AppendLine("只记录相对原版 data.win 的差异；部署时由 builder 注入每个目标产物，原版 backup 与编辑器打开的 data.win 都不被改写。");
+            sb.AppendLine("支持：房间头字段、实例增删改、原生瓦片逐格写入、图层增删（新增层可带实例/原生瓦片/旧式瓦片）、"
+                          + "旧式瓦片整层替换、房间改名、从房间顺序摘除（= 删除原版房间的安全表达，保留资源与编号）、新增房间（可带初始图层内容）。");
             sb.AppendLine();
             foreach (var rp in file.RoomPatches)
             {
                 var bits = new List<string>();
+                if (!string.IsNullOrWhiteSpace(rp.Rename)) bits.Add("改名 " + rp.Name + " -> " + rp.Rename);
+                if (rp.RemoveFromOrder == true) bits.Add("从房间顺序摘除");
+                if (rp.LayersAdd.Count > 0)
+                    bits.Add("新增图层 " + rp.LayersAdd.Count + "（" +
+                             string.Join(", ", rp.LayersAdd.Select(l => l.Name + ":" + l.Type)) + "）");
+                if (rp.LayersRemove.Count > 0) bits.Add("删除图层 " + string.Join(", ", rp.LayersRemove));
+                if (rp.LegacyTilesSet.Count > 0) bits.Add("旧式瓦片替换 " + rp.LegacyTilesSet.Sum(l => l.Tiles.Count) + " 个");
                 if (rp.InstancesAdd.Count > 0) bits.Add("新增实例 " + rp.InstancesAdd.Count);
                 if (rp.InstancesModify.Count > 0) bits.Add("修改实例 " + rp.InstancesModify.Count);
                 if (rp.InstancesRemove.Count > 0) bits.Add("删除实例 " + rp.InstancesRemove.Count);
@@ -338,7 +347,13 @@ public static class BattleGenerator
                 sb.AppendLine("- " + rp.Name + " —— " + string.Join("，", bits));
             }
             foreach (var nr in file.NewRooms)
-                sb.AppendLine("- 新房间 " + nr.Name + "（" + nr.Width + "x" + nr.Height + "，空房间）");
+            {
+                int inst = nr.Layers.Sum(l => l.Instances.Count);
+                int tiles = nr.Layers.Sum(l => l.Tiles.Count);
+                int legacy = nr.Layers.Sum(l => l.LegacyTiles.Count);
+                sb.AppendLine("- 新房间 " + nr.Name + "（" + nr.Width + "x" + nr.Height + "，图层 " + nr.Layers.Count +
+                              "，实例 " + inst + "，瓦片 " + tiles + "，旧式瓦片 " + legacy + "）");
+            }
             sb.AppendLine();
         }
         sb.AppendLine("## 战斗列表");

@@ -43,6 +43,8 @@ public sealed class EditorForm : Form
     /// <summary>差分基线（打开时的原版 data.win）加载出来的游戏数据：生成前校验「新增房间」要拿它比对——</summary>
     /// <remarks>不能拿当前编辑中的数据比：新增房间本来就存在于内存里，比出来永远是「已有同名房间」= 永远生成失败。</remarks>
     private GameData? _baselineGame;
+    /// <summary>最近一次自动生成 mod 失败的原因（校验错误明细等）；导出/生成时用来给用户看真原因。</summary>
+    private string? _lastGenerateError;
     /// <summary>当前 data.win 的原版代码扫描器（懒反编译，只读）。</summary>
     private VanillaCode? _vanilla;
     private readonly Dictionary<string, VanillaObjectInfo> _vanillaCache = new();
@@ -87,8 +89,10 @@ public sealed class EditorForm : Form
         public int Depth;
         /// <summary>流程序号（主线 1..N；支线跟随前置主线）。</summary>
         public int Order;
-        /// <summary>"支线" / "分组" 等角标。</summary>
+        /// <summary>"支线" / "分组" / "已摘除" 等角标。</summary>
         public string Tag = "";
+        /// <summary>已从 RoomOrder（玩家流程顺序）摘除（基线编辑时表达「删除房间」，保存进 mod 的 removeFromOrder）。</summary>
+        public bool RemovedFromOrder;
         public override string ToString() => Name;
     }
 
@@ -226,6 +230,7 @@ public sealed class EditorForm : Form
         room.DropDownItems.Add(new ToolStripSeparator());
         room.DropDownItems.Add(Theme.Item("重命名房间…", (s, e) => RenameRoomDialog(), Keys.F2));
         room.DropDownItems.Add(Theme.Item("删除房间", (s, e) => DeleteRoomAction(), Keys.Control | Keys.Delete));
+        room.DropDownItems.Add(Theme.Item("恢复房间到流程顺序", (s, e) => RestoreRoomOrderAction()));
         room.DropDownItems.Add(new ToolStripSeparator());
         var layerMenu = Theme.Item("图层");
         layerMenu.DropDownItems.Add(Theme.Item("新建实例层", (s, e) => AddLayerAction(false), Keys.Control | Keys.Shift | Keys.L));
@@ -289,6 +294,7 @@ public sealed class EditorForm : Form
         battleMenu.DropDownItems.Add(new ToolStripSeparator());
         battleMenu.DropDownItems.Add(Theme.Item("保存战斗配置（仅写 sidecar）", (s, e) => SaveBattles(true)));
         battleMenu.DropDownItems.Add(Theme.Item("导出 .ntlmod…", (s, e) => ExportNtlmod()));
+        battleMenu.DropDownItems.Add(Theme.Item("安装 .ntlmod 到 mods/…", (s, e) => InstallNtlmodFromFile()));
 
         var help = TopMenu("帮助(&H)");
         help.DropDownItems.Add(Theme.Item("快捷键…", (s, e) => ShowHelp()));
@@ -636,13 +642,16 @@ public sealed class EditorForm : Form
         // 右侧要给「支线」角标 + 尺寸留位，否则长房间名会压到角标上（实测 room_flowershop）。
         int rightReserve = row.Tag.Length > 0 ? 116 : 72;
         int nameWidth = Math.Max(20, e.Bounds.Right - rightReserve - textX);
+        // 已摘除的房间在流程里已经不存在（门链会跳过），用灰字让它在列表里明显"退到后面"。
+        Color nameColor = row.RemovedFromOrder ? Theme.TextDim : Theme.Text;
         TextRenderer.DrawText(e.Graphics, prefix + row.Name, RowFont,
             new Rectangle(textX, e.Bounds.Y, nameWidth, e.Bounds.Height),
-            Theme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            nameColor, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         if (row.Tag.Length > 0)
             TextRenderer.DrawText(e.Graphics, row.Tag, RowFontSmall,
                 new Rectangle(e.Bounds.Right - 112, e.Bounds.Y, 42, e.Bounds.Height),
-                Theme.Orange, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+                row.RemovedFromOrder ? Theme.Red : Theme.Orange,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
         TextRenderer.DrawText(e.Graphics, row.SizeText, RowMono,
             new Rectangle(e.Bounds.Right - 68, e.Bounds.Y, 62, e.Bounds.Height),
             Theme.TextDim, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
@@ -1282,6 +1291,7 @@ public sealed class EditorForm : Form
                 }
                 if (searching && !ent.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
                 var room = ent.Room!;
+                bool removed = _doc.IsRemovedFromOrder(room);
                 _roomRows.Add(new RoomRow
                 {
                     Room = room,
@@ -1289,7 +1299,9 @@ public sealed class EditorForm : Form
                     SizeText = $"{room.Width}×{room.Height}",
                     Depth = searching ? 0 : ent.Depth,
                     Order = searching ? 0 : ent.Order,
-                    Tag = searching ? "" : ent.Tag,
+                    // 「已摘除」优先于流程角标：让用户一眼看出这间房不会出现在门链里。
+                    Tag = searching ? "" : (removed ? "已摘除" : ent.Tag),
+                    RemovedFromOrder = removed,
                 });
             }
             _roomList.BeginUpdate();
@@ -2636,6 +2648,7 @@ public sealed class EditorForm : Form
         m.Items.Add(new ToolStripSeparator());
         m.Items.Add(Theme.Item("重命名房间…", (s, e) => RenameRoomDialog()));
         m.Items.Add(Theme.Item("删除房间", (s, e) => DeleteRoomAction()));
+        m.Items.Add(Theme.Item("恢复房间到流程顺序", (s, e) => RestoreRoomOrderAction()));
         return m;
     }
 
@@ -2771,8 +2784,14 @@ public sealed class EditorForm : Form
             if (warn != DialogResult.Yes) return;
         }
         if (!_doc.RenameRoom(name)) return;
+        // 战斗/对话/剧情/文本覆盖里的房间名也要一起改：否则 Validate 报「data.win 里没有房间 <旧名>」，
+        // 保存看起来成功、mod 却永远生成不了（QA full10 S15 实测）。
+        int refs = _battles?.File.RenameRoomReferences(old, name) ?? 0;
+        string refNote = refs > 0 ? $"；同步 {refs} 处触发/绑定房间名" : "";
         UpdateStatus();
-        _statusLeft.Text = $"已重命名房间：{old} → {name}（不可撤销，Ctrl+Z 撤不回来）";
+        _statusLeft.Text = IsBaselineEdit()
+            ? $"已重命名房间：{old} → {name}（保存后写入 mod 的 roomPatches.rename；原版 data.win 不动；不可撤销）{refNote}"
+            : $"已重命名房间：{old} → {name}（不可撤销，Ctrl+Z 撤不回来）{refNote}";
     }
 
     private void DeleteRoomAction()
@@ -2785,8 +2804,35 @@ public sealed class EditorForm : Form
             return;
         }
         string engineWarn = IsEngineRoom(name)
-            ? "\n\n⚠ 这是引擎特殊房间（章节初始化/测试用），删除后原版流程可能找不到它，游戏可能无法启动。"
+            ? (IsBaselineEdit()
+                ? "\n\n⚠ 这是引擎特殊房间（章节初始化/测试用），从流程顺序摘除后游戏可能无法启动。"
+                : "\n\n⚠ 这是引擎特殊房间（章节初始化/测试用），删除后原版流程可能找不到它，游戏可能无法启动。")
             : "";
+
+        // ★ 基线编辑一律不物理删原版房间：房间编号 = ROOM 表下标，删中间房间会让其后编号全体 -1，
+        //   而原版字节码里的房间常量是裸 int、不会被重写（会静默跳错房间）。
+        //   所以「删除」= 从 RoomOrder 摘除，保存时写进 mod 的 removeFromOrder（可逆、data.win 不动）。
+        if (IsBaselineEdit())
+        {
+            if (_doc.IsRemovedFromOrder(_doc.Room))
+            {
+                MessageBox.Show(this, $"房间「{name}」已经不在流程顺序里了。\n\n用「恢复房间到流程顺序」把它放回去。",
+                    "删除房间", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            var rb = MessageBox.Show(this,
+                $"从流程顺序摘除房间「{name}」？\n\n" +
+                "原版房间编号 = ROOM 表下标，物理删除会让其后所有房间编号 -1（字节码里的房间常量不会被重写，会静默跳错房间）。\n" +
+                "所以这里只把它从 RoomOrder 里摘除：房间资源与编号保留，门链 room_goto_next 会跳过它。\n\n" +
+                "改动保存时写进 mod 的 removeFromOrder（原版 data.win 不动），可用「恢复房间到流程顺序」撤销。" + engineWarn,
+                "删除房间（从流程顺序摘除）", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (rb != DialogResult.Yes) return;
+            if (!_doc.SetRemovedFromOrder(_doc.Room, true)) return;
+            UpdateStatus();
+            _statusLeft.Text = $"已从流程顺序摘除房间：{name}（保存后写入 mod 的 removeFromOrder；原版 data.win 不动）";
+            return;
+        }
+
         var r = MessageBox.Show(this,
             $"删除房间「{name}」？\n\n删除会同时从 RoomOrder 里移除它；这个操作不进撤销栈。\n保存后才会写回 data.win。" + engineWarn,
             "删除房间", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
@@ -2794,6 +2840,25 @@ public sealed class EditorForm : Form
         if (!_doc.DeleteRoom()) return;
         _statusLeft.Text = $"已删除房间：{name}";
     }
+
+    /// <summary>把当前房间放回流程顺序（撤销基线编辑里的「删除房间」）。</summary>
+    private void RestoreRoomOrderAction()
+    {
+        if (_doc?.Room == null) return;
+        string name = _doc.RoomName();
+        if (!_doc.IsRemovedFromOrder(_doc.Room))
+        {
+            _statusLeft.Text = $"房间「{name}」本来就在流程顺序里。";
+            return;
+        }
+        if (!_doc.SetRemovedFromOrder(_doc.Room, false)) return;
+        UpdateStatus();
+        _statusLeft.Text = $"已恢复房间到流程顺序：{name}（保存后不再写入 removeFromOrder）";
+    }
+
+    /// <summary>当前是不是「直接编辑原版基线」会话（不写 data.win，改动蒸馏成 mod 的 roomPatches）。
+    /// 与 AutoGenerateModNow/ApplyRoomDiff 的口径一致：有 diff 基线 = 基线编辑。</summary>
+    private bool IsBaselineEdit() => !string.IsNullOrEmpty(_diffBaseWin);
 
     private void AddLayerAction(bool tiles)
     {
@@ -3459,8 +3524,14 @@ public sealed class EditorForm : Form
         var gen = AutoGenerateModNow(false);
         if (gen == null)
         {
-            MessageBox.Show(this, "还没有可导出的内容（战斗 / 对话 / 剧情 / 文本改写 / 地图改动都为空）。", "导出 .ntlmod",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // 生成失败最常见的原因是配置校验错误（例如改了房间名但触发还指向旧名）——
+            // 不能一律说「没有内容」，否则用户看不出真原因（QA full10 S15.24 实测）。
+            if (!string.IsNullOrEmpty(_lastGenerateError))
+                MessageBox.Show(this, "导出失败：\n\n" + _lastGenerateError, "导出 .ntlmod",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            else
+                MessageBox.Show(this, "还没有可导出的内容（战斗 / 对话 / 剧情 / 文本改写 / 地图改动都为空）。", "导出 .ntlmod",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         string leaf = string.IsNullOrWhiteSpace(_battles.File.Mod.Leaf) ? BattleProject.ChapterLeaf(_doc.FilePath) : _battles.File.Mod.Leaf;
@@ -3474,16 +3545,45 @@ public sealed class EditorForm : Form
             System.IO.Compression.ZipFile.CreateFromDirectory(gen.ModDir, dst,
                 System.IO.Compression.CompressionLevel.Optimal, false);
             long kb = new FileInfo(dst).Length / 1024;
+            string text = "已导出 mod 包：\n" + dst + "\n\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-builder --mod-install。";
+            // 状态栏先落「已导出」：后面还有安装询问框，脚本/用户可能先读状态栏（QA full10 S14.3 卡在这）。
             SetStatusLine($"已导出 .ntlmod：{Path.GetFileName(dst)}（{kb} KB）",
             "mod 包: " + dst + "\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-builder --mod-install");
-            MessageBox.Show(this, "已导出 mod 包：\n" + dst + "\n\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-builder --mod-install。",
-                "导出 .ntlmod", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var install = MessageBox.Show(this, text + "\n\n现在同时安装到 Neutraled/mods/ 吗？（会替换同名 id 的旧安装）",
+                "导出 .ntlmod", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (install == DialogResult.Yes)
+            {
+                var res = NtlmodInstaller.Install(GameRoot(), dst, leaf);
+                SetStatusLine(res.Ok ? "已导出并安装 .ntlmod：" + Path.GetFileName(dst) : "已导出 .ntlmod（安装失败：" + res.Message + "）",
+                    res.Ok ? "安装位置: " + res.Target : "安装失败: " + res.Message);
+                MessageBox.Show(this, res.Message, "安装 .ntlmod",
+                    MessageBoxButtons.OK, res.Ok ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+                return;
+            }
+            MessageBox.Show(this, text, "导出 .ntlmod", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, "导出失败：\n" + ex.Message, "导出 .ntlmod", MessageBoxButtons.OK, MessageBoxIcon.Error);
             _statusLeft.Text = "导出 .ntlmod 失败：" + ex.Message;
         }
+    }
+
+    /// <summary>选一个 .ntlmod 装进 Neutraled/mods/（编辑器自己完成安装，不依赖命令行）。</summary>
+    private void InstallNtlmodFromFile()
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Title = "安装 .ntlmod",
+            Filter = "Neutraled mod 包 (*.ntlmod)|*.ntlmod|所有文件 (*.*)|*.*",
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        var res = NtlmodInstaller.Install(GameRoot(), dlg.FileName);
+        MessageBox.Show(this, res.Message, "安装 .ntlmod",
+            MessageBoxButtons.OK, res.Ok ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+        SetStatusLine(res.Ok ? "已安装 .ntlmod：" + Path.GetFileName(dlg.FileName) : "安装失败：" + res.Message,
+            res.Ok ? "安装位置: " + res.Target : "安装失败: " + res.Message);
     }
 
     /// <summary>把配置生成成可部署的 Neutraled mod（mods/ 目录下）；保存文档时也会自动调用。</summary>
@@ -3611,8 +3711,10 @@ public sealed class EditorForm : Form
     private GenerateResult? AutoGenerateModNow(bool notify)
     {
         if (_battles == null || _doc == null) return null;
+        _lastGenerateError = null;
         if (!HasAnyContent(_battles))
         {
+            _lastGenerateError = "还没有任何战斗 / 对话 / 剧情 / 文本改写 / 地图改动。";
             if (notify)
                 MessageBox.Show(this, "还没有任何战斗、对话、剧情或文本改写配置。", "生成 Mod",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -3635,6 +3737,7 @@ public sealed class EditorForm : Form
         if (errors.Count > 0)
         {
             string detail = string.Join("\n", errors.Select(i => "· " + i.Message));
+            _lastGenerateError = "配置有 " + errors.Count + " 个错误，未生成 mod：\n\n" + detail;
             if (notify)
                 MessageBox.Show(this, "配置有错误，先修好：\n\n" + detail, "生成 Mod",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);

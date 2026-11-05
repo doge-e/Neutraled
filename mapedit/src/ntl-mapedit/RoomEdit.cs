@@ -728,6 +728,22 @@ public static class RoomEdit
         return legacy;
     }
 
+    /// <summary>Create an Assets (LegacyTiles) layer with the six empty asset lists RoomPatchApply fills.</summary>
+    public static UndertaleRoom.Layer AddAssetsLayer(UndertaleData data, UndertaleRoom room, string? name, int depth)
+    {
+        var layer = new UndertaleRoom.Layer
+        {
+            LayerName = data.Strings.MakeString(UniqueLayerName(room, name ?? "Assets")),
+            LayerId = NextLayerId(room),
+            LayerType = UndertaleRoom.LayerType.Assets,
+            LayerDepth = depth,
+            IsVisible = true,
+            Data = NewAssetsData(),
+        };
+        AttachLayer(room, layer);
+        return layer;
+    }
+
     /// <summary>Pick the tileset for a new native layer: explicit request &gt; this room's native layers &gt; any room's &gt; data.win.</summary>
     public static UndertaleBackground? PickTileset(UndertaleData data, UndertaleRoom room, UndertaleBackground? preferred = null)
     {
@@ -805,6 +821,27 @@ public static class RoomEdit
         layer.ParentRoom = null;
         room.UpdateBGColorLayer();
         return true;
+    }
+
+    /// <summary>
+    /// Remove every layer and the content those layers own (instances / legacy tiles / asset lists).
+    /// Used when a new room is cloned from a template but the mod supplies its own layer list, so the
+    /// applied room ends up with exactly the layers the definition asked for.
+    /// </summary>
+    public static void ClearLayers(UndertaleRoom room)
+    {
+        if (room?.Layers == null) return;
+        foreach (var layer in room.Layers)
+        {
+            layer.InstancesData?.Instances?.Clear();
+            layer.AssetsData?.LegacyTiles?.Clear();
+            layer.ParentRoom = null;
+        }
+        room.Layers.Clear();
+        room.Tiles?.Clear();
+        room.GameObjects?.Clear();
+        room.InstanceCreationOrderIDs?.InstanceIDs?.Clear();
+        if (room.Layers.Count > 0) room.UpdateBGColorLayer();
     }
 
     /// <summary>delta&lt;0 = 往列表上方（更靠前、depth 更小）挪一层。</summary>

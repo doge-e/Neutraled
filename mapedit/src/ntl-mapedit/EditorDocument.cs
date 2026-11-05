@@ -983,6 +983,71 @@ public sealed class EditorDocument : IDisposable
         return true;
     }
 
+    // ------------------------------------------------------ 房间顺序（「删除房间」的可逆表达）
+
+    /// <summary>房间是否已从 GeneralInfo.RoomOrder（玩家流程顺序）里摘除。
+    /// ★ 「删除原版房间」不能物理删：房间编号 = ROOM 资源表下标，删中间房间会让其后编号全体 -1，
+    ///   而原版（GM 2023.6）字节码里的房间常量是裸 int，不会被重写（会静默跳错房间）。
+    ///   所以基线模式下「删除房间」只表达为从 RoomOrder 摘除：房间资源与编号保留，
+    ///   门链 room_goto_next/previous 会跳过它，保存时写进 mod 的 removeFromOrder。</summary>
+    public bool IsRemovedFromOrder(UndertaleRoom? room)
+    {
+        if (room == null) return false;
+        var order = Game.Data.GeneralInfo?.RoomOrder;
+        if (order == null) return false;
+        foreach (var e in order)
+            if (e != null && ReferenceEquals(e.Resource, room)) return false;
+        return true;
+    }
+
+    /// <summary>把房间从流程顺序摘除 / 恢复，返回是否真的变了。恢复时按 data.Rooms 里的相邻房间插回原位置附近。
+    /// 与删除/改名一致：结构性编辑不进撤销栈。</summary>
+    public bool SetRemovedFromOrder(UndertaleRoom room, bool removed)
+    {
+        var order = Game.Data.GeneralInfo?.RoomOrder;
+        if (order == null || room == null) return false;
+        int idx = -1;
+        for (int i = 0; i < order.Count; i++)
+            if (order[i] != null && ReferenceEquals(order[i].Resource, room)) { idx = i; break; }
+
+        if (removed)
+        {
+            if (idx < 0) return false;                    // 本来就不在顺序里
+            order.RemoveAt(idx);
+        }
+        else
+        {
+            if (idx >= 0) return false;                   // 本来就在顺序里
+            var entry = new UndertaleResourceById<UndertaleRoom, UndertaleChunkROOM>();
+            entry.Resource = room;
+            order.Insert(Math.Clamp(RestoreOrderIndex(room), 0, order.Count), entry);
+        }
+
+        Dirty = true;
+        RoomsChanged?.Invoke();      // 列表要刷新「已摘除」标记
+        StateChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>恢复顺序时的插入位置：data.Rooms 里往前找第一个仍在 RoomOrder 里的房间，插在它后面；
+    /// 找不到就插到最前（原位置信息没有持久化，只能尽量贴近原流程）。</summary>
+    private int RestoreOrderIndex(UndertaleRoom room)
+    {
+        var rooms = Game.Data.Rooms;
+        var order = Game.Data.GeneralInfo!.RoomOrder!;
+        int roomIdx = -1;
+        for (int i = 0; i < rooms.Count; i++)
+            if (ReferenceEquals(rooms[i], room)) { roomIdx = i; break; }
+        for (int i = roomIdx - 1; i >= 0; i--)
+        {
+            var prev = rooms[i];
+            if (prev == null) continue;
+            for (int j = 0; j < order.Count; j++)
+                if (order[j] != null && ReferenceEquals(order[j].Resource, prev)) return j + 1;
+        }
+        return 0;
+    }
+
     // ------------------------------------------------------ structural: layers
 
     public UndertaleRoom.Layer? AddLayer(bool tiles, int depth)

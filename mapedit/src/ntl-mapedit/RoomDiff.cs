@@ -10,7 +10,10 @@ public sealed class RoomDiffResult
     public List<NewRoomDef> NewRooms { get; } = new();
     public List<string> Warnings { get; } = new();
 
-    /// <summary>差异条目总数（房间头算 1 条 + 每个实例/瓦片格算 1 处 + 每个新增房间算 1 条）。</summary>
+    /// <summary>
+    /// 差异条目总数：房间头算 1 条 + 改名算 1 条 + 每个实例/瓦片格/图层增删算 1 处 +
+    /// 每组旧式瓦片替换按瓦片数算 + 每个新增房间算 1 条。
+    /// </summary>
     public int ChangeCount
     {
         get
@@ -20,8 +23,12 @@ public sealed class RoomDiffResult
             {
                 if (p.Width != null || p.Height != null || p.Speed != null || p.Persistent != null
                     || p.Flags != null || p.BackgroundColor != null || p.DrawBackgroundColor != null) n++;
+                if (!string.IsNullOrWhiteSpace(p.Rename)) n++;
+                if (p.RemoveFromOrder == true) n++;
                 n += p.InstancesAdd.Count + p.InstancesModify.Count + p.InstancesRemove.Count;
+                n += p.LayersAdd.Count + p.LayersRemove.Count;
                 foreach (var ts in p.TilesSet) n += ts.Cells.Count;
+                foreach (var lt in p.LegacyTilesSet) n += Math.Max(1, lt.Tiles.Count);
             }
             n += NewRooms.Count;
             return n;
@@ -38,8 +45,8 @@ public sealed class RoomDiffResult
 /// 把「编辑后的 data」与「原版基线 data」比较，产出 Neutraled 的 roomPatches / rooms 两段。
 /// ★ 为什么不复用 EditorDocument 的 undo 快照：它是「打开之后」的状态，不是原版基线；
 ///   而且 undo 快照不含 Flags（见 EditorDocument.RoomSnapshot）。这里直接与基线逐字段比。
-/// ★ 只比较能表达的东西：房间头、实例增删改、原生瓦片逐格；删房间/改名/加图层/旧式瓦片
-///   一律进 Warnings 响亮报告，不静默丢。
+/// ★ 能表达的：房间头、实例增删改、原生瓦片逐格、图层增删（带初始内容）、房间改名、
+///   旧式（LegacyTiles）瓦片整层替换、新增房间（带初始图层）。房间删除不支持（响亮报告）。
 /// </summary>
 public static class RoomDiff
 {
@@ -62,56 +69,118 @@ public static class RoomDiff
             if (er == null) continue;
             var name = GameData.Name(er.Name);
             if (!editedNames.Add(name))
-            {
                 result.AddWarning("房间重名：" + name + "（后一个会在部署时被 roomPatches 忽略）");
-                continue;
-            }
-            if (!baseByName.TryGetValue(name, out var br))
-            {
-                result.NewRooms.Add(NewRoomFrom(er, name));
-                if (HasContent(er, out string why))
-                    result.AddWarning("新增房间 " + name + " 含" + why + "：rooms 段只支持空房间，这些内容不会进入 mod");
-                continue;
-            }
-            var patch = DiffRoom(br, er, name, result);
-            if (patch != null && !patch.IsEmpty) result.Patches.Add(patch);
         }
 
+        // 改名配对：同一索引位置上「旧名消失 + 新名出现」，且旧名没有在别处保留 → 视为改名。
+        // builder 侧没有房间位置信息，只能靠这种索引配对表达（见 RoomPatch.Rename 文档）。
+        var renames = new Dictionary<string, string>(StringComparer.Ordinal); // 新名 -> 旧名
+        var renamedOld = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < edited.Rooms.Count; i++)
+        {
+            var er = edited.Rooms[i];
+            if (er == null) continue;
+            var name = GameData.Name(er.Name);
+            if (baseByName.ContainsKey(name)) continue;           // 这个名字本来就在 = 不是改名
+            if (i >= baseline.Rooms.Count) continue;
+            var br = baseline.Rooms[i];
+            if (br == null) continue;
+            var oldName = GameData.Name(br.Name);
+            if (editedNames.Contains(oldName)) continue;          // 旧名还被别的房间占着 = 不是改名
+            if (renamedOld.Contains(oldName)) continue;
+            if (!baseByName.TryGetValue(oldName, out var owner) || !ReferenceEquals(owner, br)) continue;
+            renames[name] = oldName;
+            renamedOld.Add(oldName);
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var er in edited.Rooms)
+        {
+            if (er == null) continue;
+            var name = GameData.Name(er.Name);
+            if (!seen.Add(name)) continue;                        // 重名：只处理第一个
+            if (baseByName.TryGetValue(name, out var br))
+            {
+                var patch = DiffRoom(br, er, name, result);
+                ApplyOrderRemoval(baseline, edited, br, er, patch);
+                if (!patch.IsEmpty) result.Patches.Add(patch);
+                continue;
+            }
+            if (renames.TryGetValue(name, out var oldName2))
+            {
+                var br2 = baseByName[oldName2];
+                var patch = DiffRoom(br2, er, oldName2, result);
+                patch.Name = oldName2;
+                patch.Rename = name;
+                ApplyOrderRemoval(baseline, edited, br2, er, patch);
+                result.Patches.Add(patch);                        // 改名本身就算一条改动
+                continue;
+            }
+            result.NewRooms.Add(NewRoomFrom(er, name, result));
+        }
+
+        // 原版房间被删除：不能物理删（编号 = ROOM 表下标），表达为「从房间顺序摘除」。
         foreach (var kv in baseByName)
-            if (!editedNames.Contains(kv.Key))
-                result.AddWarning("原版房间 " + kv.Key + " 已删除或改名：roomPatches 暂不支持删除/改名房间（该改动不会进入 mod）");
+        {
+            if (editedNames.Contains(kv.Key) || renamedOld.Contains(kv.Key)) continue;
+            if (InRoomOrder(baseline, kv.Value)) result.Patches.Add(new RoomPatch { Name = kv.Key, RemoveFromOrder = true });
+            else result.AddWarning("原版房间 " + kv.Key + " 已删除：它本来就不在房间顺序里，无法表达（该改动不会进入 mod）");
+        }
 
         return result;
     }
 
-    private static NewRoomDef NewRoomFrom(UndertaleRoom r, string name) => new()
+    /// <summary>房间是否仍在 GeneralInfo.RoomOrder 里（删除表达为摘除；已摘除的不再重复产出）。</summary>
+    private static bool InRoomOrder(UndertaleData data, UndertaleRoom room)
     {
-        Name = name,
-        Width = r.Width,
-        Height = r.Height,
-        Speed = r.Speed,
-        Persistent = r.Persistent,
-        Flags = (int)r.Flags,
-        BackgroundColor = r.BackgroundColor,
-        DrawBackgroundColor = r.DrawBackgroundColor,
-    };
-
-    private static bool HasContent(UndertaleRoom room, out string why)
-    {
-        int inst = RoomEdit.AllInstances(room).Count();
-        int tiles = 0;
-        if (room.Layers != null)
-            foreach (var l in room.Layers)
-                tiles += NativeTiles.CountNonZero(l);
-        int legacy = RoomEdit.AllTiles(room).Count();
-        why = "";
-        if (inst > 0) why = " " + inst + " 个实例";
-        if (tiles > 0) why += (why.Length > 0 ? " / " : " ") + tiles + " 个原生瓦片";
-        if (legacy > 0) why += (why.Length > 0 ? " / " : " ") + legacy + " 个旧式瓦片";
-        return why.Length > 0;
+        var order = data.GeneralInfo?.RoomOrder;
+        if (order == null) return true;                       // 没有顺序表（旧格式？）→ 保守当作仍在
+        foreach (var e in order)
+            if (e != null && ReferenceEquals(e.Resource, room)) return true;
+        return false;
     }
 
-    private static RoomPatch? DiffRoom(UndertaleRoom br, UndertaleRoom er, string name, RoomDiffResult result)
+    /// <summary>
+    /// 「房间还在、但被从 RoomOrder 摘除」（编辑器里删除原版房间的可逆表达）：
+    /// baseline 顺序里有、edited 顺序里没有 ⇒ 产出 removeFromOrder，且与其它差分字段并存。
+    /// 这样「保存 → 重开（RoomPatchApply 把房间从顺序里摘掉）→ 再保存」时补丁会再次产出，
+    /// 不会把房间悄悄放回顺序。
+    /// </summary>
+    private static void ApplyOrderRemoval(UndertaleData baseline, UndertaleData edited, UndertaleRoom br,
+        UndertaleRoom er, RoomPatch patch)
+    {
+        if (patch.RemoveFromOrder == true) return;
+        if (!InRoomOrder(edited, er) && InRoomOrder(baseline, br)) patch.RemoveFromOrder = true;
+    }
+
+    private static NewRoomDef NewRoomFrom(UndertaleRoom r, string name, RoomDiffResult result)
+    {
+        var def = new NewRoomDef
+        {
+            Name = name,
+            Width = r.Width,
+            Height = r.Height,
+            Speed = r.Speed,
+            Persistent = r.Persistent,
+            Flags = (int)r.Flags,
+            BackgroundColor = r.BackgroundColor,
+            DrawBackgroundColor = r.DrawBackgroundColor,
+        };
+        if (r.Layers != null)
+        {
+            var allIds = new HashSet<uint>();
+            foreach (var (_, inst) in RoomEdit.AllInstances(r)) allIds.Add(inst.InstanceID);
+            foreach (var layer in r.Layers)
+            {
+                if (layer == null) continue;
+                var spec = LayerSpec(layer, name, allIds, result);
+                if (spec != null) def.Layers.Add(spec);
+            }
+        }
+        return def;
+    }
+
+    private static RoomPatch DiffRoom(UndertaleRoom br, UndertaleRoom er, string name, RoomDiffResult result)
     {
         var patch = new RoomPatch { Name = name };
         if (br.Width != er.Width) patch.Width = er.Width;
@@ -125,25 +194,53 @@ public static class RoomDiff
         var baseInst = Instances(br, name, result);
         var editInst = Instances(er, name, result);
 
+        var (addedLayers, removedLayers) = DiffLayers(br, er, name, result, patch);
+
+        // 实例差分：新图层的初始实例由 LayersAdd 承载；被删图层里的实例随图层一起删。
+        var carriedByAdd = new HashSet<uint>();
         foreach (var kv in baseInst)
-            if (!editInst.ContainsKey(kv.Key))
-                patch.InstancesRemove.Add(new RoomInstanceRef { InstanceId = kv.Key });
+        {
+            if (editInst.ContainsKey(kv.Key)) continue;
+            if (removedLayers.Contains(kv.Value.Layer)) continue;     // 随图层删除
+            patch.InstancesRemove.Add(new RoomInstanceRef { InstanceId = kv.Key });
+        }
 
         foreach (var kv in editInst)
         {
             var e = kv.Value;
             if (!baseInst.TryGetValue(kv.Key, out var b))
             {
+                if (addedLayers.Contains(e.Layer))
+                {
+                    carriedByAdd.Add(kv.Key);                          // 新图层里的全新实例
+                    continue;
+                }
                 patch.InstancesAdd.Add(NewInstancePatch(e));
+                continue;
+            }
+            if (!string.Equals(b.Layer, e.Layer, StringComparison.Ordinal)
+                && addedLayers.Contains(e.Layer) && removedLayers.Contains(b.Layer))
+            {
+                carriedByAdd.Add(kv.Key);                              // 图层整体重建：新层承载实例
                 continue;
             }
             var mod = DiffInstance(b, e);
             if (mod != null) patch.InstancesModify.Add(mod);
         }
 
-        DiffTiles(br, er, name, patch, result);
-        DiffLegacyTiles(br, er, name, result);
-        DiffLayers(br, er, name, result);
+        // 新增图层的初始内容（在实例差分之后，才能知道哪些实例由图层承载）
+        if (er.Layers != null)
+            foreach (var layer in er.Layers)
+            {
+                if (layer == null) continue;
+                var layerName = GameData.Name(layer.LayerName);
+                if (!addedLayers.Contains(layerName)) continue;
+                var spec = LayerSpec(layer, name, carriedByAdd, result);
+                if (spec != null) patch.LayersAdd.Add(spec);
+            }
+
+        DiffTiles(br, er, name, patch, result, addedLayers);
+        DiffLegacyTiles(br, er, name, patch, result, addedLayers);
         return patch;
     }
 
@@ -206,7 +303,148 @@ public static class RoomDiff
         return any ? mod : null;
     }
 
-    private static void DiffTiles(UndertaleRoom br, UndertaleRoom er, string name, RoomPatch patch, RoomDiffResult result)
+    /// <summary>比较两侧图层名集合，产出 LayersRemove；返回新增图层名集合（内容稍后填充）。</summary>
+    private static (HashSet<string> Added, HashSet<string> Removed) DiffLayers(
+        UndertaleRoom br, UndertaleRoom er, string name, RoomDiffResult result, RoomPatch patch)
+    {
+        var baseOrder = new List<string>();
+        var baseSet = new HashSet<string>(StringComparer.Ordinal);
+        if (br.Layers != null)
+            foreach (var l in br.Layers)
+            {
+                if (l == null) continue;
+                var n = GameData.Name(l.LayerName);
+                if (baseSet.Add(n)) baseOrder.Add(n);
+            }
+        var editOrder = new List<string>();
+        var editSet = new HashSet<string>(StringComparer.Ordinal);
+        if (er.Layers != null)
+            foreach (var l in er.Layers)
+            {
+                if (l == null) continue;
+                var n = GameData.Name(l.LayerName);
+                if (!editSet.Add(n))
+                {
+                    result.AddWarning("房间 " + name + " 的图层重名：" + n + "（后一个不会进差分）");
+                    continue;
+                }
+                editOrder.Add(n);
+            }
+
+        var added = new HashSet<string>(editOrder.Where(n => !baseSet.Contains(n)), StringComparer.Ordinal);
+        var removed = baseOrder.Where(n => !editSet.Contains(n)).ToList();
+
+        // 至少保留一个图层：最后一个删除不能表达
+        if (removed.Count >= baseOrder.Count && baseOrder.Count > 0)
+        {
+            var keep = removed[removed.Count - 1];
+            removed.RemoveAt(removed.Count - 1);
+            result.AddWarning("房间 " + name + " 的图层全被删除：至少保留一个图层，图层 " + keep + " 的删除不会进入 mod");
+        }
+
+        foreach (var n in removed) patch.LayersRemove.Add(n);
+        return (added, new HashSet<string>(removed, StringComparer.Ordinal));
+    }
+
+    /// <summary>把一个图层转成 roomPatches 的图层规格（新增图层 / 新房间初始图层共用）。</summary>
+    private static RoomLayer? LayerSpec(UndertaleRoom.Layer layer, string roomName, HashSet<uint> includeInstanceIds,
+        RoomDiffResult result)
+    {
+        var name = GameData.Name(layer.LayerName);
+        switch (layer.LayerType)
+        {
+            case UndertaleRoom.LayerType.Instances:
+            {
+                var spec = new RoomLayer
+                {
+                    Name = name,
+                    Type = "instances",
+                    Depth = layer.LayerDepth,
+                    Visible = layer.IsVisible,
+                };
+                if (layer.InstancesData?.Instances != null)
+                    foreach (var inst in layer.InstancesData.Instances)
+                    {
+                        if (inst == null || !includeInstanceIds.Contains(inst.InstanceID)) continue;
+                        spec.Instances.Add(NewInstancePatch(new InstEntry(inst, name)));
+                    }
+                return spec;
+            }
+            case UndertaleRoom.LayerType.Tiles:
+            {
+                var spec = new RoomLayer
+                {
+                    Name = name,
+                    Type = "tiles",
+                    Depth = layer.LayerDepth,
+                    Visible = layer.IsVisible,
+                };
+                var bg = layer.TilesData?.Background;
+                if (bg != null) spec.Tileset = GameData.Name(bg.Name);
+                var rows = layer.TilesData?.TileData;
+                if (rows != null)
+                    for (int y = 0; y < rows.Length; y++)
+                    {
+                        var row = rows[y];
+                        if (row == null) continue;
+                        for (int x = 0; x < row.Length; x++)
+                            if ((row[x] & NativeTiles.IndexMask) != 0)
+                                spec.Tiles.Add(new RoomTileCell { X = x, Y = y, Value = row[x] });
+                    }
+                return spec;
+            }
+            case UndertaleRoom.LayerType.Assets:
+            {
+                var spec = new RoomLayer
+                {
+                    Name = name,
+                    Type = "assets",
+                    Depth = layer.LayerDepth,
+                    Visible = layer.IsVisible,
+                };
+                var ad = layer.AssetsData;
+                if (ad?.LegacyTiles != null)
+                    foreach (var t in ad.LegacyTiles)
+                        if (t != null) spec.LegacyTiles.Add(NewTileDef(t));
+                WarnUnexpressibleAssets(ad, roomName, name, result);
+                return spec;
+            }
+            default:
+                result.AddWarning("房间 " + roomName + " 的新增图层 " + name + " 类型为 " + layer.LayerType +
+                    "：roomPatches 只能新增 instances/tiles/assets 图层，该层内容不会进入 mod");
+                return null;
+        }
+    }
+
+    private static void WarnUnexpressibleAssets(UndertaleRoom.Layer.LayerAssetsData? ad, string roomName,
+        string layerName, RoomDiffResult result)
+    {
+        if (ad == null) return;
+        int n = (ad.Sprites?.Count ?? 0) + (ad.Sequences?.Count ?? 0) + (ad.NineSlices?.Count ?? 0)
+                + (ad.ParticleSystems?.Count ?? 0) + (ad.TextItems?.Count ?? 0);
+        if (n > 0)
+            result.AddWarning("房间 " + roomName + " 的图层 " + layerName + " 含 " + n +
+                " 个精灵/序列/九宫格等资源实例：roomPatches 只能表达旧式瓦片，这些内容不会进入 mod");
+    }
+
+    private static RoomTileDef NewTileDef(UndertaleRoom.Tile t) => new()
+    {
+        InstanceId = t.InstanceID <= int.MaxValue ? (int)t.InstanceID : null,
+        X = t.X,
+        Y = t.Y,
+        Sprite = t.SpriteDefinition == null ? null : GameData.Name(t.SpriteDefinition.Name),
+        Background = t.BackgroundDefinition == null ? null : GameData.Name(t.BackgroundDefinition.Name),
+        SourceX = t.SourceX,
+        SourceY = t.SourceY,
+        Width = t.Width,
+        Height = t.Height,
+        ScaleX = t.ScaleX,
+        ScaleY = t.ScaleY,
+        Color = t.Color,
+    };
+
+    private static void DiffTiles(UndertaleRoom br, UndertaleRoom er, string name, RoomPatch patch,
+        RoomDiffResult result, HashSet<string> addedLayers)
     {
         if (er.Layers == null) return;
         foreach (var el in er.Layers)
@@ -214,13 +452,14 @@ public static class RoomDiff
             var rows = el.TilesData?.TileData;
             if (rows == null || rows.Length == 0) continue;
             string layerName = GameData.Name(el.LayerName);
+            if (addedLayers.Contains(layerName)) continue;            // 内容由 LayersAdd 承载
             var bl = FindLayer(br, layerName);
             var bRows = bl?.TilesData?.TileData;
-            if (bRows == null || bRows.Length == 0)
-            {
-                result.AddWarning("房间 " + name + " 的新增瓦片层 " + layerName + "：roomPatches 只能写已有瓦片层，该层内容不会进入 mod");
-                continue;
-            }
+            if (bRows == null || bRows.Length == 0) continue;         // 基线没有同名瓦片层：按新增图层处理
+            if (bl?.TilesData?.Background != null && el.TilesData?.Background != null
+                && !ReferenceEquals(bl.TilesData.Background, el.TilesData.Background))
+                result.AddWarning("房间 " + name + " 的瓦片层 " + layerName + " 换了 tileset：" +
+                    GameData.Name(el.TilesData.Background.Name) + "（roomPatches 不支持改 tileset，会沿用基线）");
             var cells = new List<RoomTileCell>();
             int oob = 0;
             for (int y = 0; y < rows.Length; y++)
@@ -245,32 +484,38 @@ public static class RoomDiff
                 }
             }
             if (oob > 0)
-                result.AddWarning("房间 " + name + " 的瓦片层 " + layerName + " 有 " + oob + " 格超出基线尺寸：请先恢复房间尺寸或重开工程（超出部分不会进入 mod）");
+                result.AddWarning("房间 " + name + " 的瓦片层 " + layerName + " 有 " + oob +
+                    " 格超出基线尺寸：请先恢复房间尺寸或重开工程（超出部分不会进入 mod）");
             if (cells.Count > 0) patch.TilesSet.Add(new RoomTileSet { Layer = layerName, Cells = cells });
         }
     }
 
-    private static void DiffLegacyTiles(UndertaleRoom br, UndertaleRoom er, string name, RoomDiffResult result)
+    /// <summary>逐图层比较旧式瓦片（按 TileKey 集合），有变化就整层替换。</summary>
+    private static void DiffLegacyTiles(UndertaleRoom br, UndertaleRoom er, string name, RoomPatch patch,
+        RoomDiffResult result, HashSet<string> addedLayers)
     {
-        var a = RoomEdit.AllTiles(br).Select(t => TileKey(t.Tile)).OrderBy(s => s, StringComparer.Ordinal).ToList();
-        var b = RoomEdit.AllTiles(er).Select(t => TileKey(t.Tile)).OrderBy(s => s, StringComparer.Ordinal).ToList();
-        if (!a.SequenceEqual(b))
-            result.AddWarning("房间 " + name + " 的旧式（LegacyTiles）瓦片有改动：roomPatches 只支持原生瓦片层，该改动不会进入 mod");
+        if (er.Layers == null) return;
+        foreach (var el in er.Layers)
+        {
+            if (el.LayerType != UndertaleRoom.LayerType.Assets) continue;
+            string layerName = GameData.Name(el.LayerName);
+            if (addedLayers.Contains(layerName)) continue;            // 内容由 LayersAdd 承载
+            var bl = FindLayer(br, layerName);
+            if (bl?.AssetsData?.LegacyTiles == null) continue;        // 基线没有同名旧式瓦片层
+            var a = bl.AssetsData.LegacyTiles.Where(t => t != null).Select(TileKey).OrderBy(s => s, StringComparer.Ordinal).ToList();
+            var b = el.AssetsData!.LegacyTiles!.Where(t => t != null).Select(TileKey).OrderBy(s => s, StringComparer.Ordinal).ToList();
+            if (a.SequenceEqual(b)) continue;
+            var set = new RoomLegacyTiles { Layer = layerName };
+            foreach (var t in el.AssetsData!.LegacyTiles!)
+                if (t != null) set.Tiles.Add(NewTileDef(t));
+            patch.LegacyTilesSet.Add(set);
+        }
     }
 
     private static string TileKey(UndertaleRoom.Tile t) =>
         t.InstanceID + "|" + t.X + "|" + t.Y + "|" + GameData.Name(t.SpriteDefinition?.Name) + "|" +
+        GameData.Name(t.BackgroundDefinition?.Name) + "|" +
         t.SourceX + "|" + t.SourceY + "|" + t.Width + "|" + t.Height + "|" + t.ScaleX + "|" + t.ScaleY + "|" + t.Color;
-
-    private static void DiffLayers(UndertaleRoom br, UndertaleRoom er, string name, RoomDiffResult result)
-    {
-        var b = new HashSet<string>(StringComparer.Ordinal);
-        var e = new HashSet<string>(StringComparer.Ordinal);
-        if (br.Layers != null) foreach (var l in br.Layers) b.Add(GameData.Name(l.LayerName));
-        if (er.Layers != null) foreach (var l in er.Layers) e.Add(GameData.Name(l.LayerName));
-        foreach (var n in e) if (!b.Contains(n)) result.AddWarning("房间 " + name + " 新增图层 " + n + "：roomPatches 不支持新增图层，该层内容不会进入 mod");
-        foreach (var n in b) if (!e.Contains(n)) result.AddWarning("房间 " + name + " 删除图层 " + n + "：roomPatches 不支持删除图层，该改动不会进入 mod");
-    }
 
     private static UndertaleRoom.Layer? FindLayer(UndertaleRoom room, string name)
     {
