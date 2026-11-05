@@ -34,4 +34,4 @@ Move-Item $zip $out -Force
 Copy-Item $out $dist -Force
 Write-Host ('packaged: ' + $out)
 Write-Host ('          ' + (Join-Path $dist 'sample-clock.ntlplugin'))
-Write-Host 'install with:  ntl-builder.exe --plugin-install <path-to-.ntlplugin>'
+Write-Host 'install with:  ntl-gui.exe --plugin-install <path-to-.ntlplugin>'

@@ -131,7 +131,7 @@ public static class LangTable_Program
         d["  下次部署（--deploy-all）后即可在章节选择器里看到它；选中后会退出 DELTARUNE 并拉起该程序。"] = "  It shows up in the chapter selector after the next deploy (--deploy-all); selecting it exits DELTARUNE and launches that program.";
         d["  下载: {0}  {1} KB"] = "  Downloading: {0}  {1} KB";
         d["  从零做自己的章节（GML 模板 + 脚手架，详见 docs/CHAPTER_DEV.md）:"] = "  Build your own chapter from scratch (GML template + scaffold, see docs/CHAPTER_DEV.md):";
-        d["  例: ntl-builder.exe --new-chapter \"我的章节\" --deploy --chapter root --force"] = "  Example: ntl-builder.exe --new-chapter 'My Chapter' --deploy --chapter root --force";
+        d["  例: ntl-gui.exe --new-chapter \"我的章节\" --deploy --chapter root --force"] = "  Example: ntl-gui.exe --new-chapter 'My Chapter' --deploy --chapter root --force";
         d["  依赖 OK: {0} ← {1} {2} {3}（当前 {4}）"] = "  Dependency OK: {0} ← {1} {2} {3} (current {4})";
         d["  内容级自检抛异常: "] = "  Content-level self-check threw: ";
         d["  分发方式：把该文件放到 mods/<mod_name>/ 下即可被自动识别（无需解压）"] = "  Distribution: drop that file into mods/<mod_name>/ and it is picked up automatically (no extraction needed)";
@@ -294,7 +294,7 @@ public static class LangTable_Program
         // GUI-M07 / B3：--cache-max-set（只写 config.json 的缓存上限）
         d["  --cache-max-set <MB>            只把缓存上限写进 config.json（不部署、不启动；GUI 设置项用）"] = "  --cache-max-set <MB>            write the cache limit into config.json only (no deploy, no launch; for the GUI setting)";
         d["[错误] --cache-max-set 需要一个正整数（单位 MB，1 .. 1048576），收到: {0}"] = "[Error] --cache-max-set needs a positive integer (MB, 1 .. 1048576); got: {0}";
-        d["       用法: ntl-builder --cache-max-set <MB>   例: --cache-max-set 4096（只写 config.json，不部署、不启动）"] = "       Usage: ntl-builder --cache-max-set <MB>   e.g. --cache-max-set 4096 (writes config.json only; no deploy, no launch)";
+        d["       用法: ntl-gui.exe --cache-max-set <MB>   例: --cache-max-set 4096（只写 config.json，不部署、不启动）"] = "       Usage: ntl-gui.exe --cache-max-set <MB>   e.g. --cache-max-set 4096 (writes config.json only; no deploy, no launch)";
         d["[缓存] 上限已设为 {0} MB（已写入 {1}；不部署、不启动）"] = "[Cache] Limit set to {0} MB (written to {1}; no deploy, no launch)";
         d["[会话] 本次部署目标已记录: {0}（退出游戏后可 --restore-session 还原）"] = "[Session] Recorded this deploy's targets: {0} (use --restore-session after quitting the game)";
         d["[警告] 写部署会话失败: {0}"] = "[Warn] Failed to write the deploy session: {0}";
@@ -357,6 +357,6 @@ public static class LangTable_Program
         d["未知语言代码: {0}"] = "unknown language code: {0}";
         d["部署失败（返回码 {0}）: {1}"] = "deploy failed (exit {0}): {1}";
         d["[错误] --focus-test 需要 exe 路径（--send-keys / --send-text / --send-f2 / --keep 是它的选项）"] = "[Error] --focus-test needs an exe path (--send-keys / --send-text / --send-f2 / --keep are its options)";
-        d["       用法: ntl-builder --focus-test <exe> [--send-f2] [--send-keys 按键] [--send-text 文本] [--keep]"] = "       Usage: ntl-builder --focus-test <exe> [--send-f2] [--send-keys keys] [--send-text text] [--keep]";
+        d["       用法: ntl-gui.exe --focus-test <exe> [--send-f2] [--send-keys 按键] [--send-text 文本] [--keep]"] = "       Usage: ntl-gui.exe --focus-test <exe> [--send-f2] [--send-keys keys] [--send-text text] [--keep]";
     }
 }

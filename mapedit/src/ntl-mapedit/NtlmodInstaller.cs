@@ -5,7 +5,7 @@ namespace NtlMapEdit;
 
 /// <summary>
 /// 把 .ntlmod（Neutraled 的 mod 安装包 = 叶子目录的 zip）安装到
-/// <c>Neutraled/mods/&lt;id&gt;/&lt;author&gt;/&lt;leaf&gt;/</c>，布局与 <c>ntl-builder --mod-install</c> 一致。
+/// <c>Neutraled/mods/&lt;id&gt;/&lt;author&gt;/&lt;leaf&gt;/</c>，布局与 <c>ntl-gui.exe --mod-install</c> 一致。
 /// ★ 为什么编辑器自己要会安装：编辑器的承诺是「所有编辑一律产出 ntl mod」——
 ///   导出到 editor/export 只是备份，玩家还要去命令行装一次才算闭环；这里让「导出 → 安装」
 ///   在 GUI / CLI 内一次完成，导出的包也能直接交给别人装。

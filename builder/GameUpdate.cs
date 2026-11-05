@@ -557,7 +557,7 @@ public static class GameUpdate
                 {
                     Console.WriteLine(L("  ⛔ 基底漂移: 这个整包 mod 的文件没变，但游戏原版已经换过 ⇒ 现在部署会用它的**旧版本内容**当基底，等于把游戏本体回退到更新前。"));
                     Console.WriteLine(L("     处理：① 等该 mod 作者更新（推荐，更新后本检测会自动解除）"));
-                    Console.WriteLine(L("           ② ntl-builder --deploy-all --force --base-mod none（用新原版做基底：不丢游戏版本，但会失去该 mod 的整包内容，例如汉化字体/剧情文本）"));
+                    Console.WriteLine(L("           ② ntl-gui.exe --deploy-all --force --base-mod none（用新原版做基底：不丢游戏版本，但会失去该 mod 的整包内容，例如汉化字体/剧情文本）"));
                     Console.WriteLine(L("           ③ 明知风险继续：加 --accept-base-drift（只在游戏已能跑、你确认过差异时才用）"));
                 }
                 else if (r.BaseModChanged)
@@ -574,8 +574,8 @@ public static class GameUpdate
                 Console.WriteLine(L("  ⛔ 结论：检测到游戏更新（活跃 data.win 已被换回原版 / buildid 变了）"));
                 Console.WriteLine(L("     直接部署会用**旧的原版备份**当基底 ⇒ 静默回退游戏版本。按顺序处理："));
                 Console.WriteLine(L("       1) 退出游戏"));
-                Console.WriteLine(L("       2) ntl-builder --adopt-current --yes      采纳当前原版为新基底（旧备份移到 backup/{0}/，不删）", HistoryDirName));
-                Console.WriteLine(L("       3) ntl-builder --deploy-all --force      重新注入（字体/文本/注册表按新版本重建）"));
+                Console.WriteLine(L("       2) ntl-gui.exe --adopt-current --yes      采纳当前原版为新基底（旧备份移到 backup/{0}/，不删）", HistoryDirName));
+                Console.WriteLine(L("       3) ntl-gui.exe --deploy-all --force      重新注入（字体/文本/注册表按新版本重建）"));
                 Console.WriteLine(L("       4) 想回滚：备份都在 Neutraled/backup/{0}/ 里，拷回对应路径即可", HistoryDirName));
                 break;
             case "chapters":
@@ -624,7 +624,7 @@ public static class GameUpdate
 
         if (!yes)
         {
-            Console.WriteLine(L("  ⚠ 预览：未加 --yes，什么都没改。确认无误后重跑：ntl-builder --adopt-current --yes"));
+            Console.WriteLine(L("  ⚠ 预览：未加 --yes，什么都没改。确认无误后重跑：ntl-gui.exe --adopt-current --yes"));
             return 0;
         }
 
@@ -637,7 +637,7 @@ public static class GameUpdate
             if (overlap.Count > 0 && !force)
             {
                 Console.WriteLine(L("  ⛔ 拒绝采纳：这些槽位的产物还在活跃位置，不能把产物当原版备份：{0}", string.Join(", ", overlap.Select(s => s.Slot))));
-                Console.WriteLine(L("     先 ntl-builder --uninstall（或 --restore-chapter &lt;章&gt;）还原原版，再重跑本命令。"));
+                Console.WriteLine(L("     先 ntl-gui.exe --uninstall（或 --restore-chapter &lt;章&gt;）还原原版，再重跑本命令。"));
                 return 3;
             }
         }
@@ -670,7 +670,7 @@ public static class GameUpdate
         // --yes 语义 = 用户确认了「当前这套章节集合」（含新出现的章节）
         RecordState(gameRoot, rep, baseModUsed: true, confirmDiscovered: true);
         Console.WriteLine(L("  ✅ 已采纳 {0} 个槽位的原版为新基线（归档 {1} 份旧备份）", adopted, archived));
-        Console.WriteLine(L("     下一步：ntl-builder --deploy-all --force"));
+        Console.WriteLine(L("     下一步：ntl-gui.exe --deploy-all --force"));
         return 0;
     }
 
@@ -871,7 +871,7 @@ public static class GameUpdate
         if (updated && !yes)
         {
             Console.WriteLine(L("  ⛔ 停止（--{0} 前置检测）：检测到游戏更新，需要你确认。", what));
-            Console.WriteLine(L("     确认后：ntl-builder --{0} --yes（会先 --adopt-current，再继续）", what));
+            Console.WriteLine(L("     确认后：ntl-gui.exe --{0} --yes（会先 --adopt-current，再继续）", what));
             Console.WriteLine(L("     或手动两步：--adopt-current --yes 然后 --deploy-all --force"));
             return false;
         }

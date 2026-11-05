@@ -1,6 +1,6 @@
 // 第二个示例插件：演示「声明钩子 + 权限自检 + 配置读写」。
 // 与 sample-hello 的差别：它不在 plugins\ 目录里开发，而是打成一个 .ntlplugin 包，
-// 用 ntl-builder --plugin-install <包> 安装 —— 这也是第三方插件的正常分发方式。
+// 用 ntl-gui.exe --plugin-install <包> 安装 —— 这也是第三方插件的正常分发方式。
 using Neutraled.Builder;
 
 namespace SampleClock;

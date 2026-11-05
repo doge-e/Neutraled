@@ -17,7 +17,7 @@
 命令里的 `$exe` 指：
 
 ```powershell
-$exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0\ntl-builder.exe"
+$exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\gui\bin\Release\net9.0-windows\ntl-gui.exe"
 ```
 
 **每条这类命令都会先打印两行公共前缀**（下面不再重复贴）。本文抓输出时 `Neutraled/config.json` 的 `lang` 是 `zh`，所以前缀与日志是中文；这个文件里的 `lang` 决定 builder 自己的打印语言（实测设成 `ru` 会连 builder 的输出一起变俄语）：
@@ -448,7 +448,7 @@ builder 侧（`L("中文原文")`）：
 
 ```bat
 :: 只让该条命令输出英文
-ntl-builder --lang en --info --chapter chapter4
+ntl-gui.exe --lang en --info --chapter chapter4
 set NTL_LANG=en
 ```
 
@@ -572,7 +572,7 @@ set NTL_LANG=en
 
 ---
 
-### 防回归（`ntl-builder --lint`）
+### 防回归（`ntl-gui.exe --lint`）
 
 `builder/LintRules3.cs` 的三条规则：
 

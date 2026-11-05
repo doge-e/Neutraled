@@ -1,8 +1,19 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Neutraled.Gui;
 
-/// <summary>Neutraled GUI 管理器入口。</summary>
+/// <summary>Neutraled 唯一入口（v1.1.0 起 builder / Studio / 地图·战斗·剧情编辑器全部合并进本 exe）。
+/// 分派规则（先匹配者优先）：
+///   ntl-gui.exe --check-toolbox-layout | --print-deploy-args | --set-fast-deploy  → 管理器自检（原样保留）
+///   ntl-gui.exe mapedit [命令…]（别名 mer）                                        → 地图 / 战斗 / 剧情编辑器（GUI 或 CLI）
+///   ntl-gui.exe studio [命令…]                                                    → Studio 脚本编辑器（含 --headless）
+///   ntl-gui.exe --headless alerts|selftest|plan|deploy-state|lang-report          → 管理器无窗口自检
+///   ntl-gui.exe &lt;data.win | chapterN&gt;（单个非旗标参数）                          → 直接打开编辑器（拖到 exe 图标上也行）
+///   ntl-gui.exe                                                                   → 管理器窗口（唯一"用户直接打开"的形态）
+///   ntl-gui.exe &lt;任何其它参数&gt;                                                   → builder CLI（--deploy/--launch/--lint/--watch-external/--install …）
+/// 合并方式：builder / studio / mapedit 三个工程改成 Library，由本工程引用；它们各自保留 Program.Main 作库入口，
+/// 所以 CLI 行为（参数、输出、退出码）与合并前逐字一致。</summary>
 public static class Program
 {
     /// <summary>游戏根目录（从 exe 上溯探测，无硬编码）。</summary>
@@ -10,8 +21,8 @@ public static class Program
 
     public static string NeutraledRoot => Path.Combine(GameRoot, "Neutraled");
 
-    public static string BuilderExe =>
-        Path.Combine(NeutraledRoot, "builder", "bin", "Release", "net9.0", "ntl-builder.exe");
+    /// <summary>当前 exe。合并后"再拉起 builder"就等于再拉起自己（--watch-external / 并行部署 / CLI 转发都走它）。</summary>
+    public static string SelfExe => Neutraled.Builder.Paths.SelfExe;
 
     public static string ModsRoot => Path.Combine(NeutraledRoot, "mods");
 
@@ -36,24 +47,18 @@ public static class Program
     }
 
     [STAThread]
-    public static void Main(string[] args)
+    public static int Main(string[] args)
     {
-        // 自检/应急入口（都不开窗口、不部署、不碰游戏目录）：
+        // ── 1) 管理器自检/应急入口（都不开窗口、不部署、不碰游戏目录）──
         //   ntl-gui.exe --print-deploy-args [--fast-deploy on|off]  → 打印三条部署路径拼出的命令行
         //   ntl-gui.exe --check-toolbox-layout [zh|en]              → 量工具箱对话框的控件边界/文字高度
         //   ntl-gui.exe --set-fast-deploy on|off                    → 直接改设置（等价于工具箱里勾选）
         // 自检命令必须用退出码表达结论（GUI-M09）：0=通过、1=发现问题、2=参数错误。
         if (args.Any(a => a.Equals("--check-toolbox-layout", StringComparison.OrdinalIgnoreCase)))
-        {
-            Environment.ExitCode = CheckToolboxLayout(args);
-            return;
-        }
+            return CheckToolboxLayout(args);
 
         if (args.Any(a => a.Equals("--print-deploy-args", StringComparison.OrdinalIgnoreCase)))
-        {
-            Environment.ExitCode = PrintDeployArgs(args);
-            return;
-        }
+            return PrintDeployArgs(args);
 
         // 应急入口（等价于工具箱里勾选，GUI 打不开时也能改；不启动窗口）：
         // 用法: ntl-gui.exe --set-fast-deploy on|off
@@ -65,27 +70,84 @@ public static class Program
                 if (!DeployOptions.TryParseFlag(args[i + 1], out var fast))
                 {
                     Console.Error.WriteLine("[selfcheck] ERROR: --set-fast-deploy 只接受 on|off（也认 true/false、1/0、yes/no），收到: " + args[i + 1]);
-                    Environment.ExitCode = 2;
-                    return;
+                    return 2;
                 }
                 DeployOptions.Load(NeutraledRoot);
                 DeployOptions.FastDeploy = fast;
                 DeployOptions.Save(NeutraledRoot);
                 Console.WriteLine("[selfcheck] saved fast-deploy = " + (DeployOptions.FastDeploy ? "on" : "off")
                     + " -> " + DeployOptions.SettingsPath(NeutraledRoot));
-                return;
+                return 0;
             }
 
-        // 无窗口自检/自动化入口（C4 P1-12）：绝不创建窗口，只读文件或转发 builder。
-        //   ntl-gui.exe --headless alerts|selftest|plan|deploy-state|lang-report [--json]
-        if (Headless.IsHeadless(args))
+        // ── 2) 子命令：mapedit / studio（它们现在是库，Main 原样转发）──
+        if (args.Length > 0)
         {
-            Environment.ExitCode = Headless.Run(args);
-            return;
+            var sub = args[0];
+            if (sub.Equals("mapedit", StringComparison.OrdinalIgnoreCase) || sub.Equals("mer", StringComparison.OrdinalIgnoreCase))
+            {
+                // 也支持 `ntl-gui.exe mapedit <data.win|chapterN>` 直接开编辑器（编辑器自己的 CLI 里
+                // 裸路径不是命令名，会落到「未知命令」；这里等价地补一个 gui 子命令）。
+                var rest = args.Skip(1).ToArray();
+                if (rest.Length >= 1
+                    && (File.Exists(rest[0])
+                        || System.Text.RegularExpressions.Regex.IsMatch(rest[0], @"^(root|chapter\d+)$",
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase)))
+                    rest = new[] { "gui" }.Concat(rest).ToArray();
+                return NtlMapEdit.Program.Main(rest);
+            }
+            if (sub.Equals("studio", StringComparison.OrdinalIgnoreCase))
+                return Neutraled.Studio.Program.Main(args.Skip(1).ToArray());
+
+            // 拖一个 data.win / 章节名到 exe 图标上 = 直接开编辑器（不经过管理器）。
+            if (args.Length == 1 && !sub.StartsWith("-", StringComparison.Ordinal)
+                && (File.Exists(sub) || System.Text.RegularExpressions.Regex.IsMatch(sub, @"^(root|chapter\d+)$",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase)))
+                return NtlMapEdit.Program.Main(new[] { "gui", sub });
         }
 
-        ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        // ── 3) 管理器无窗口自检/自动化入口（C4 P1-12）：绝不创建窗口，只读文件或转发 builder。──
+        //   ntl-gui.exe --headless alerts|selftest|plan|deploy-state|lang-report [--json]
+        if (Headless.IsHeadless(args))
+            return Headless.Run(args);
+
+        // ── 4) 图形界面（无参数，或显式 --gui）──
+        // 只有**独占控制台**（双击 / 快捷方式 / 资源管理器启动）才隐藏控制台窗口；
+        // 从 cmd / PowerShell 启动时保留窗口，别把用户自己的终端藏掉。
+        if (args.Length == 0 || args.Any(a => a.Equals("--gui", StringComparison.OrdinalIgnoreCase)))
+        {
+            HideConsoleIfOwned();
+            ApplicationConfiguration.Initialize();
+            Application.Run(new MainForm());
+            return 0;
+        }
+
+        // ── 5) 其余一律当 builder CLI（--deploy / --launch / --lint / --watch-external / --install …）──
+        return Neutraled.Builder.Program.Main(args);
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetConsoleProcessList(uint[] processList, uint processCount);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    /// <summary>仅当本进程是该控制台的唯一使用者时隐藏控制台窗口（双击/快捷方式 = 独占）。
+    /// 从 cmd/PowerShell 启动时 GetConsoleProcessList 至少还有 shell 自己，计数 &gt; 1 → 不动窗口。</summary>
+    private static void HideConsoleIfOwned()
+    {
+        try
+        {
+            var h = GetConsoleWindow();
+            if (h == IntPtr.Zero) return;
+            var pids = new uint[8];
+            uint count = GetConsoleProcessList(pids, (uint)pids.Length);
+            if (count <= 1) ShowWindow(h, 0);
+        }
+        catch { /* 拿不到控制台信息就不动它 */ }
     }
 
     /// <summary>结构自检：构造工具箱对话框（不显示），量控件边界/文字高度并打印开关与代价文案。
@@ -154,15 +216,17 @@ public static class Program
 
     /// <summary>后台起一个"外部章节守候"进程（不阻塞 GUI）。
     /// 游戏里选中 Kristal 章节时会写 launch-request.json 并退出，守候进程看到请求就拉起 Kristal 引擎。
-    /// 为什么必须这样：实测 GML 运行时没有任何启动进程的内置函数（execute_program 等都不存在）。</summary>
+    /// 为什么必须这样：实测 GML 运行时没有任何启动进程的内置函数（execute_program 等都不存在）。
+    /// 合并后守候进程 = 自己（ntl-gui.exe --watch-external）。</summary>
     public static void StartExternalWatcher()
     {
         try
         {
-            if (!File.Exists(BuilderExe)) return;
+            var self = SelfExe;
+            if (!File.Exists(self)) return;
             Process.Start(new ProcessStartInfo
             {
-                FileName = BuilderExe,
+                FileName = self,
                 Arguments = "--watch-external",
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -171,18 +235,19 @@ public static class Program
         catch { }
     }
 
-    /// <summary>运行 builder，实时回传输出行。</summary>
+    /// <summary>运行 builder 命令（合并后就是运行自己 + builder 参数），实时回传输出行。</summary>
     public static async Task<int> RunBuilderAsync(string args, Action<string>? onLine = null,
         CancellationToken ct = default)
     {
-        if (!File.Exists(BuilderExe))
+        var self = SelfExe;
+        if (!File.Exists(self))
         {
-            onLine?.Invoke(Localizer.T("[错误] 找不到 ntl-builder.exe: {0}", BuilderExe));
+            onLine?.Invoke(Localizer.T("[错误] 找不到 ntl-gui.exe: {0}", self));
             return -1;
         }
         var psi = new ProcessStartInfo
         {
-            FileName = BuilderExe,
+            FileName = self,
             Arguments = args,
             RedirectStandardOutput = true,
             RedirectStandardError = true,

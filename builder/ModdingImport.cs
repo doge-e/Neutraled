@@ -153,7 +153,7 @@ public static class ModdingImport
         Console.WriteLine(L("  mod 目录 : ") + root);
         Console.WriteLine(L("  可执行   : ") + exe);
         Console.WriteLine(L("  章节名   : ") + disp);
-        Console.WriteLine(L("  下一步   : ntl-builder.exe --deploy --chapter root   （之后在章节选择器里就能看到它）"));
+        Console.WriteLine(L("  下一步   : ntl-gui.exe --deploy --chapter root   （之后在章节选择器里就能看到它）"));
         Console.WriteLine(L("  注意     : 玩它需要守候进程（--watch-external）；已随安装器/开机自启一起提供"));
         return 0;
     }
@@ -393,8 +393,8 @@ public static class ModdingImport
                 Console.WriteLine(L("  mod 目录: ") + modRoot);
                 WriteRecord(modRoot, input, format, meta, plans, id, name, authorFinal, overridesTotal);
                 Console.WriteLine(L("  下一步:"));
-                Console.WriteLine("    ntl-builder.exe --mod-list");
-                Console.WriteLine("    ntl-builder.exe --deploy --chapter " + Ordered(plans).First().Chapter);
+                Console.WriteLine("    ntl-gui.exe --mod-list");
+                Console.WriteLine("    ntl-gui.exe --deploy --chapter " + Ordered(plans).First().Chapter);
             }
             return (fail == 0 && ok > 0) ? 0 : 1;
         }
@@ -825,7 +825,7 @@ public static class ModdingImport
             Console.WriteLine(L("        Neutraled 导入器只处理成品 data.win / xdelta 补丁（不内嵌 C# 运行时）。"));
             Console.WriteLine(L("  可行路径（2 步，手工一次即可）:"));
             Console.WriteLine(L("    1) 用 UTMT 打开 chapterN_windows/data.win，运行该 .csx，另存为 new.win"));
-            Console.WriteLine("    2) ntl-builder.exe --import-mod <new.win> --chapter chapterN");
+            Console.WriteLine("    2) ntl-gui.exe --import-mod <new.win> --chapter chapterN");
         }
         else if (scripts.Length > 0)
         {

@@ -4,7 +4,7 @@ using UndertaleModLib.Models;
 namespace NtlMapEdit;
 
 /// <summary>
-/// 战斗编辑器的离线自检（CLI：ntl-mapedit battle-test [data.win] [outDir]）。
+/// 战斗编辑器的离线自检（CLI：ntl-gui.exe mapedit battle-test [data.win] [outDir]）。
 /// 覆盖：配置校验 -> sidecar 往返 -> 生成 mod -> 产物结构断言。
 /// 不启动游戏、不碰游戏根，只在临时目录里生成。
 /// </summary>

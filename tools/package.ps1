@@ -1,14 +1,14 @@
 # Neutraled 发布打包器 -> <Out>\Neutraled-<Version>\{install,src}
-#   install/ = 单文件自包含安装器（ntl-builder.exe + Magick 原生库）
+#   install/ = 单文件自包含安装器（ntl-gui.exe：管理器 + builder CLI + 编辑器 + Studio 的唯一入口）
 #   src/     = 源码 + 运行期载荷（也是 --install 的复制源）
-# 用法: powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-Out <输出目录>] [-Version 1.0.7] [-Flavor full|trim] [-NoPublish]
+# 用法: powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-Out <输出目录>] [-Version 1.1.0] [-Flavor full|trim] [-NoPublish]
 #   默认 full（约 60 MB：exe 38.39 + Magick 原生库 21.41）。
 #   ⚠ 不要用 trim 出正式包：实测 -p:PublishTrimmed=true 会把 System.Text.Json 的反射序列化剪掉，
 #     导致 mod.json 读取报 'Reflection-based serialization has been disabled' 而静默丢 mod、冲突分析失真
 #     （c2 电池：--conflicts 从 exit 2 变 exit 0）。裁剪路线要等 JSON 改成 source-generated 后再评估。
 param(
     [string]$Out = '',
-    [string]$Version = '1.0.7',
+    [string]$Version = '1.1.0',
     [ValidateSet('trim', 'full')][string]$Flavor = 'full',
     [switch]$NoPublish
 )
@@ -45,16 +45,21 @@ if (-not $NoPublish) {
         $trimArgs = @('-p:PublishTrimmed=true', '-p:TrimMode=partial')
         Write-Warning 'Flavor=trim：System.Text.Json 反射会被裁掉（mod.json 解析失败），仅供实验，勿用于发布！'
     }
-    Write-Host '  publishing ntl-builder (self-contained single file) ...'
-    & $dotnet publish (Join-Path $N 'builder\Neutraled.Builder.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true @trimArgs -o $installDir -v q --nologo
+    Write-Host '  publishing ntl-gui (self-contained single file, merges builder/editor/studio) ...'
+    & $dotnet publish (Join-Path $N 'gui\Neutraled.Gui.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true @trimArgs -o $installDir -v q --nologo
     if ($LASTEXITCODE -ne 0) { throw 'publish failed' }
 }
 # 只留运行必需：pdb / xml 文档 / deps 之类不进发布包
 foreach ($pat in @('*.pdb', '*.xml', '*.deps.json', '*.runtimeconfig.json')) {
     Get-ChildItem -LiteralPath $installDir -Filter $pat -File -ErrorAction SilentlyContinue | Remove-Item -Force
 }
-$exe = Join-Path $installDir 'ntl-builder.exe'
+$exe = Join-Path $installDir 'ntl-gui.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw ('installer not found: ' + $exe) }
+# v1.1.0：builder/studio/编辑器都是库，发布包里不该再有它们的 apphost
+foreach ($stale in @('ntl-builder.exe', 'ntl-studio.exe', 'ntl-mapedit.exe', 'sdump.exe')) {
+    $p = Join-Path $installDir $stale
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force; Write-Warning ('removed stale exe: ' + $stale) }
+}
 
 # ---- 2) src/：源码 + 运行期载荷 ----
 $copyDirs = @('api', 'docs', 'fonts', 'tools', 'bside', 'scripts', 'plugins', 'web', 'themes', 'templates', 'kristal', 'kristal-maps', 'live', 'sdk', 'builder', 'gui', 'studio', 'mapedit')

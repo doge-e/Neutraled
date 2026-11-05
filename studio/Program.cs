@@ -8,7 +8,10 @@ public static class Program
     public static string NeutraledRoot => Path.Combine(GameRoot, "Neutraled");
     public static string LiveRoot => Path.Combine(NeutraledRoot, "live");
     public static string ModsRoot => Path.Combine(NeutraledRoot, "mods");
-    public static string BuilderExe => Path.Combine(NeutraledRoot, "builder", "bin", "Release", "net9.0", "ntl-builder.exe");
+    /// <summary>v1.1.0：Studio 并进 ntl-gui.exe，所以"再拉起 builder"= 再拉起自己（--deploy / --launch）。
+    /// 保留 BuilderExe 这个名字（--headless selftest 的 JSON 字段也从 1.0.x 就叫这个，别让脚本失配）。</summary>
+    public static string SelfExe => Path.Combine(AppContext.BaseDirectory, "ntl-gui.exe");
+    public static string BuilderExe => Environment.ProcessPath ?? SelfExe;
     public static string ApiRegistry => Path.Combine(NeutraledRoot, "api-registry.json");
 
     public static string DetectGameRoot()
@@ -35,17 +38,19 @@ public static class Program
     public static bool SelfTest { get; private set; }
 
     [STAThread]
-    public static void Main(string[] args)
+    public static int Main(string[] args)
     {
         // UX-29：--headless 只跑可脚本化检查，不创建窗口（selftest / plan）。
         if (args.Any(a => a.Equals("--headless", StringComparison.OrdinalIgnoreCase)))
-        {
-            Environment.ExitCode = RunHeadless(args);
-            return;
-        }
+            return RunHeadless(args);
         SelfTest = args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase));
-        ApplicationConfiguration.Initialize();
+        // v1.1.0：Studio 是库（不再产出 exe），WinForms 源生成器不会生成 ApplicationConfiguration，
+        // 这里显式做同样的初始化（等价于 ApplicationConfiguration.Initialize() 的默认行为）。
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.Run(new MainForm());
+        return 0;
     }
 
     /// <summary>Studio 的无窗口入口：--headless selftest 检查环境；--headless plan [--chapter X] 打印部署参数。</summary>
@@ -70,7 +75,7 @@ public static class Program
 
     private static int HeadlessUsage(string action)
     {
-        Console.Error.WriteLine("studio --headless selftest | --headless plan [--chapter root|chapter1..chapter5|all]");
+        Console.Error.WriteLine("ntl-gui.exe studio --headless selftest | --headless plan [--chapter root|chapter1..chapter5|all]");
         Console.Error.WriteLine("unknown headless action: " + action);
         return 2;
     }
@@ -122,7 +127,7 @@ public static class Program
     public static async Task<int> RunBuilderAsync(string args, Action<string>? onLine = null,
         CancellationToken ct = default)
     {
-        if (!File.Exists(BuilderExe)) { onLine?.Invoke(Localizer.T("[错误] 找不到 ntl-builder.exe")); return -1; }
+        if (!File.Exists(BuilderExe)) { onLine?.Invoke(Localizer.T("[错误] 找不到 ntl-gui.exe")); return -1; }
         var psi = new System.Diagnostics.ProcessStartInfo
         {
             FileName = BuilderExe, Arguments = args,

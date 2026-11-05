@@ -52,7 +52,7 @@ public static class ChapterScaffold
         if (string.IsNullOrWhiteSpace(rawName))
         {
             Paths.Log(L("  [错误] --new-chapter 需要一个章节名字，例如："));
-            Paths.Log(L("         ntl-builder.exe --new-chapter \"我的第一个章节\""));
+            Paths.Log(L("         ntl-gui.exe --new-chapter \"我的第一个章节\""));
             return 1;
         }
         var name = rawName.Trim();
@@ -83,7 +83,7 @@ public static class ChapterScaffold
             if (string.IsNullOrWhiteSpace(forkSpec))
             {
                 Paths.Log(L("  [错误] --mode fork 需要 --fork <mod目录名|mod id>[:作者[:chapterN]]"));
-                Paths.Log(L("         先跑 ntl-builder.exe --new-chapter help 看可 fork 的清单，或见下面的列表"));
+                Paths.Log(L("         先跑 ntl-gui.exe --new-chapter help 看可 fork 的清单，或见下面的列表"));
                 ListForkable(modsRoot);
                 return 1;
             }
@@ -228,7 +228,7 @@ public static class ChapterScaffold
                     if (!File.Exists(srcWin))
                     {
                         Paths.Log(L("  [错误] 找不到 {0} 的 data.win（备份目录和游戏目录都没有）", baseName));
-                        Paths.Log(L("         先跑一次：ntl-builder.exe --deploy --chapter {0}   （它会自动备份原版）", baseName));
+                        Paths.Log(L("         先跑一次：ntl-gui.exe --deploy --chapter {0}   （它会自动备份原版）", baseName));
                         return 1;
                     }
                     File.Copy(srcWin, dataWin, false);
@@ -274,12 +274,12 @@ public static class ChapterScaffold
         Paths.Log(L("下一步（一条一条复制执行）："));
         if (mode == "overlay")
         {
-            Paths.Log(L("  1) ntl-builder.exe --deploy --chapter {0} --force     把 mod 叠加进官方第 {1} 章", baseName, baseNum));
+            Paths.Log(L("  1) ntl-gui.exe --deploy --chapter {0} --force     把 mod 叠加进官方第 {1} 章", baseName, baseNum));
             Paths.Log(L("  2) 启动 DELTARUNE（Steam），进第 {0} 章看效果", baseNum));
         }
         else
         {
-            Paths.Log(L("  1) ntl-builder.exe --deploy --chapter root --force           生成章节产物（平行时间线会自动一起生成）"));
+            Paths.Log(L("  1) ntl-gui.exe --deploy --chapter root --force           生成章节产物（平行时间线会自动一起生成）"));
             Paths.Log(L("  2) 启动 DELTARUNE（Steam）→ 章节选择器里翻到你的章节"));
         }
         Paths.Log(L("  教程：Neutraled/docs/CHAPTER_DEV.md"));
@@ -290,8 +290,8 @@ public static class ChapterScaffold
     private static int PrintScaffoldHelp(string gameRoot)
     {
         var ntlRoot = Paths.NeutraledRoot(gameRoot);
-        Paths.Log(L("用法：ntl-builder.exe --new-chapter <章节名字> [选项]"));
-        Paths.Log(L("      ntl-builder.exe --new-chapter help            看这份帮助"));
+        Paths.Log(L("用法：ntl-gui.exe --new-chapter <章节名字> [选项]"));
+        Paths.Log(L("      ntl-gui.exe --new-chapter help            看这份帮助"));
         Paths.Log("");
         Paths.Log(L("选项：--author <作者>  --mode independent|overlay|fork  --chapter chapterN"));
         Paths.Log(L("      --slot N  --fork <mod>[:作者[:chapterN]]  --template room|empty  --force"));
@@ -521,7 +521,7 @@ public static class ChapterScaffold
         obj["author"] = author;
         obj["enabled"] = true;
         obj["version"] = (obj["version"]?.ToString() ?? "1.0.0").Trim('"');
-        obj["description"] = "由 " + (src.Name ?? "?") + " fork（ntl-builder --new-chapter --mode fork）";
+        obj["description"] = "由 " + (src.Name ?? "?") + " fork（ntl-gui.exe --new-chapter --mode fork）";
         obj["chapters"] = new JsonArray(new JsonObject
         {
             ["timeline"] = true,
@@ -616,7 +616,7 @@ public static class ChapterScaffold
             ["properties"] = new JsonObject
             {
                 ["displayname"] = name,
-                ["generator"] = "ntl-builder --new-chapter"
+                ["generator"] = "ntl-gui.exe --new-chapter"
             },
             ["objectGroups"] = new JsonArray(
                 new JsonObject

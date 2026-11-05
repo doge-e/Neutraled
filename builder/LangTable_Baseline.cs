@@ -13,7 +13,7 @@ public static class LangTable_Baseline
         d["               游戏更新后确认是新原版：--adopt-current --yes"] = "               after a game update, if this is the new vanilla: --adopt-current --yes";
         d["         修复：1) --verify-backup 查看全部槽位；2) --repair-backup --from mirror|live|file:<路径> --yes"] = "         Fix: 1) --verify-backup to inspect all slots; 2) --repair-backup --from mirror|live|file:<path> --yes";
         d["         修复：用 Steam 校验文件完整性，或用 --repair-backup --from file:<干净的原版 data.win> --yes"] = "         Fix: verify the game files in Steam, or use --repair-backup --from file:<clean vanilla data.win> --yes";
-        d["         先修复：ntl-builder --verify-backup（查看）/ --repair-backup --yes（修复）"] = "         Fix first: ntl-builder --verify-backup (inspect) / --repair-backup --yes (repair)";
+        d["         先修复：ntl-gui.exe --verify-backup（查看）/ --repair-backup --yes（修复）"] = "         Fix first: ntl-gui.exe --verify-backup (inspect) / --repair-backup --yes (repair)";
         d["         期望: {0}"] = "         Expected: {0}";
         d["         规范: {0}"] = "         Primary: {0}";
         d["         规范位置: {0}"] = "         Primary location: {0}";

@@ -83,14 +83,14 @@ ds_map_add(_zh, "st.no_saves", "还没有存档快照（部署一次会自动建
 ds_map_add(_en, "st.no_saves", "No save snapshots yet (one is created on each deploy)");
 ds_map_add(_zh, "st.saves", "存档快照: {1}");
 ds_map_add(_en, "st.saves", "Save snapshots: {1}");
-ds_map_add(_zh, "st.restore_hint", "（恢复请用: ntl-builder --restore-save）");
-ds_map_add(_en, "st.restore_hint", "(Restore with: ntl-builder --restore-save)");
+ds_map_add(_zh, "st.restore_hint", "（恢复请用: ntl-gui.exe --restore-save）");
+ds_map_add(_en, "st.restore_hint", "(Restore with: ntl-gui.exe --restore-save)");
 ds_map_add(_zh, "st.no_cache", "还没有缓存");
 ds_map_add(_en, "st.no_cache", "No cache yet");
 ds_map_add(_zh, "st.cache", "缓存索引存在: {1}");
 ds_map_add(_en, "st.cache", "Cache index found: {1}");
-ds_map_add(_zh, "st.cache_hint", "（查看详情: ntl-builder --cache-list）");
-ds_map_add(_en, "st.cache_hint", "(Details: ntl-builder --cache-list)");
+ds_map_add(_zh, "st.cache_hint", "（查看详情: ntl-gui.exe --cache-list）");
+ds_map_add(_en, "st.cache_hint", "(Details: ntl-gui.exe --cache-list)");
 ds_map_add(_zh, "st.world_head", "Kristal world 状态:");
 ds_map_add(_en, "st.world_head", "Kristal world state:");
 ds_map_add(_zh, "st.world_objs", "  受管对象: {1}");

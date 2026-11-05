@@ -38,7 +38,7 @@ OFL 要求的版权与许可随附、保留字体名、不得单独售卖等条�
 │  上游文件 : https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf
 │  字体版本 : Version 2.04;241114210130;non-release
 │  版权行   : Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
-│  渲染命令 : ntl-builder.exe --make-cjk-font <输出目录> --ttf NotoSansSC-VF.ttf --charset list --chars <字符表> --font-name ntl_rr_sc
+│  渲染命令 : ntl-gui.exe --make-cjk-font <输出目录> --ttf NotoSansSC-VF.ttf --charset list --chars <字符表> --font-name ntl_rr_sc
 │  产物溯源 : <构建机>/rerender-1-sc/ntl_rr_sc_sheet0.png（与随包 PNG **字节完全相同**）
 │  说明     : 拉丁/希腊/西里尔扩展、标点、汉字与全角符号等主表字形
 │
@@ -122,11 +122,11 @@ https://raw.githubusercontent.com/google/fonts/main/ofl/<家族目录>/OFL.txt
 
 五、重新生成（可复现流程）
 ----------------------------------------------------------------
-前提：.NET 9（从源码构建）或发布包自带的 install\ntl-builder.exe；字符表来自"产物真正会用到的文本"
+前提：.NET 9（从源码构建）或发布包自带的 install\ntl-gui.exe；字符表来自"产物真正会用到的文本"
 （与部署期内容自检同一口径，见 docs/MANAGE.md 的字体补全一节）。
 
   # 2) 逐字体渲染位图页（示例：Noto Sans SC；其它字体同理换 --ttf 与包名）
-  ntl-builder.exe --make-cjk-font <输出目录> --ttf <NotoSansSC-VF.ttf> --charset list --chars <字符表文件> --font-name ntl_font_cjk
+  ntl-gui.exe --make-cjk-font <输出目录> --ttf <NotoSansSC-VF.ttf> --charset list --chars <字符表文件> --font-name ntl_font_cjk
 
   #    → 输出 <包名>.json + <包名>_sheetN.png（这次每个包都只有一张 sheet0）
   #    渲染期有**墨迹门禁**：全透明（画不出来）的字形会被丢弃，不会进包
@@ -140,7 +140,7 @@ https://raw.githubusercontent.com/google/fonts/main/ofl/<家族目录>/OFL.txt
 
   # 4) 复核
   node <构建机>/font-audit.mjs        # 缺字 / 空白格门禁（退出码 1 = 有缺口）
-  ntl-builder.exe --font-probe chapter4_windows\data.win   # 字形数与字形表自检（逆序对应应为 0）
+  ntl-gui.exe --font-probe chapter4_windows\data.win   # 字形数与字形表自检（逆序对应应为 0）
 
 
 六、注意事项与已知局限
@@ -200,7 +200,7 @@ OFL Noto 位图后，UI 文字观感与游戏明显不同（用户真机反馈�
        上游     : https://github.com/TakWolf/ark-pixel-font（发布包 ark-pixel-12px-monospaced-ttf.zip）
        版权行   : Copyright (c) 2021, TakWolf (https://takwolf.com).
        许可     : SIL Open Font License 1.1 —— 全文随包放 ofl\OFL-arkpixel.txt
-渲染命令: ntl-builder.exe --game <游戏根> --make-cjk-font <输出目录> --ttf ark12-zh_hans.ttf --font-name ntl_ark12 --size 12
+渲染命令: ntl-gui.exe --game <游戏根> --make-cjk-font <输出目录> --ttf ark12-zh_hans.ttf --font-name ntl_ark12 --size 12
           （默认大 UI 字集共渲出 21453 个字形，本次只取上述非中文码位里的 953 个）
 合并脚本: <构建机>/_t40/（一次性手工合并；新旧包与对比图留在该目录可复现）
 合规说明: Ark Pixel 为 OFL-1.1 授权，允许再分发与嵌入；我们同样**只分发位图页**，不分发 .ttf；

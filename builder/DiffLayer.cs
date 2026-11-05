@@ -15,7 +15,7 @@ namespace Neutraled.Builder;
 /// references.codes 层，它就能叠加在**任意**基底上（官方 / 汉化 / 另一个 mod），
 /// 于是多个功能上不冲突的传统 mod 就能同时运行。
 ///
-///   ntl-builder.exe --extract-diff <mod 的 ref/data.win> --chapter chapter5 --name BossRush --author PrimeStrat
+///   ntl-gui.exe --extract-diff <mod 的 ref/data.win> --chapter chapter5 --name BossRush --author PrimeStrat
 ///
 /// 产出：mods/NAME/AUTHOR/chapterN/{mod.json(references.codes), ref/data.win}
 /// </summary>

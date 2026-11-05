@@ -27,6 +27,23 @@ public static class Paths
         return AppContext.BaseDirectory;
     }
 
+    /// <summary>当前可执行文件路径。★ v1.1.0 起本项目只有一个用户 exe（ntl-gui.exe），
+    /// 所以"再拉起一个 builder"（守候进程 / 并行部署 worker / GUI 转发 CLI）都指向**自己**。
+    /// 兼容 dev 布局：`dotnet run` / `dotnet ntl-gui.dll` 时 ProcessPath 是 dotnet.exe，
+    /// 这种情况退回同目录的 apphost（ntl-gui.exe）。</summary>
+    public static string SelfExe
+    {
+        get
+        {
+            var p = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(p) &&
+                !Path.GetFileNameWithoutExtension(p).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+                return p;
+            var apphost = Path.Combine(AppContext.BaseDirectory, "ntl-gui.exe");
+            return File.Exists(apphost) ? apphost : (p ?? apphost);
+        }
+    }
+
     /// <summary>Neutraled 根目录（游戏根下的 Neutraled/）。</summary>
     public static string ModsRoot(string gameRoot) => Path.Combine(NeutraledRoot(gameRoot), "mods");
 
@@ -89,8 +106,9 @@ public static class Paths
     /// <summary>顶层 data.win（章节选择器）。</summary>
     public static string RootDataWin(string gameRoot) => Path.Combine(gameRoot, "data.win");
 
-    /// <summary>Neutraled API 版本（用于缓存签名）。</summary>
-    public static string ApiVersion() => "1.0.8";
+    /// <summary>Neutraled API 版本（用于缓存签名 / installed.json / 插件最低版本检查）。
+    /// v1.1.0：单 exe 合并（builder+studio+mapedit → ntl-gui.exe）。</summary>
+    public static string ApiVersion() => "1.1.0";
 
     public static string ChapterDir(string gameRoot, string chapter) =>
         chapter.Equals("root", StringComparison.OrdinalIgnoreCase)

@@ -319,7 +319,7 @@ return nil        -- 其它音效放行
 - 日志：`%LOCALAPPDATA%\DELTARUNE\Neutraled\dr-api.log`（Lua 输出前缀 `[lua]`）
 - `print(...)` 多参数用 tab 分隔
 - 出错会打印 `[lua] [xxx.lua] 运行错误: ...`
-- IDE：`Neutraled/studio/bin/Release/net9.0-windows/ntl-studio.exe`（语法高亮 + 补全 + 日志）
+- IDE：`Neutraled/studio/bin/Release/net9.0-windows/ntl-gui.exe studio`（语法高亮 + 补全 + 日志）
 
 ---
 

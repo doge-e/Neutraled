@@ -850,7 +850,7 @@ public static class Program
     private static int FocusTestUsage()
     {
         Console.WriteLine(L("[错误] --focus-test 需要 exe 路径（--send-keys / --send-text / --send-f2 / --keep 是它的选项）"));
-        Console.WriteLine(L("       用法: ntl-builder --focus-test <exe> [--send-f2] [--send-keys 按键] [--send-text 文本] [--keep]"));
+        Console.WriteLine(L("       用法: ntl-gui.exe --focus-test <exe> [--send-f2] [--send-keys 按键] [--send-text 文本] [--keep]"));
         return 2;
     }
 
@@ -898,7 +898,7 @@ public static class Program
         lines.Add(L("      --slot <N>                  章节排序号（默认自动排在最后，最小 6）"));
         lines.Add(L("      --fork <mod>[:作者[:chapterN]]  被 fork 的源章节（--new-chapter help 可列清单）"));
         lines.Add(L("      --template room|empty       模板：room=带一个可走房间（默认）/ empty=空骨架"));
-        lines.Add(L("  例: ntl-builder.exe --new-chapter \"我的章节\" --deploy --chapter root --force"));
+        lines.Add(L("  例: ntl-gui.exe --new-chapter \"我的章节\" --deploy --chapter root --force"));
         lines.Add("");
         lines.Add(L("  导入 mod（全部自动识别包形态）:"));
         lines.Add(L("  --import-mod <包|目录>          传统 mod 自动转 ntl 格式（modding.xml / meta.toml / xdelta / zip / 原生 mod）"));
@@ -1813,7 +1813,7 @@ lines.Add(L("  --export-shaders <data.win> <mod 章节目录> [--base <基线>] 
         if (baselineBad.Count > 0)
         {
             Console.WriteLine(L("  [错误] 原版备份校验未通过，已在写任何产物之前中止: {0}", string.Join(", ", baselineBad)));
-            Console.WriteLine(L("         先修复：ntl-builder --verify-backup（查看）/ --repair-backup --yes（修复）"));
+            Console.WriteLine(L("         先修复：ntl-gui.exe --verify-backup（查看）/ --repair-backup --yes（修复）"));
             return 3;
         }
 
@@ -3801,7 +3801,7 @@ lines.Add(L("  --export-shaders <data.win> <mod 章节目录> [--base <基线>] 
         {
             Console.WriteLine(L("[错误] --cache-max-set 需要一个正整数（单位 MB，1 .. 1048576），收到: {0}",
                 text.Length == 0 ? L("（空）") : text));
-            Console.WriteLine(L("       用法: ntl-builder --cache-max-set <MB>   例: --cache-max-set 4096（只写 config.json，不部署、不启动）"));
+            Console.WriteLine(L("       用法: ntl-gui.exe --cache-max-set <MB>   例: --cache-max-set 4096（只写 config.json，不部署、不启动）"));
             return 2;
         }
         ConfigFile.Set(gameRoot, "cache_max_mb", JsonValue.Create(mb));

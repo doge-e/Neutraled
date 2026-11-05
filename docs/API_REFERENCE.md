@@ -1899,7 +1899,7 @@ lang get <key>          读一条文本（覆盖优先，其次 lang_map）
 
 ### `ntl_theme_load()`
 
-读取 Neutraled/console-theme.json（由 ntl-builder --theme-use 写出）
+读取 Neutraled/console-theme.json（由 ntl-gui.exe --theme-use 写出）
 
 
 文件格式（与 builder 侧 Themes.cs 一致）：

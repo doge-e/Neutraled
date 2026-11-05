@@ -40,7 +40,7 @@ public sealed class ShaderDef
 ///
 /// 用法：
 ///   1) 把某个 mod 的 data.win 里的着色器导出成资源包（与官方基线比差异）：
-///        ntl-builder.exe --export-shaders &lt;mod 的 ref/data.win&gt; &lt;mod 章节目录&gt; --base &lt;官方基线 data.win&gt;
+///        ntl-gui.exe --export-shaders &lt;mod 的 ref/data.win&gt; &lt;mod 章节目录&gt; --base &lt;官方基线 data.win&gt;
 ///      产物：&lt;mod 章节目录&gt;/shaders/&lt;名字&gt;.json
 ///   2) 部署时自动导入（Injector 2.42 段）：同名替换、新名字追加，索引保持在末尾。</summary>
 public static class ShaderPack

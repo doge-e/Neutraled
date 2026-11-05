@@ -1,6 +1,6 @@
 # Neutraled 插件 SDK —— 第三方插件开发指南
 
-本目录是插件**契约的唯一来源**。宿主 `ntl-builder.exe` 与所有插件编译的是同一份定义，因此插件作者不需要、也不应该把 SDK 的 DLL 打包进插件。
+本目录是插件**契约的唯一来源**。宿主 `ntl-gui.exe` 与所有插件编译的是同一份定义，因此插件作者不需要、也不应该把 SDK 的 DLL 打包进插件。
 
 ```
 sdk/
@@ -175,13 +175,13 @@ Move-Item pkg\my-plugin.zip pkg\my-plugin.ntlplugin
 ## 7. 命令行
 
 ```
-ntl-builder.exe --plugin-list                          # 列出插件与状态
-ntl-builder.exe --plugin-info <id>                     # 清单详情 + 诊断
-ntl-builder.exe --plugin-enable  <id>
-ntl-builder.exe --plugin-disable <id>
-ntl-builder.exe --plugin-install <目录|.ntlplugin> [--force]
-ntl-builder.exe --plugin-remove  <id> [--force]
-ntl-builder.exe --plugin-hooks                         # 加载全部插件并打印登记的钩子
+ntl-gui.exe --plugin-list                          # 列出插件与状态
+ntl-gui.exe --plugin-info <id>                     # 清单详情 + 诊断
+ntl-gui.exe --plugin-enable  <id>
+ntl-gui.exe --plugin-disable <id>
+ntl-gui.exe --plugin-install <目录|.ntlplugin> [--force]
+ntl-gui.exe --plugin-remove  <id> [--force]
+ntl-gui.exe --plugin-hooks                         # 加载全部插件并打印登记的钩子
 ```
 
 ## 8. 故障排查
@@ -203,4 +203,4 @@ ntl-builder.exe --plugin-hooks                         # 加载全部插件并�
 
 - 宿主 API 版本：`Paths.ApiVersion()` = `1.0.7`（`min_builder` 与之比较）。
 - SDK 程序集版本：`1.0.1.0`。
-- 契约变更流程：改 `sdk/Neutraled.PluginSdk/Contract.cs` 这一处 → 重新构建 SDK 与 `ntl-builder.exe`（宿主链接编译同一文件）。
+- 契约变更流程：改 `sdk/Neutraled.PluginSdk/Contract.cs` 这一处 → 重新构建 SDK 与 `ntl-gui.exe`（宿主链接编译同一文件）。

@@ -338,7 +338,7 @@ public static class LangTable_Features
         d["  版本: {0}"] = "  version: {0}";
         d["  状态: {0}"] = "  state: {0}";
         d["  类型: {0}"] = "  type: {0}";
-        d["  装法: ntl-builder --plugin-install <目录或 .ntlplugin>"] = "  install with: ntl-builder --plugin-install <directory or .ntlplugin>";
+        d["  装法: ntl-gui.exe --plugin-install <目录或 .ntlplugin>"] = "  install with: ntl-gui.exe --plugin-install <directory or .ntlplugin>";
         d["  诊断:"] = "  diagnostics:";
         d["  （无插件）"] = "  (no plugins)";
         d["===== 插件 ====="] = "===== Plugins =====";

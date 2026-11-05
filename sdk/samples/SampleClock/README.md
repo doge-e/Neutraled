@@ -33,10 +33,10 @@ dotnet build sdk\samples\SampleClock\SampleClock.csproj -c Release
 ## 验证
 
 ```
-ntl-builder.exe --plugin-install sdk\samples\SampleClock\dist\sample-clock.ntlplugin
-ntl-builder.exe --plugin-list                  # enabled；无诊断
-ntl-builder.exe --plugin-hooks                 # register\tsample-clock\tbefore_deploy,after_deploy,before_exit
-ntl-builder.exe --plugin-info sample-clock     # 权限: files.read, files.write
+ntl-gui.exe --plugin-install sdk\samples\SampleClock\dist\sample-clock.ntlplugin
+ntl-gui.exe --plugin-list                  # enabled；无诊断
+ntl-gui.exe --plugin-hooks                 # register\tsample-clock\tbefore_deploy,after_deploy,before_exit
+ntl-gui.exe --plugin-info sample-clock     # 权限: files.read, files.write
 ```
 
 完整开发指南见 `sdk/README.md`。

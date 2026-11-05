@@ -22,7 +22,7 @@ GameBanana 上 **DELTARUNE 的 game id 是 6755**（源码里写作 `GameBanana.
 本文所有命令行示例都真跑过（2026-09-26，本机 Windows 10.0.19045 + .NET 9.0.20），输出原样粘贴。命令里的 `$exe` 指：
 
 ```powershell
-$exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0\ntl-builder.exe"
+$exe = "E:\steam\steamapps\common\DELTARUNE\Neutraled\gui\bin\Release\net9.0-windows\ntl-gui.exe"
 ```
 
 **每条 GameBanana / 队列 / 主题 / 语言命令都会先打印两行公共前缀**，后面不再重复贴。抓这些输出时 `Neutraled/config.json` 的 `lang` 是 `zh`，所以前缀是中文；这个字段也决定 builder 自己的打印语言（设成 `ru` 会连 builder 的输出一起变俄语，见 [THEMES-LANGS.md](THEMES-LANGS.md)）：

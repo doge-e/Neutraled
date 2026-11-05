@@ -6,7 +6,7 @@ namespace NtlMapEdit;
 /// <summary>
 /// 无 UI 的 mer 编辑安全自检：FileRole 四类、baseline/live 的 data.win 与 sidecar 写盘、
 /// 启动默认目标。fixture 只建在调用者给的临时目录里，不读写真实 backup。
-/// 用法：ntl-mapedit mapedit-test &lt;src data.win&gt; &lt;workDir&gt;
+/// 用法：ntl-gui.exe mapedit mapedit-test &lt;src data.win&gt; &lt;workDir&gt;
 /// </summary>
 public static class MapeditSelfTest
 {

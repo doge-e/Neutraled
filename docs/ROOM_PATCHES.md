@@ -1,7 +1,7 @@
 # 房间/地图差分：mod.json 的 `roomPatches` 与 `rooms`（权威口径）
 
-> 面向：写 mod 的人、地图编辑器（ntl-mapedit / MER）维护者、排查「部署后房间没变」的人。
-> 本文件描述的是**当前实现**（Neutraled 1.0.8+，builder/RoomPatches.cs）；字段名即 JSON 键（序列化走 camelCase）。
+> 面向：写 mod 的人、地图编辑器（`ntl-gui.exe mapedit` / MER）维护者、排查「部署后房间没变」的人。
+> 本文件描述的是**当前实现**（Neutraled 1.1.0+，builder/RoomPatches.cs）；字段名即 JSON 键（序列化走 camelCase）。
 
 ## 1. 为什么房间要单独一段
 
@@ -141,14 +141,14 @@
 
 ```powershell
 # 1) 部署（真机目录；先确认缓存/签名不会跳过）
-ntl-builder --deploy --chapter chapter1 --no-root --force
+ntl-gui.exe --deploy --chapter chapter1 --no-root --force
 
 # 2) 查房间顺序 / 条数（摘除、新增房间都在这里看得到）
-ntl-builder --probe-object "<游戏根>\chapter1_windows\data.win" rooms
+ntl-gui.exe --probe-object "<游戏根>\chapter1_windows\data.win" rooms
 
 # 3) 查单个房间：宽高/图层/实例/瓦片；给 instId 时打印该实例字段
-ntl-mapedit room-probe "<游戏根>\chapter1_windows\data.win" room_krisroom
-ntl-mapedit room-probe "<游戏根>\chapter1_windows\data.win" room_krisroom 100005
+ntl-gui.exe mapedit room-probe "<游戏根>\chapter1_windows\data.win" room_krisroom
+ntl-gui.exe mapedit room-probe "<游戏根>\chapter1_windows\data.win" room_krisroom 100005
 ```
 
 部署后自检会重新解析产物并检查引导注入、控制器事件、API 脚本数、JSON 可解析等；

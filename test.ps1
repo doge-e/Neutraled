@@ -1,4 +1,4 @@
-﻿# Neutraled 一键测试（test.ps1）
+# Neutraled 一键测试（test.ps1）
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File test.ps1            快速检查（不启动游戏）
@@ -13,7 +13,8 @@ param(
 
 $ErrorActionPreference = "Continue"
 $root = $PSScriptRoot
-$exe  = Join-Path $root "builder\bin\Release\net9.0\ntl-builder.exe"
+$exe  = Join-Path $root "gui\bin\Release\net9.0-windows\ntl-gui.exe"
+if (-not (Test-Path $exe)) { $exe = Join-Path $root "bin\ntl-gui.exe" }
 
 $pass = 0; $fail = 0; $warn = 0
 
@@ -38,8 +39,8 @@ function Step($name, $block) {
 }
 
 if (-not (Test-Path $exe)) {
-    Write-Host "[错误] 找不到 ntl-builder.exe" -ForegroundColor Red
-    Write-Host "       先编译: dotnet build builder/Neutraled.Builder.csproj -c Release"
+    Write-Host "[错误] 找不到 ntl-gui.exe" -ForegroundColor Red
+    Write-Host "       先编译: dotnet build gui/Neutraled.Gui.csproj -c Release"
     exit 1
 }
 

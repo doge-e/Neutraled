@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Continue'
 $game = 'E:\steam\steamapps\common\DELTARUNE'
-$exe  = Join-Path $game 'Neutraled\builder\bin\Release\net9.0\ntl-builder.exe'
+$exe  = Join-Path $game 'Neutraled\gui\bin\Release\net9.0-windows\ntl-gui.exe'
 $log  = Join-Path $env:LOCALAPPDATA 'DELTARUNE\Neutraled\dr-api.log'
 $shotDir = Join-Path $env:LOCALAPPDATA 'DELTARUNE'
 $reportPath = Join-Path $game 'Neutraled\_test\verify_report.txt'

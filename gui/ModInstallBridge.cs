@@ -4,7 +4,7 @@ namespace Neutraled.Gui;
 
 /// <summary>GUI 侧读 mod 列表的桥（C4 P1-13：不引用 builder 程序集，保持独立）。
 ///
-/// 数据源 = ntl-builder --mod-list --json —— 与部署用的是同一个扫描器（builder/ModScanner.cs）。
+/// 数据源 = ntl-gui.exe --mod-list --json —— 与部署用的是同一个扫描器（builder/ModScanner.cs）。
 /// 以前这里自己用 Directory.GetFiles(modsRoot, "mod.json", AllDirectories) 递归扫、按 name 去重，
 /// 与部署的叶子规则不同（实测 72 vs 71），会出现「GUI 里看得到、部署时却扫不到」的幽灵。
 /// 现在规则只有一份，GUI 只负责显示与把勾选写回 mod.json。</summary>

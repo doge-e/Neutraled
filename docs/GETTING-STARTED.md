@@ -17,10 +17,10 @@
 
 ```bash
 # 自动检测游戏目录（Steam 注册表 + 库文件夹）
-ntl-builder.exe --install
+ntl-gui.exe --install
 
 # 或手动指定
-ntl-builder.exe --install --game "E:\steam\steamapps\common\DELTARUNE"
+ntl-gui.exe --install --game "E:\steam\steamapps\common\DELTARUNE"
 ```
 
 安装器会：
@@ -35,28 +35,27 @@ ntl-builder.exe --install --game "E:\steam\steamapps\common\DELTARUNE"
 官方发布包只有两个目录，解压后**保持同级**：
 
 ```
-Neutraled-1.0.8/
+Neutraled-1.1.0/
   README.txt
-  install/ntl-builder.exe           ← 安装器（单文件自包含，不需要另装 .NET）
-  install/Magick.Native-Q8-x64.dll  ← 图像处理原生库，必须与 exe 同目录
-  src/                              ← 源码 + 运行期载荷（api/ docs/ lang/ fonts/ tools/ …）
+  install/ntl-gui.exe           ← 安装器（单文件自包含，内含 .NET 运行时与原生库，不需要另装 .NET）
+  src/                          ← 源码 + 运行期载荷（api/ docs/ lang/ fonts/ tools/ …）
 ```
 
 安装器会自动认**同级的 `src/`**（也认 `install/src/`，或显式 `--src <目录>`）：
 
 ```bash
-install\ntl-builder.exe --install                        # 自动检测游戏目录
-install\ntl-builder.exe --install --game "…\DELTARUNE"    # 手动指定
+install\ntl-gui.exe --install                        # 自动检测游戏目录
+install\ntl-gui.exe --install --game "…\DELTARUNE"    # 手动指定
 ```
 
-装完就是普通的开发布局：`<游戏>\Neutraled\` 里有全部载荷，工具在 `<游戏>\Neutraled\bin\ntl-builder.exe`。
-想从源码自己编译：在 `src/builder/` 下 `dotnet build -c Release`（需要 .NET 9 SDK）；
+装完就是普通的开发布局：`<游戏>\Neutraled\` 里有全部载荷，工具在 `<游戏>\Neutraled\bin\ntl-gui.exe`。
+想从源码自己编译：在 `src/gui/` 下 `dotnet build -c Release`（唯一入口 `ntl-gui.exe`，builder / 编辑器 / Studio 都是它的库；需要 .NET 9 SDK）；
 打发布包本身用 `src/tools/package.ps1` —— **只支持 `-Flavor full`**：`-Flavor trim` 自 2026-09-28 起被**明确禁用**（`PublishTrimmed` 会剪掉 `System.Text.Json` 的反射序列化 ⇒ `mod.json` 读不进来 ⇒ **静默少 mod**，`--conflicts` 的退出码会从 2 变 0 而看不出问题）；打包脚本遇到 `-Flavor trim` 直接以**退出码 2 拒绝**。
 
 ### 卸载 / 还原
 
 ```bash
-ntl-builder.exe --uninstall
+ntl-gui.exe --uninstall
 ```
 
 卸载器会：
@@ -69,8 +68,8 @@ ntl-builder.exe --uninstall
 
 ```
 Neutraled/
-  bin/ntl-builder.exe     ← 命令行（发布包布局；开发布局是 builder/bin/Release/net9.0/）
-  bin/ntl-gui.exe         ← 图形界面（发布包 / 自己编译时才有）
+  bin/ntl-gui.exe     ← 唯一入口：管理器 GUI / builder CLI / 编辑器 / Studio
+                          （开发布局在 gui/bin/Release/net9.0-windows/）
   api/  live/  docs/  lang/  fonts/  tools/  templates/  kristal/  kristal-maps/  sdk/
   mods/                   ← 你的 mod（发布包只带几个示例）
   backup/                 ← 原版 data.win 备份
@@ -78,13 +77,13 @@ Neutraled/
 ```
 
 **启动游戏**（`Neutraled/` 下）：
-- **命令行**：`bin\ntl-builder.exe --launch root` → 查缓存 → 需要时部署 → **由 Steam 拉起**（`--launch chapter1` 指定章节；`--no-start` 只部署不启动）
-- **只部署不启动**：`bin\ntl-builder.exe --deploy-all` 只并行部署所有目标，**不会启动游戏**；启动仍走 `--launch` 或 Steam
-- **网页界面**：`bin\ntl-builder.exe --web`（浏览器里选章节 / 管理 mod / 部署；**没有启动按钮**）
+- **命令行**：`bin\ntl-gui.exe --launch root` → 查缓存 → 需要时部署 → **由 Steam 拉起**（`--launch chapter1` 指定章节；`--no-start` 只部署不启动）
+- **只部署不启动**：`bin\ntl-gui.exe --deploy-all` 只并行部署所有目标，**不会启动游戏**；启动仍走 `--launch` 或 Steam
+- **网页界面**：`bin\ntl-gui.exe --web`（浏览器里选章节 / 管理 mod / 部署；**没有启动按钮**）
 - **有图形界面时**：GUI 里点「部署并启动」
 - 也可以直接点 Steam 的「开始游戏」（用上次准备好的 data.win）
 
-> `launch.ps1` 只在源码树里有（`Neutraled\launch.ps1`，是 `--launch` 的薄转发），安装器**不会**复制它；安装版请统一用 `bin\ntl-builder.exe --launch`。
+> `launch.ps1` 只在源码树里有（`Neutraled\launch.ps1`，是 `--launch` 的薄转发），安装器**不会**复制它；安装版请统一用 `bin\ntl-gui.exe --launch`。
 
 ### ⚠️ 注意事项
 
@@ -117,7 +116,7 @@ Neutraled/
 
 ```powershell
 cd E:\steam\steamapps\common\DELTARUNE\Neutraled
-.\builder\bin\Release\net9.0\ntl-builder.exe --new-mod 我的第一个Mod --author 你的名字
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --new-mod 我的第一个Mod --author 你的名字
 ```
 
 看到这个就成功了：
@@ -167,7 +166,7 @@ print("  这是我的第一行改动！")
 
 ```powershell
 cd E:\steam\steamapps\common\DELTARUNE\Neutraled
-.\bin\ntl-builder.exe --launch root
+.\bin\ntl-gui.exe --launch root
 ```
 
 游戏启动后，打开日志看结果：
@@ -222,7 +221,7 @@ draw_set_color(c_white)        -- 恢复白色
 
 ```powershell
 Get-Process DELTARUNE -EA 0 | Stop-Process -Force
-.\bin\ntl-builder.exe --launch root
+.\bin\ntl-gui.exe --launch root
 ```
 
 进游戏后，**左上角会出现红色的「我的 mod 在画画！」** 🎨
@@ -295,7 +294,7 @@ return nil    -- nil = 不拦截，继续执行原函数
 **99% 的原因是没重启游戏。** Lua 脚本在游戏启动时读取。
 
 ```powershell
-.\bin\ntl-builder.exe --launch root      # 默认 root；--launch chapter1 指定章节；先 --cache-clear 强制重部署
+.\bin\ntl-gui.exe --launch root      # 默认 root；--launch chapter1 指定章节；先 --cache-clear 强制重部署
 ```
 
 #### ❓ 部署失败 / 改动没生效
@@ -320,8 +319,8 @@ return nil    -- nil = 不拦截，继续执行原函数
 不用担心存档 —— Neutraled 每次部署前**自动快照存档**。
 
 ```powershell
-.\builder\bin\Release\net9.0\ntl-builder.exe --save-list        # 看所有快照
-.\builder\bin\Release\net9.0\ntl-builder.exe --restore-save      # 恢复到最近一次
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --save-list        # 看所有快照
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --restore-save      # 恢复到最近一次
 ```
 
 而且 mod 的 Lua 错误**不会崩溃游戏**（已被隔离），只会在日志里报告。
@@ -329,7 +328,7 @@ return nil    -- nil = 不拦截，继续执行原函数
 #### ❓ 怎么知道自己写得对不对
 
 ```powershell
-.\builder\bin\Release\net9.0\ntl-builder.exe --lint
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --lint
 ```
 
 它会检查文件名、变量、语法等常见错误。

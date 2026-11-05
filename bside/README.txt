@@ -10,7 +10,7 @@ Neutraled -- B-side save template directory
 
 用法（在游戏根目录下执行，N = 章节号，S = 槽位 0/1/2）：
   1) 导入一份真实的 B 面存档（**默认直接落到槽位并标记 B 面**）：
-       Neutraled\bin\ntl-builder.exe --import-bside "<你的B面存档>" [--chapter chapterN] [--slot S] [--save-name <名字>] [--all-slots] [--template-only]
+       Neutraled\bin\ntl-gui.exe --import-bside "<你的B面存档>" [--chapter chapterN] [--slot S] [--save-name <名字>] [--all-slots] [--template-only]
      · 章节/槽位不给就从**文件名**识别（filech2 → 第 2 章槽位 0；filech3_1 → 第 3 章槽位 1）；
        识别不出来要显式给 --chapter。
      · 导入的模板一律按**实际章节**存成 bside\chapterN.sav（源文件叫什么不重要）。
@@ -19,8 +19,8 @@ Neutraled -- B-side save template directory
      · 默认会把内容写进 Neutraled\saves\DELTARUNE\filechN_S，并写 dr.ini 的 SideB=1 / Name。
        加 --template-only 就只建模板，不碰游戏存档。
   2) 用模板生成/标记该章节槽位的 B 面存档（日志第一行会说明用的是哪份模板）：
-       Neutraled\bin\ntl-builder.exe --make-bside --chapter N --slot S
-       Neutraled\bin\ntl-builder.exe --make-bside --chapter N --all-slots
+       Neutraled\bin\ntl-gui.exe --make-bside --chapter N --slot S
+       Neutraled\bin\ntl-gui.exe --make-bside --chapter N --all-slots
 
 没有模板时的兜底：如果该章节槽位**已经有存档**（正常进过一次），
 `--make-bside` 会直接把那份存档标记为 B 面（内容与标记一致，不是凭空伪造）。
@@ -45,7 +45,7 @@ saves cannot leak into a release package by accident:
 when neither exists does it convert an existing save (see below).
 
 Import (applies to a slot and marks the B-side by default):
-  ntl-builder.exe --import-bside "<real B-side save>" [--chapter chapterN] [--slot S] [--save-name <NAME>] [--all-slots] [--template-only]
+  ntl-gui.exe --import-bside "<real B-side save>" [--chapter chapterN] [--slot S] [--save-name <NAME>] [--all-slots] [--template-only]
   - chapter/slot are detected from the file name (filech2 -> chapter 2, slot 0);
     pass --chapter when the name does not say it.
   - an imported template is always stored under the ACTUAL chapter: bside\chapterN.sav.
@@ -53,7 +53,7 @@ Import (applies to a slot and marks the B-side by default):
     (the in-game naming screen allows up to 12 letters; it is uppercased).
   - without --template-only the content is written to Neutraled\saves\DELTARUNE\filechN_S
     and dr.ini gets SideB=1 / Name.
-Apply : ntl-builder.exe --make-bside --chapter N --slot S [--all-slots]   (the log says which template was used)
+Apply : ntl-gui.exe --make-bside --chapter N --slot S [--all-slots]   (the log says which template was used)
 GUI   : Neutraled window -> Toolbox -> "Import B-side Save".
 
 Fallback with no template: if that chapter/slot already has a save (you entered the chapter

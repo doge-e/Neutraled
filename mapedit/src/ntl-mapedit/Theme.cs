@@ -121,13 +121,21 @@ public static class Theme
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-    /// <summary>Hides the console window when the GUI is launched from a console build.</summary>
+    [DllImport("kernel32.dll")]
+    private static extern uint GetConsoleProcessList(uint[] processList, uint processCount);
+
+    /// <summary>Hides the console window when the GUI is launched from a console build.
+    /// v1.1.0：编辑器并进 ntl-gui.exe（控制台子系统）之后，只有**独占**控制台才隐藏 ——
+    /// 从 cmd / PowerShell / 管理器的工具箱启动时，控制台里还有 shell 或管理器进程，
+    /// 不能把用户自己的终端窗口藏掉（老版本无条件 ShowWindow(0)，会连 cmd 一起隐藏）。</summary>
     public static void HideConsole()
     {
         try
         {
             var h = GetConsoleWindow();
-            if (h != IntPtr.Zero) ShowWindow(h, 0);
+            if (h == IntPtr.Zero) return;
+            var pids = new uint[8];
+            if (GetConsoleProcessList(pids, (uint)pids.Length) <= 1) ShowWindow(h, 0);
         }
         catch { /* ignore */ }
     }

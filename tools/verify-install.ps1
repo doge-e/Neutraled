@@ -26,19 +26,20 @@ $before = (Get-FileHash (Join-Path $Sandbox 'data.win') -Algorithm SHA256).Hash
 $beforeCh1 = (Get-FileHash (Join-Path $Sandbox 'chapter1_windows\data.win') -Algorithm SHA256).Hash
 Write-Host '  sandbox ready (DELTARUNE.exe + data.win + chapter1_windows/data.win)'
 
-# Layout compatibility: versioned layout -> <release root>\Neutraled-<ver>\install\ntl-builder.exe（tools\package.ps1 现在的输出）
-#                      installer layout -> <release root>\install\ntl-builder.exe
-#                      legacy layout    -> <release root>\bin\ntl-builder.exe
-$exeCands = @(
-    (Get-ChildItem -LiteralPath $Out -Directory -Filter 'Neutraled-*' -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending |
-        ForEach-Object { Join-Path $_.FullName 'install\ntl-builder.exe' }),
-    (Join-Path $Out 'install\ntl-builder.exe'),
-    (Join-Path $Out 'bin\ntl-builder.exe')
-)
+# Layout compatibility: versioned layout -> <release root>\Neutraled-<ver>\install\ntl-gui.exe（tools\package.ps1 现在的输出）
+#                      installer layout -> <release root>\install\ntl-gui.exe
+#                      legacy layout    -> <release root>\bin\ntl-gui.exe
+# 注意：不能写成 @( (子表达式), ... ) —— 子表达式返回多个字符串时会被当成一个数组元素，
+# 后续 & $exe 就变成"路径1 路径2"一个不存在的命令。分步 += 才能保证每个候选是单个字符串。
+$exeCands = @()
+$exeCands += @(Get-ChildItem -LiteralPath $Out -Directory -Filter 'Neutraled-*' -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    ForEach-Object { Join-Path $_.FullName 'install\ntl-gui.exe' })
+$exeCands += (Join-Path $Out 'install\ntl-gui.exe')
+$exeCands += (Join-Path $Out 'bin\ntl-gui.exe')
 $exe = $exeCands | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $exe) { Write-Host ('  [ERROR] not found: ' + ($exeCands -join '   or   ')) -ForegroundColor Red; exit 1 }
-Write-Host ('  builder: ' + $exe)
+Write-Host ('  gui: ' + $exe)
 
 # Source dir: an installer-only package has no src/ next to the exe, so -Src is required there.
 # Fallbacks: sibling ..\src (legacy layout), then <Game>\Neutraled (dev checkout).

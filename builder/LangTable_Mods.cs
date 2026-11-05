@@ -186,7 +186,7 @@ public static class LangTable_Mods
         d["  ✅ 已从 {0} 还原 {1}"] = "  ✅ restored {1} from {0}";
         d["  ✅ 已恢复: {0}（原子替换，无中间状态）"] = "  ✅ restored: {0} (atomic replace, no intermediate state)";
         d["  ✅ 没有用到已知未实现的 API"] = "  ✅ no known unimplemented API was used";
-        d["  下一步   : ntl-builder.exe --deploy --chapter root   （之后在章节选择器里就能看到它）"] = "  Next     : ntl-builder.exe --deploy --chapter root   (it will then show up in the chapter selector)";
+        d["  下一步   : ntl-gui.exe --deploy --chapter root   （之后在章节选择器里就能看到它）"] = "  Next     : ntl-gui.exe --deploy --chapter root   (it will then show up in the chapter selector)";
         d["  下一步:"] = "  Next:";
         d["  下一步: 运行 launch.ps1 部署并启动（默认 root；-Chapter chapter1 指定章节）"] = "  Next: run launch.ps1 to deploy and start (root by default; -Chapter chapter1 picks a chapter)";
         d["  下一步: 编辑 main.lua -> 运行 Neutraled\\launch.ps1"] = "  Next: edit main.lua -> run Neutraled\\launch.ps1";

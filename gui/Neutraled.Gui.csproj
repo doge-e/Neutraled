@@ -2,15 +2,19 @@
 
   <PropertyGroup>
     <ApplicationIcon>..\tools\icon.ico</ApplicationIcon>
-    <OutputType>WinExe</OutputType>
+    <!-- v1.1.0：整个项目唯一的用户入口（builder / studio / mapedit 都并进来了）。
+         用**控制台子系统**（Exe）而不是 WinExe：脚本里 `& ntl-gui.exe lint 2>&1 | ...` + $LASTEXITCODE
+         需要同步等待与输出捕获，WinExe 会让 PowerShell 不等待、不捕获。
+         GUI 模式在 Main 里自己判断「是否独占控制台」→ 双击/快捷方式启动才隐藏窗口，从 cmd/PS 启动则保留。 -->
+    <OutputType>Exe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ntl-gui</AssemblyName>
-    <Version>1.0.8</Version>
-    <AssemblyVersion>1.0.8.0</AssemblyVersion>
-    <FileVersion>1.0.8.0</FileVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
     <RootNamespace>Neutraled.Gui</RootNamespace>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
   </PropertyGroup>
@@ -19,6 +23,9 @@
        GUI 直接引用 builder 工程，避免再复制一份「写游戏根 + 镜像」的规则导致两份文件漂移。 -->
   <ItemGroup>
     <ProjectReference Include="..\builder\Neutraled.Builder.csproj" />
+    <!-- v1.1.0 合并：Studio 与地图/战斗/剧情编辑器也进同一个 exe（它们现在是库，由 Program.Main 分派）。 -->
+    <ProjectReference Include="..\studio\Neutraled.Studio.csproj" />
+    <ProjectReference Include="..\mapedit\src\ntl-mapedit\ntl-mapedit.csproj" />
   </ItemGroup>
 
 </Project>

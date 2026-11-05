@@ -19,15 +19,15 @@
 
 ```powershell
 # 安装（自动检测 Steam 库；也可 --game "<游戏目录>" 手动指定）
-ntl-builder.exe --install
+ntl-gui.exe --install
 
 # 部署（务必 root + 章节都做，否则游戏停在章节选择器跑的是旧代码）
-ntl-builder.exe --deploy --chapter root
-ntl-builder.exe --deploy --chapter chapter4
+ntl-gui.exe --deploy --chapter root
+ntl-gui.exe --deploy --chapter chapter4
 
 # 启动后游戏内按 F2 打开控制台：help / mods / hooks / profile / lang zh
 # 游戏内「设置」菜单第 6 行多出「Mod 设置」（与官方项同款，打开后是原生二级菜单页）：章节 / 已加载模组 / 界面语言 / 重新部署并重启
-ntl-builder.exe --uninstall      # 完整还原
+ntl-gui.exe --uninstall      # 完整还原
 ```
 
 ## 导入传统 mod（自动转成 Neutraled 格式）
@@ -35,7 +35,7 @@ ntl-builder.exe --uninstall      # 完整还原
 不需要管它是哪种生态，一条命令自动识别：
 
 ```powershell
-ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
+ntl-gui.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 ```
 
 支持 **Modding.xml / Deltamod(meta.toml) / mod_config.json / 裸 xdelta / 裸 data.win / Kristal / 原生 mod**。
@@ -77,8 +77,8 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 | **游戏内 Mod 设置面板** | 设置菜单第 6 行（部署补丁注入，样式与官方项一致；原版 Return to Title / Back 顺移到第 7、8 行）：章节开关 / 已加载模组数 / 界面语言（6 种，即时切换；zh/en 完整，外部 4 种翻译进行中）/ 重新部署并重启 / mod 自注册项；打开后走游戏原生二级菜单页（`global.submenu == 51`），`↑↓` 选择、`Z`/`Enter` 确认、`X` 返回；字号用官方菜单字体（`mainbig`），菜单框保持原版尺寸、多加的行靠滚动条容纳（见 docs/MANAGE.md §11、§11.4、docs/MODMENU-API.md） |
 | **内建字体补全** | 部署时按产物真正会用到的文本，自动把内置像素字体包的字形补进 `fnt_main` / `fnt_mainbig` / `fnt_small` / `fnt_legend`（只补真的缺的）；原版基底 + 中文 lang 包也不会再出现「整段文字空白」；译文本体由人工本地化组提供（见 docs/MANAGE.md §11.2、`--font-probe`） |
 | **Web UI** | 零依赖 HttpListener 静态页（`--web`，跨平台；WinForms GUI 仍是 Windows 原生前端） |
-| GUI / Studio | `ntl-gui.exe` 图形管理器、`ntl-studio.exe` 代码编辑器 |
-| **地图 / 战斗 / 剧情编辑器** | `mapedit/`（`ntl-mapedit.exe`）：直接打开原版 data 编辑房间/图层/实例/瓦片；原版对话改文（文本覆盖）、战斗与剧情编辑；保存即生成 Neutraled mod；左侧房间按剧情流程排序（支线缩进挂主线下） |
+| GUI / Studio | `ntl-gui.exe` 图形管理器、`ntl-gui.exe studio` 代码编辑器 |
+| **地图 / 战斗 / 剧情编辑器** | `mapedit/`（`ntl-gui.exe mapedit`）：直接打开原版 data 编辑房间/图层/实例/瓦片；原版对话改文（文本覆盖）、战斗与剧情编辑；保存即生成 Neutraled mod；左侧房间按剧情流程排序（支线缩进挂主线下） |
 
 > 术语：**mod** 与 **模组** 同义（本文档两种写法混用，指同一个对象）；**部署** = 由 builder 生成各章节 `data.win` 并切换产物，**安装** = 把 Neutraled 装进游戏目录、或把 mod 包导入 `mods/` —— 两者不是一回事。
 ## 文档
@@ -107,10 +107,10 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 # 需要 .NET 9 SDK；另需 UTMT 依赖库（UndertaleModLib.dll / Underanalyzer.dll / Newtonsoft.Json.dll /
 # Magick.NET-Q8-AnyCPU.dll / Magick.NET.Core.dll）：默认读 <游戏根>\UTMT\，可用环境变量 NTL_UTMT_DIR 指到别处
 # （缺依赖时构建会报「找不到 UTMT 依赖库」，见 docs/MANAGE.md）
-dotnet build builder\Neutraled.Builder.csproj -c Release      # → ntl-builder.exe
-dotnet build gui\Neutraled.Gui.csproj -c Release              # → ntl-gui.exe
-dotnet build studio\Neutraled.Studio.csproj -c Release        # → ntl-studio.exe
-dotnet build mapedit\src\ntl-mapedit\ntl-mapedit.csproj -c Release  # → ntl-mapedit.exe（读 <游戏根>\UTMT\ 的 DLL；NTL_UTMT_DIR 可改）
+# 唯一入口 ntl-gui.exe：builder CLI / 地图编辑器 / Studio 都已合并成它的库
+# （1.1.0 起不再产出 ntl-builder.exe / ntl-mapedit.exe / ntl-studio.exe）
+dotnet build gui\Neutraled.Gui.csproj -c Release   # → gui\bin\Release\net9.0-windows\ntl-gui.exe
+# 运行：ntl-gui.exe（管理器） / ntl-gui.exe <builder 开关> / ntl-gui.exe mapedit / ntl-gui.exe studio
 
 # 一键测试（静态套件；不启动游戏）
 test.bat                # = _test/fulltest-static.ps1：构建/lint/doctor/smoke/部署/验证/打包/安装往返

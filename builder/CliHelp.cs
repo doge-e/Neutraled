@@ -262,8 +262,8 @@ public static class CliHelp
         var sb = new StringBuilder();
         sb.AppendLine("# Neutraled 命令行参考 / CLI reference（自动生成 auto-generated）");
         sb.AppendLine();
-        sb.AppendLine("> 本文件由 `ntl-builder --gen-docs` 从 `builder/CliCatalogDetails.cs` 生成，**不要手改**。");
-        sb.AppendLine("> Generated from `builder/CliCatalogDetails.cs` by `ntl-builder --gen-docs`; do not edit by hand.");
+        sb.AppendLine("> 本文件由 `ntl-gui.exe --gen-docs` 从 `builder/CliCatalogDetails.cs` 生成，**不要手改**。");
+        sb.AppendLine("> Generated from `builder/CliCatalogDetails.cs` by `ntl-gui.exe --gen-docs`; do not edit by hand.");
         sb.AppendLine("> 改开关说明：改 `CliCatalogDetails.cs` 后重新生成；`--gen-docs --check` 可检测过期。");
         sb.AppendLine();
         sb.AppendLine("常用入口 / common entry points: `--deploy` / `--deploy-all` / `--launch root|chapterN|all` / `--help` / `--verify` / `--doctor` / `--deploy-state` / `--restore-session`。");

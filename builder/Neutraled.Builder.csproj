@@ -1,16 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- v1.1.0：builder 不再产出独立 exe —— 它被 gui 引用成库，统一由 ntl-gui.exe 分派
+         （用户只需要/只应该直接打开一个 exe）。Program.Main 保留为库入口，gui 转发参数。 -->
+    <OutputType>Library</OutputType>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ntl-builder</AssemblyName>
     <!-- 产品版本随发行包走；AssemblyVersion 故意钉在 1.0.1.0 不动：
          插件 DLL 是编译期引用 ntl-builder 的，改 AssemblyVersion 会动到程序集绑定。 -->
-    <Version>1.0.8</Version>
+    <Version>1.1.0</Version>
     <AssemblyVersion>1.0.1.0</AssemblyVersion>
-    <FileVersion>1.0.8.0</FileVersion>
+    <FileVersion>1.1.0.0</FileVersion>
     <RootNamespace>Neutraled.Builder</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
 

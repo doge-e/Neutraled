@@ -5,33 +5,39 @@ DELTARUNE（GameMaker 2023.6 / data.win）的房间编辑器：GUI + 命令行�
 > **仓库位置（2026-11-04 起）**：本目录已并入 **Neutraled** 仓库（`git subtree add --prefix=mapedit`，保留 DRMapEditor 的全部提交历史）。
 > 权威源码 = `Neutraled/mapedit/`（即本目录）；`E:\aiwork\out\DRMapEditor` 保留为历史工作副本（Round1–Round3 的证据与截图在它的 `tmp/` 里）。
 > 下文出现的 `E:/aiwork/out/DRMapEditor/...` 绝对路径属于历史证据位置，**源码路径一律以本目录为准**。
+>
+> **唯一入口（1.1.0 起）**：编辑器已作为**库**合并进 `ntl-gui.exe` —— 打开窗口用 `ntl-gui.exe mapedit`，
+> 命令行用 `ntl-gui.exe mapedit <命令>`（原 `ntl-mapedit.exe <命令>`）。不再产出独立的 `ntl-mapedit.exe`。
 
 - 工程目录：`E:/steam/steamapps/common/DELTARUNE/Neutraled/mapedit/`
 - 源码：`src/ntl-mapedit/`
 - 参考：`ref/loenn-src/`（Loenn 的 tools/*.lua，只读参考；只在历史工作副本里）
-- 产物/测试输出：构建产物在 `src/ntl-mapedit/bin/`、`obj/`（已被 .gitignore 忽略）；测试输出建议放 `E:/aiwork/out/Neutraled2/mapedit/work/`
+- 产物/测试输出：编辑器本身编进 `gui/bin/Release/net9.0-windows/`（`src/ntl-mapedit/bin/`、`obj/` 只是中间产物，已被 .gitignore 忽略）；测试输出建议放 `E:/aiwork/out/Neutraled2/mapedit/work/`
 - 依赖：.NET 9（`ntl-mapedit.csproj` 为 `net9.0-windows`，WinForms），UTMT 依赖 DLL（默认读 `<游戏根>\UTMT\`，可用环境变量 `NTL_UTMT_DIR` 指到别处）
 
 ## 构建 / 运行
 
 ```powershell
-$M = 'E:/steam/steamapps/common/DELTARUNE/Neutraled/mapedit'
-& "C:/Program Files/dotnet/dotnet.exe" build $M/src/ntl-mapedit/ntl-mapedit.csproj -c Release
-$exe = "$M/src/ntl-mapedit/bin/Release/net9.0-windows/ntl-mapedit.exe"
-& $exe gui 'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win'
+# 构建唯一入口 ntl-gui.exe（会一并编译 mapedit/；也可用 scripts/build-mapedit.ps1）
+$N = 'E:/steam/steamapps/common/DELTARUNE/Neutraled'
+& "C:/Program Files/dotnet/dotnet.exe" build "$N/gui/Neutraled.Gui.csproj" -c Release
+$exe = "$N/gui/bin/Release/net9.0-windows/ntl-gui.exe"
+
+# 打开编辑器窗口（相当于原来的 ntl-mapedit.exe gui <data.win>）
+& $exe mapedit 'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win'
 ```
 
-> 构建前先 `Get-Process ntl-mapedit | Stop-Process -Force`：GUI 进程会锁住 exe，导致 MSB3021/MSB3027。
+> 构建前先 `Get-Process ntl-gui | Stop-Process -Force`：GUI / 守候进程会锁住 exe，导致 MSB3021/MSB3027。
 
 测试统一用离线副本，**不要指向游戏正在用的 data.win**：
 
 ```powershell
 $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
-& $exe document-test  'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/doc-test-out.win"
-& $exe structure-test 'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/gui-test/ch1-struct-test.win"
-& $exe stress-test    'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/gui-test/ch1-stress.win"
-& $exe battle-test    'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/battle-test"
-& $exe manifest-test
+& $exe mapedit document-test  'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/doc-test-out.win"
+& $exe mapedit structure-test 'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/gui-test/ch1-struct-test.win"
+& $exe mapedit stress-test    'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/gui-test/ch1-stress.win"
+& $exe mapedit battle-test    'E:/steam/steamapps/common/DELTARUNE/backup/chapter1_windows/data.win' "$W/battle-test"
+& $exe mapedit manifest-test
 ```
 
 ## GUI 功能
@@ -119,7 +125,7 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 - **房间改名不进撤销栈**（`Ctrl+Z` 撤不回来），改名后状态栏会提示「（不可撤销）」；基线编辑时改名保存进 mod 的 `roomPatches.rename`（原版 data.win 不动），要撤销只能手动改回原名。
 - **改名会自动同步已有绑定的房间名**：战斗 / 对话 / 剧情里指向旧房名的`绑定房间`与`触发房间`（含结束效果的「传送到房间」）以及文本覆盖的来源房间，全部改写成新名，状态栏追加「；同步 N 处触发/绑定房间名」。不做这一步的话，改名后校验会报「data.win 里没有房间 <旧名>」并把 mod 生成整段拦掉（保存看着成功、mod 一直不更新）。读入旧 sidecar 时也会自动补一次迁移，历史配置照常能生成。
 - **保存（Ctrl+S）即自动生成 Mod**：保存配置后立即导出到 `游戏根/Neutraled/mods/battle.demo/<author>/<leaf>/`（可在「战斗 → 保存时自动生成 Mod」关掉，或「立即重新生成 Mod…」手动触发）。生成的 mod 默认 `enabled: true`，重新部署/启动后生效。
-- **导出 / 安装 `.ntlmod`**：战斗菜单「导出 .ntlmod…」把生成目录打成 `游戏根/Neutraled/editor/export/<id>-<leaf>.ntlmod`（与 `ntl-builder --pack` 同格式的 zip；不写进 `mods/`，避免被扫描成第二个 mod）；导出成功后会问「现在同时安装到 Neutraled/mods/ 吗？」，或走「战斗 → 安装 .ntlmod 到 mods/…」/ CLI `install-ntlmod <游戏根> <包> [leaf]`。叶子按 显式参数 → 包名后缀（`<id>-chapterN.ntlmod`）→ `mod.json` 的 chapter 决定，落到 `mods/<id>/<author>/<leaf>`（重复安装整体替换，不留旧文件）。
+- **导出 / 安装 `.ntlmod`**：战斗菜单「导出 .ntlmod…」把生成目录打成 `游戏根/Neutraled/editor/export/<id>-<leaf>.ntlmod`（与 `ntl-gui.exe --pack` 同格式的 zip；不写进 `mods/`，避免被扫描成第二个 mod）；导出成功后会问「现在同时安装到 Neutraled/mods/ 吗？」，或走「战斗 → 安装 .ntlmod 到 mods/…」/ CLI `install-ntlmod <游戏根> <包> [leaf]`。叶子按 显式参数 → 包名后缀（`<id>-chapterN.ntlmod`）→ `mod.json` 的 chapter 决定，落到 `mods/<id>/<author>/<leaf>`（重复安装整体替换，不留旧文件）。
 - **原版对话文本改写（Ctrl+Shift+E）**：列出当前房间里所有原版对话行（对象 / 事件 / 条件 / lang key / 原文），只改「改写文本」列即可。不改 GML，而是按 lang key 用 Neutraled 的 `ntl_set_lang_string` 覆盖（生成 mod 的 `ntlb_apply_text_overrides`，游戏就绪后生效）。清空某行 = 恢复原文。限制：只能改**有 lang key** 的行（运行期拼出来的文本没有 key，改不了）；文本里不能含 `%`（原版 `obj_writer` 分页符）。
 - **非简单剧情用代码引用**：剧情步骤新增 `event`（在指定原版对象的最近实例上执行它的某个事件，如 `obj_readable` 的 `Other_10`）与 `script`（直接执行原版脚本，如 `gml_Script_scr_sideb_active`）。剧情编辑器工具条「插入原版代码…」会列出当前房间所有实例对象的原版事件（含继承与事件号），点选即插入一步，不需要自己记脚本名。保存时如果有步骤参数没填（例如 `dialogue` 步骤没写文本），红字会带「第 N 行」并自动选中那一行、进入对应单元格编辑，不用自己找。
 - **右键直达**：选择工具下右键画布上的实体，菜单里直接有「编辑此实体的战斗/对话/剧情…」与「编辑本房间原版对话（文本覆盖）…」，不用先去菜单栏找。
@@ -139,7 +145,7 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 - 保存主文档时，战斗/对话/剧情/设置/文本改写配置写到 sidecar（游戏文件 = `<data.win>.ntlbattle.json`；原版基线 = `Neutraled/editor/baseline_<leaf>.ntlbattle.json`），不污染 data.win。**保存会自动生成 Mod**（见上一节）。
 - 菜单 **战斗 → 立即重新生成 Mod…**：先弹窗选部署叶子（root/chapter1..5），再把全部配置导出成可部署的 Neutraled mod（默认写到 `游戏根/Neutraled/mods/battle.demo/<author>/<leaf>/`），包含 `mod.json`、`gml/`（战斗/弹幕/overworld/对话/剧情/设置/控制台命令的运行时函数 + 内嵌数据 `ntlb_data.gml` + `main.gml`）、`objects/`（敌人/子弹/overworld 控制器事件文件）、`files/Neutraled/ntl_battle/battles.json`、README。
 - 生成 mod 的运行时：`ntl_hook("on_frame", ...)` 检查触发器（房间 + flag + 半径 + 触发方式，一次性走 `ntlb_once_seen/mark`：进程内 ds_map + 可选跨重启持久化）→ 设 `global.monster*` 后创建原版 `obj_encounterbasic` + `obj_battleback` 走完整原版战斗；每回合按配置创建原版 `obj_dbulletcontroller` 并设置 type/ratio/timermax/damage 等；回合上限/全灭判胜利 → 应用剧情 effects（flag/heal/传送/接下一场战斗/消息）。overworld 模式则生成自己的控制器与子弹对象，命中调 `scr_damage_all_overworld()`，计时/HP 结束。
-- 命令行：`ntl-builder --deploy --chapter <N> --self-check` 即可把生成的 mod 编译进对应章节产物。
+- 命令行：`ntl-gui.exe --deploy --chapter <N> --self-check` 即可把生成的 mod 编译进对应章节产物。
 - **弹幕 type 是「目标章节」原版 `obj_dbulletcontroller` 的模板编号**：不同章节同号形状不同（章节 2 的 26/27 是 Rouxls 专用，别的章节用会崩）。跨章节最稳是 `0`（红心周围环形）与 `1`（上下边缘）；章节专用模板按该章反编译挑选。
 - 自定义敌人对象由生成器提供（`ntlb_<modid>_enemy`，含标准敌人变量与 `Other_22` 事件），不依赖原版敌人；原版敌人也可直接填对象名（需该章节产物里存在）。
 
@@ -206,7 +212,7 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 | `battle-test [data.win] [outDir]` | 战斗/对话/剧情/设置项/文本改写/地图差分自检（**97 项**）：示例工程（encounter 3 回合 + 随机弹幕 / overworld 3 种 pattern / 1 段纯对话 / 1 段 9 步剧情含 sound·shake·waitinput·event / 4 个设置项 / 1 条文本改写 / 1 组 roomPatches + 1 个新房间）、sidecar 往返（含 triggerMode/persistOnce/mode/sound gain、roomPatches/rooms）、Validate（新步骤类型、音效参数、房间差分校验、新增房间必须以基线比对否则误报）、choice 缺选项报错、生成 mod 的 gml/objects/data 数量（对象事件 13 个含文本对象）、`ntlb_*` 新函数、main.gml 调用文本覆盖、设置面板动作文件数、内嵌 JSON、mod.json 含 `roomPatches`/`rooms` 且 `files/Neutraled/editor/roomPatches.json` 存在、README 含地图段落、JSON 可反解析 |
 | `battle-demo [data.win] [modsDir] [leaf]` | 生成演示用战斗+对话+剧情+设置+地图差分 mod（默认 leaf=chapter1，真机验证用 chapter2），可直接 deploy |
 | `room-probe <data.win> <roomName> [instId]` | 只读探针：打印房间 width/height/speed/layers/instances/tiles；给 instId 时打印该实例 object/x/y/scale/rotation/color/layer（验证 roomPatches 真的进了产物） |
-| `mapedit-test <data.win> <workDir>` | 编辑器数据层自检：编辑模型/基线闸门/房间流程排序（147=主线+支线+分组）/roomdiff 闭环（diff→apply→再 diff 为空）/启动默认目标 |
+| `mapedit mapedit-test <data.win> <workDir>`（下表命令都经 `ntl-gui.exe mapedit <命令>` 调用） | 编辑器数据层自检：编辑模型/基线闸门/房间流程排序（147=主线+支线+分组）/roomdiff 闭环（diff→apply→再 diff 为空）/启动默认目标 |
 | `manifest-test [modsDir] [outJson]` | mods 清单逻辑自检（8 项）：扫描真实 mods、id 唯一、校验、写盘/重读、.bak、重复与缺 id 检出 |
 | `resource-browser-test <data.win>` | 资源浏览器只读自检：12 类资源逐类计数 + 抽样名称/概要/详情非空 + 源文件 SHA256 不变（ch1 537 项 PASS、ch2 645、ch5 714） |
 | `render-stats <data.win> <room> [scale] [out.json]` | 渲染覆盖统计（逐层绘制数/unsupported/黑像素占比）；ch5 room_town_north 黑像素 1.06%、ch4 room_dw_castle_town 48.96%（残黑是 TILES 层真实美术，覆盖 70.00%、unsupported 0） |
@@ -246,7 +252,7 @@ $W = 'E:/aiwork/out/Neutraled2/mapedit/work'
 - 剧情真机验证（章节 2）：控制台 `cutscene start selftest_cutscene` → `[ntlb] [剧情] 开始: selftest_cutscene（5 步）` → `[剧情] 对话 2 行` → Z 翻页 → `[剧情] 结束` + `[剧情] 自检剧情结束`（截图 `tmp/cut-live-start.png`、`tmp/cut-live-round2.png`）；把剧情触发改绑到 `room_dw_city_hacker`、mode=area、半径 9999 后重部署，进存档即自动 `[ntlb] [触发] 剧情 selftest_cutscene（房间 room_dw_city_hacker）` → `[ntlb] [剧情] 开始`（截图 `tmp/cut-area-trigger.png`）⇒ 交互触发与区域自动触发两条路径都跑通。
 - GUI 自动化注意事项（写 e2e 时踩过）：
   - 抢前台只能用 `SwitchToThisWindow(hwnd, true)`（`AttachThreadInput+SetForegroundWindow` 在本机常被 `GameInputServiceWindow` 挡住）。
-  - 每个脚本开头先杀残留 `ntl-mapedit` 进程。
+  - 每个脚本开头先杀残留 `ntl-gui` 进程（编辑器和主 GUI 现在是同一个 exe）。
   - WinForms ListBox 在窗口非前台时不响应注入点击 → 先抢前台或 `SetFocus()` + `SendKeys`。
   - 不要用 `SendKeys '^a'` 清输入框（主窗口把它当「全选实例」，重建属性面板会销毁输入框）→ 用 `ValuePattern.SetValue` + `{TAB}` 触发 Leave 提交。
   - 会弹模态对话框的按钮用 UIA `InvokePattern` 可能阻塞 → 改用鼠标点按钮 bounding rect 中心。

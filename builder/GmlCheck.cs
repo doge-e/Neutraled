@@ -17,7 +17,7 @@ namespace Neutraled.Builder;
 ///   「Expression floating outside of any statement around line 23」，白等几分钟）。
 ///   这条命令只加载 data.win 后逐个文件编译，秒级定位到文件与行。
 ///
-/// 用法: ntl-builder.exe --gml-check &lt;data.win&gt; &lt;mod 章节目录&gt;
+/// 用法: ntl-gui.exe --gml-check &lt;data.win&gt; &lt;mod 章节目录&gt;
 /// 退出码: 0 = 全部通过（或有缺文件） / 1 = 有编译失败（CI 友好）</summary>
 public static class GmlCheck
 {

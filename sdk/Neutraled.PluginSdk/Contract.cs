@@ -2,7 +2,7 @@
 //
 // 同一个文件被两边编译：
 //   * sdk\Neutraled.PluginSdk\Neutraled.PluginSdk.csproj  产出 ntl-builder.dll，给第三方插件引用
-//   * builder\Neutraled.Builder.csproj（<Compile Include ... Link> 链接编译）产出主程序 ntl-builder.exe
+//   * builder\Neutraled.Builder.csproj（<Compile Include ... Link> 链接编译）产出库 ntl-builder.dll（被主程序 ntl-gui.exe 引用）
 // 两边的 AssemblyName 都是 ntl-builder、命名空间都是 Neutraled.Builder —— 于是插件 DLL 里对
 // "ntl-builder!Neutraled.Builder.INeutraledPlugin" 的 TypeRef 在运行时会被 PluginHost 的 Resolving
 // 钩子短路回主程序那一份，全程只有一份类型，强转才成立（见 PluginHost 类头注释「教训 1」）。

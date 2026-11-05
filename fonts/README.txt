@@ -41,6 +41,6 @@ SourceHeight / Offset 都不产生垂直位移）。游戏自带 fnt_main 的拉
 整体下移 3 行（ark12 页从 691,283 B 变 44,872 B）。
 
 改包后的复核（两条都要过）：
-  1) 产物级：ntl-builder.exe --font-probe <章节 data.win> <输出目录>  ⇒ ä/ü/ß 墨迹底 = 12、ç = 14、A = 12
+  1) 产物级：ntl-gui.exe --font-probe <章节 data.win> <输出目录>  ⇒ ä/ü/ß 墨迹底 = 12、ç = 14、A = 12
   2) 真机级：控制台 log 一行「MIX Aa ÄÖÜäöüßéñçÇ 中文 HHH」，截图逐字量墨迹底（ASCII 与非降部带声调字必须相等）
 修复/复核脚本：tools/font-align-fix.py（--apply 应用；不带参数只打印直方图）

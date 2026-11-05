@@ -32,15 +32,15 @@
 
 ```powershell
 cd E:\steam\steamapps\common\DELTARUNE\Neutraled
-.\builder\bin\Release\net9.0\ntl-builder.exe --new-chapter help
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --new-chapter help
 ```
 
 看到这个就成功了（会列出两个模板和一堆可以当底子的 mod）：
 
 ```
 游戏根: E:\steam\steamapps\common\DELTARUNE
-用法：ntl-builder.exe --new-chapter <章节名字> [选项]
-      ntl-builder.exe --new-chapter help            看这份帮助
+用法：ntl-gui.exe --new-chapter <章节名字> [选项]
+      ntl-gui.exe --new-chapter help            看这份帮助
 
 选项：--author <作者>  --mode independent|overlay|fork  --chapter chapterN
       --slot N  --fork <mod>[:作者[:chapterN]]  --template room|empty  --force
@@ -66,7 +66,7 @@ cd E:\steam\steamapps\common\DELTARUNE\Neutraled
 ## 第 2 步：一条命令生成章节（2 分钟）
 
 ```powershell
-.\builder\bin\Release\net9.0\ntl-builder.exe --new-chapter "我的房间" --author 你的名字
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --new-chapter "我的房间" --author 你的名字
 ```
 
 看到这个就成功了：
@@ -81,7 +81,7 @@ cd E:\steam\steamapps\common\DELTARUNE\Neutraled
   日志     : %LOCALAPPDATA%\DRTL<顺序号>_<短码>\Neutraled\dr-api.log   ← 章节进程（= 本 mod 的存档目录）
              %LOCALAPPDATA%\DELTARUNE\Neutraled\dr-api.log   ← 章节选择器/根阶段
 下一步（一条一条复制执行）：
-  1) ntl-builder.exe --deploy --chapter root --force           生成章节产物（平行时间线会自动一起生成）
+  1) ntl-gui.exe --deploy --chapter root --force           生成章节产物（平行时间线会自动一起生成）
   2) 启动 DELTARUNE（Steam）→ 章节选择器里翻到你的章节
   教程：Neutraled/docs/CHAPTER_DEV.md
 ```
@@ -193,7 +193,7 @@ files\
 ## 第 4 步：部署进游戏（3 分钟）
 
 ```powershell
-.\builder\bin\Release\net9.0\ntl-builder.exe --deploy --chapter root --force
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --deploy --chapter root --force
 ```
 
 （**要关掉游戏再跑**，否则 exe 被占用会报错。）
@@ -323,7 +323,7 @@ draw_text(24, 346, "这是我做的第一章 —— 你好，世界！");
 ### A. 以**官方某章**为底子
 
 ```powershell
-.\builder\bin\Release\net9.0\ntl-builder.exe --new-chapter "我的第二章" --chapter chapter2 --slot 10
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --new-chapter "我的第二章" --chapter chapter2 --slot 10
 ```
 
 只是换了底子数据（`--chapter chapter2`）；玩法、房间、脚本完全一样。
@@ -333,13 +333,13 @@ draw_text(24, 346, "这是我做的第一章 —— 你好，世界！");
 先看有什么可以 fork：
 
 ```powershell
-.\builder\bin\Release\net9.0\ntl-builder.exe --new-chapter help
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --new-chapter help
 ```
 
 然后（`--fork` 会自动切到 fork 模式）：
 
 ```powershell
-.\builder\bin\Release\net9.0\ntl-builder.exe --new-chapter "我的分支" --fork AutoTest:Neutraled:chapter1
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --new-chapter "我的分支" --fork AutoTest:Neutraled:chapter1
 ```
 
 它会把那个章节的 `mod.json / gml / sprites / sounds / data` 整个复制一份，改掉 id / 名字 / 作者，
@@ -348,10 +348,10 @@ draw_text(24, 346, "这是我做的第一章 —— 你好，世界！");
 ### C. 叠加到**官方第 N 章**上（不产生新章节条目）
 
 ```powershell
-.\builder\bin\Release\net9.0\ntl-builder.exe --new-chapter "我的补丁" --mode overlay --chapter chapter3
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --new-chapter "我的补丁" --mode overlay --chapter chapter3
 ```
 
-`overlay` 模式不生成新章节，而是让脚本**在官方第 3 章里生效**（`.\ntl-builder.exe --deploy --chapter chapter3 --force`）。
+`overlay` 模式不生成新章节，而是让脚本**在官方第 3 章里生效**（`.\ntl-gui.exe --deploy --chapter chapter3 --force`）。
 这时模板的 HUD 会画在官方章节上面，用来做「改造官方章节」的 mod。
 
 ---
@@ -390,10 +390,10 @@ gci "$env:LOCALAPPDATA\DRTL*\Neutraled\dr-api.log" | sort LastWriteTime -Desc | 
 cd E:\steam\steamapps\common\DELTARUNE\Neutraled
 
 # 1. 生成（只要做一次）
-.\builder\bin\Release\net9.0\ntl-builder.exe --new-chapter "我的房间" --author 你的名字
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --new-chapter "我的房间" --author 你的名字
 
 # 2. 改了 gml/ 或地图之后：部署（关着游戏跑）
-.\builder\bin\Release\net9.0\ntl-builder.exe --deploy --chapter root --force
+.\gui\bin\Release\net9.0-windows\ntl-gui.exe --deploy --chapter root --force
 
 # 3. 进游戏
 Start-Process 'E:\DELTARUNE.url'

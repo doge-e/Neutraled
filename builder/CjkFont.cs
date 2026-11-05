@@ -255,7 +255,7 @@ public static class CjkFont
         //   用户看到的就是「修复的字向上偏移」（用户反馈：带声调字母 ä ü ß é ñ ç 比同行 ASCII 高 3 px）。
         //   ⇒ 生成/换字体包后必须复核：非降部字形（A a H Ä ä ß é ñ 中）墨迹底 = 12，降部字形（g y p ç j）= 14。
         //   复核与修复脚本：tools/font-align-fix.py（--apply 把整包墨迹整体下移到目标行，SH 只增不减）。
-        //   产物级复核命令：ntl-builder.exe --font-probe <章节 data.win> <输出目录>
+        //   产物级复核命令：ntl-gui.exe --font-probe <章节 data.win> <输出目录>
 
         // 货架式排版
         var plan = new List<List<(int ch, MagickImage img, int x, int y, int shift, int w, int h)>>();

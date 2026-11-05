@@ -252,7 +252,7 @@ register	sample-hello	before_deploy,after_import
 
 三条**实测教训**（写在 `PluginHost.cs` 类头注释里，照抄）：
 
-1. **宿主程序集必须解析回主程序那一份。** 插件目录里常见"顺手拷一份 `ntl-builder.exe`"，
+1. **宿主程序集必须解析回主程序那一份。** 插件目录里常见"顺手拷一份 `ntl-gui.exe`"，
    若让解析器按目录解析，`INeutraledPlugin` 会出现**两份类型** → 强转静默失败
    （报"没有实现接口的类型"）。所以 `Resolving` 里对宿主程序集名**直接短路返回** `typeof(PluginHost).Assembly`。
    → 对应 SDK 里 `Neutraled.PluginSdk.csproj` 的 `<AssemblyName>ntl-builder</AssemblyName>` 与示例工程的
@@ -284,7 +284,7 @@ register	sample-hello	before_deploy,after_import
 ### 7.1 命令一览（`--help` 原文）
 
 ```
-$ ntl-builder.exe --lang zh --help
+$ ntl-gui.exe --lang zh --help
   插件 / 主题 / 语言包 / 网页界面:
   --plugin-list / --plugin-enable <id> / --plugin-disable <id> / --plugin-info <id>
   --plugin-install <目录|.ntlplugin> [--force] / --plugin-remove <id> [--force] / --plugin-hooks
@@ -305,12 +305,12 @@ $ ntl-builder.exe --lang zh --help
 
 ### 7.2 真实输出
 
-以下全部是**在真实环境跑过的**（`ntl-builder.exe` = `builder\bin\Release\net9.0\ntl-builder.exe`）。
+以下全部是**在真实环境跑过的**（`ntl-gui.exe` = `gui\bin\Release\net9.0-windows\ntl-gui.exe`）。
 
 **列清单** —— 注意 `sample-hello` 显示 `broken`（见文末已知限制第 1 条）：
 
 ```
-$ ntl-builder.exe --lang zh --plugin-list
+$ ntl-gui.exe --lang zh --plugin-list
 游戏根: E:\steam\steamapps\common\DELTARUNE
 [语言] 已加载 7 个外部语言包: de, es, fr, ja, ko, ru, zh-tw（共 15715 条译文）
 ===== 插件 =====
@@ -325,7 +325,7 @@ $ ntl-builder.exe --lang zh --plugin-list
 **看单个插件的全部字段**：
 
 ```
-$ ntl-builder.exe --lang zh --plugin-info sample-hello
+$ ntl-gui.exe --lang zh --plugin-info sample-hello
 ===== 插件: sample-hello =====
   状态: broken
   目录: E:\steam\steamapps\common\DELTARUNE\Neutraled\plugins\sample-hello
@@ -344,12 +344,12 @@ $ ntl-builder.exe --lang zh --plugin-info sample-hello
 找不到 / id 非法：
 
 ```
-$ ntl-builder.exe --lang zh --plugin-info no-such-plugin
+$ ntl-gui.exe --lang zh --plugin-info no-such-plugin
 [错误] 找不到插件: no-such-plugin
 $ echo $LASTEXITCODE
 1
 
-$ ntl-builder.exe --lang zh --plugin-info CON
+$ ntl-gui.exe --lang zh --plugin-info CON
 [错误] 非法插件 id: CON（id 是系统保留名: CON）
 $ echo $LASTEXITCODE
 2
@@ -358,7 +358,7 @@ $ echo $LASTEXITCODE
 **看钩子日志**（会真的加载插件 → 调 `OnInit` → 打印 → 卸载）：
 
 ```
-$ ntl-builder.exe --lang zh --plugin-hooks
+$ ntl-gui.exe --lang zh --plugin-hooks
 ===== 插件加载 =====
   [跳过] sample-hello: 清单损坏（）
   已加载 0 个插件
@@ -369,7 +369,7 @@ $ ntl-builder.exe --lang zh --plugin-hooks
 **删除的保护闸**（不加 `--force` 只提示，什么都不删）：
 
 ```
-$ ntl-builder.exe --lang zh --plugin-remove sample-hello
+$ ntl-gui.exe --lang zh --plugin-remove sample-hello
 [提示] 删除插件会移除它的全部文件: E:\steam\steamapps\common\DELTARUNE\Neutraled\plugins\sample-hello
        确认后加 --force: --plugin-remove sample-hello --force
 $ echo $LASTEXITCODE
@@ -379,7 +379,7 @@ $ echo $LASTEXITCODE
 **安装**（路径不存在时）：
 
 ```
-$ ntl-builder.exe --lang zh --plugin-install D:\no-such-package.ntlplugin
+$ ntl-gui.exe --lang zh --plugin-install D:\no-such-package.ntlplugin
 ===== 插件安装 =====
   来源: D:\no-such-package.ntlplugin
 [错误] 找不到: D:\no-such-package.ntlplugin
@@ -392,12 +392,12 @@ $ echo $LASTEXITCODE
 `IsSafeId`（`Plugins.cs:465-481`）是所有"按 id 拼路径"入口的第一道闸：
 
 ```
-$ ntl-builder.exe --lang zh --plugin-enable ..
+$ ntl-gui.exe --lang zh --plugin-enable ..
 [错误] 非法插件 id: ..（id 不能是 . 或 ..）
 $ echo $LASTEXITCODE
 2
 
-$ ntl-builder.exe --lang zh --plugin-remove ..
+$ ntl-gui.exe --lang zh --plugin-remove ..
 [错误] 非法插件 id: ..（id 不能是 . 或 ..）
 $ echo $LASTEXITCODE
 1
@@ -440,7 +440,7 @@ Neutraled/sdk/
 | 编译方 | 产物 | 作用 |
 |---|---|---|
 | `sdk/Neutraled.PluginSdk` | `ntl-builder.dll` | 第三方插件引用的 SDK |
-| `builder/Neutraled.Builder.csproj`（`<Compile Include ... Link>`） | `ntl-builder.exe` | 主程序自己那份 |
+| `builder/Neutraled.Builder.csproj`（`<Compile Include ... Link>`） | `ntl-gui.exe` | 主程序自己那份 |
 
 两边 `AssemblyName` 都是 `ntl-builder`、命名空间都是 `Neutraled.Builder` —— 于是插件 DLL 里对
 `ntl-builder!Neutraled.Builder.INeutraledPlugin` 的 `TypeRef` 在运行时被 `PluginHost` 的 `Resolving`
@@ -476,7 +476,7 @@ dotnet build sdk\samples\SampleHello\SampleHello.csproj -c Release
 | `broken` | `清单解析失败: <异常>` | `plugin.json` 不是合法 JSON | 修 JSON（读取允许注释/尾逗号，但不允许缺括号） |
 | `broken` | `目录名不合法: <原因>` | 手工改名成了非法 id | 改成 `[A-Za-z0-9._-]` 且不以点开头结尾 |
 | `broken` | `清单 id 与目录名不一致: 目录 X，清单 Y（拒绝启用/禁用，防目录穿越）` | id ≠ 目录名 | 让两者一致 |
-| `broken` | `最低 builder 版本 X，当前 Y —— 需要升级 Neutraled` | `min_builder` 高于 `Paths.ApiVersion()`（当前 `1.0.8`） | 升级 Neutraled 或降 `min_builder` |
+| `broken` | `最低 builder 版本 X，当前 Y —— 需要升级 Neutraled` | `min_builder` 高于 `Paths.ApiVersion()`（当前 `1.1.0`） | 升级 Neutraled 或降 `min_builder` |
 | `broken` | `清单没有 entry（无法加载）` | 缺 `entry` 字段 | 补上 DLL 相对路径 |
 | `broken` | `入口路径不合法（越出插件目录）: <entry>` | `entry` 含 `..` / 绝对路径 | 改成插件目录内的相对路径 |
 | **`installed`** | **`入口程序集缺失: <entry>`** | **`entry` 指向的 DLL 不在插件目录里**（还没构建 / 还没下载完 / 名字写错） | 构建出 DLL 放进插件目录；或修 `entry`。**这个状态是"差一步就能用"，不是坏** |

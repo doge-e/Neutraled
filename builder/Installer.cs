@@ -116,9 +116,9 @@ public static class Installer
 
         /// <summary>定位要安装的"源"（含 api/ live/ docs/ 的那个目录）。四种布局都要支持：
         ///   显式：--src &lt;目录&gt;
-        ///   新发布包：&lt;out&gt;/install/ntl-builder.exe + &lt;out&gt;/src/ ⇒ 取同级的 src/
-        ///   开发：&lt;游戏&gt;/Neutraled/builder/bin/Release/net9.0 → 上溯 4 层 = Neutraled/
-        ///   旧发布包：&lt;out&gt;/bin/ntl-builder.exe → 上溯 1~3 层 = &lt;out&gt;
+        ///   新发布包：&lt;out&gt;/install/ntl-gui.exe + &lt;out&gt;/src/ ⇒ 取同级的 src/
+        ///   开发：&lt;游戏&gt;/Neutraled/gui/bin/Release/net9.0-windows → 上溯 4 层 = Neutraled/
+        ///   旧发布包：&lt;out&gt;/bin/ntl-gui.exe → 上溯 1~3 层 = &lt;out&gt;
         /// （曾只认开发布局，导致独立发布包安装时"已复制 0 个目录"）</summary>
         static string ResolveSourceRoot(string selfDir, string? srcOverride)
         {
@@ -192,11 +192,12 @@ public static class Installer
                 catch (Exception ex) { Console.WriteLine(L("  [警告] 复制 {0} 出错: {1}", d, ex.Message)); }
             }
             // 可执行文件：**两种布局都要认**
-            //   开发布局：builder/bin/Release/net9.0、gui/bin/Release/net9.0-windows
-            //   发布包布局：bin/（ntl-builder.exe + ntl-gui.exe）
+            //   开发布局：gui/bin/Release/net9.0-windows（v1.1.0 起 builder/studio/mapedit 都是库，
+            //            唯一的 apphost 就是 ntl-gui.exe）
+            //   发布包布局：bin/（ntl-gui.exe）
             // 曾经只认开发布局 → 从发布包安装时"装完找不到 GUI/没有 LÖVE 运行时"。
             bool exeCopied = false;
-            foreach (var rel in new[] { "builder/bin/Release/net9.0", "gui/bin/Release/net9.0-windows", "bin" })
+            foreach (var rel in new[] { "gui/bin/Release/net9.0-windows", "bin" })
             {
                 var s = Path.Combine(srcRoot, rel.Replace('/', Path.DirectorySeparatorChar));
                 if (Directory.Exists(s))
@@ -270,8 +271,8 @@ public static class Installer
             if (hasExternal)
             {
                 Console.WriteLine(L("  提示：你装了外部章节（如 Kristal）—— 在游戏里选中它需要守候进程在跑。"));
-                Console.WriteLine(L("        现在开一次：{0}", "ntl-builder --ensure-watcher"));
-                Console.WriteLine(L("        开机就有（免管理员）：{0}（管理器工具箱里也能一键开）", "ntl-builder --watch-autostart on"));
+                Console.WriteLine(L("        现在开一次：{0}", "ntl-gui.exe --ensure-watcher"));
+                Console.WriteLine(L("        开机就有（免管理员）：{0}（管理器工具箱里也能一键开）", "ntl-gui.exe --watch-autostart on"));
             }
         }
         catch { }
@@ -282,20 +283,20 @@ public static class Installer
         else
             // 发布包（install/ + src/）里没有 GUI：给出等价的命令行/网页界面入口，别让用户去找一个不存在的桌面图标
             Console.WriteLine(L("  下一步：本包不含图形界面 —— 运行 {0} 打开网页界面，或运行 {1} 直接部署并启动",
-                "Neutraled\\bin\\ntl-builder.exe --web", "Neutraled\\bin\\ntl-builder.exe --deploy-all"));
+                "Neutraled\\bin\\ntl-gui.exe --web", "Neutraled\\bin\\ntl-gui.exe --deploy-all"));
         return 0;
     }
 
     private static string ShortcutName() => "Neutraled Mod Manager";
 
-    /// <summary>找 GUI 可执行文件：开发构建优先，独立发布包在 gui\ 下。</summary>
+    /// <summary>找 GUI 可执行文件：v1.1.0 起它是**唯一**的 apphost（builder/studio/编辑器都是库）。</summary>
     private static string? FindGui(string ntlRoot)
     {
         foreach (var c in new[]
                  {
+                     Path.Combine(ntlRoot, "bin", "ntl-gui.exe"),      // 安装器 self-install / 独立发布包的布局
                      Path.Combine(ntlRoot, "gui", "bin", "Release", "net9.0-windows", "ntl-gui.exe"),
                      Path.Combine(ntlRoot, "gui", "ntl-gui.exe"),
-                     Path.Combine(ntlRoot, "bin", "ntl-gui.exe"),      // 独立发布包的布局
                      Path.Combine(ntlRoot, "ntl-gui.exe")
                  })
             if (File.Exists(c)) return c;

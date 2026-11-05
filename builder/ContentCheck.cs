@@ -20,7 +20,7 @@ namespace Neutraled.Builder;
 ///     （章节选择器/控制台界面就用这些文本绘制）
 /// 覆盖不足即失败，并列出**渲染不出来的样例字符** —— 一眼看出是"字体没跟上文本"。
 ///
-/// 用法：ntl-builder --content-check [--chapter all|root|chapterN] [--out report.json]
+/// 用法：ntl-gui.exe --content-check [--chapter all|root|chapterN] [--out report.json]
 /// 返回 0 = 全部通过；1 = 有目标失败。
 /// </summary>
 public static class ContentCheck

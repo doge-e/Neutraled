@@ -23,7 +23,7 @@ public static class Program
 
     private static string[] _argv = Array.Empty<string>();
     private static string _command = "";
-    private const string UsageHint = "运行 ntl-mapedit help 查看全部命令。";
+    private const string UsageHint = "运行 ntl-gui.exe mapedit help 查看全部命令。";
 
     /// <summary>参数/用法类错误（退出码固定 2，不写崩溃日志）。</summary>
     private sealed class CliError : Exception
@@ -37,7 +37,7 @@ public static class Program
     {
         if (_argv.Length < minArgs)
         {
-            Console.Error.WriteLine("用法: ntl-mapedit " + usage);
+            Console.Error.WriteLine("用法: ntl-gui.exe mapedit " + usage);
             Console.Error.WriteLine("  " + (_command.Length > 0 ? _command : "命令") + " 参数不足（至少需要 " + (minArgs - 1) + " 个参数）。" + UsageHint);
             throw new CliError(2);
         }
@@ -49,7 +49,7 @@ public static class Program
         if (_argv.Length > maxArgs)
         {
             Console.Error.WriteLine("多余参数: " + string.Join(" ", _argv.Skip(maxArgs)));
-            Console.Error.WriteLine("用法: ntl-mapedit " + usage);
+            Console.Error.WriteLine("用法: ntl-gui.exe mapedit " + usage);
             Console.Error.WriteLine("  " + UsageHint);
             throw new CliError(2);
         }
@@ -82,7 +82,7 @@ public static class Program
         if (exact != null) return exact;
         var matches = list.Where(r => GameData.Name(r.Name).Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 0)
-            throw new CliError(2, "[错误] 未找到房间: " + name + "（运行 ntl-mapedit rooms <data.win> 查看全部房间名）");
+            throw new CliError(2, "[错误] 未找到房间: " + name + "（运行 ntl-gui.exe mapedit rooms <data.win> 查看全部房间名）");
         if (matches.Count == 1)
         {
             Console.Error.WriteLine("[提示] 未精确匹配，使用模糊匹配: " + name + " -> " + GameData.Name(matches[0].Name));
@@ -150,7 +150,7 @@ public static class Program
                 var file = Path.Combine(dir, "ntl-mapedit-crash.log");
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " cmd=" + _command + " argv=" + string.Join(" ", _argv));
-                sb.AppendLine("提示: Release 构建的堆栈行号仅供参考；请按命令名与异常类型定位（运行 ntl-mapedit help 查看用法）。");
+                sb.AppendLine("提示: Release 构建的堆栈行号仅供参考；请按命令名与异常类型定位（运行 ntl-gui.exe mapedit help 查看用法）。");
                 sb.AppendLine(ex?.ToString() ?? "(null)");
                 sb.AppendLine();
                 File.AppendAllText(file, sb.ToString());
@@ -191,7 +191,7 @@ public static class Program
         Console.WriteLine("下次双击 / 无参数启动将打开: " + t.Path);
         Console.WriteLine("  来源: " + t.Source + (t.IsBaseline ? "（只读）" : ""));
         Console.WriteLine();
-        Console.WriteLine("修改: ntl-mapedit default-chapter auto|chapter1..chapter5");
+        Console.WriteLine("修改: ntl-gui.exe mapedit default-chapter auto|chapter1..chapter5");
     }
 
     private static int StartGui(string? path)
@@ -261,7 +261,7 @@ public static class Program
                         Console.WriteLine("[提示] chapter" + wantChapter + " 游戏文件不存在，改打开原版基线（只读）: " + baseline);
                         return StartGui(baseline);
                     }
-                    throw new CliError(2, "[错误] chapter" + wantChapter + " 的数据文件不存在（已试: " + live + "、" + baseline + "）；运行 ntl-mapedit chapters 查看可用章节");
+                    throw new CliError(2, "[错误] chapter" + wantChapter + " 的数据文件不存在（已试: " + live + "、" + baseline + "）；运行 ntl-gui.exe mapedit chapters 查看可用章节");
                 }
                 return StartGui(args[1]);
             }
@@ -279,42 +279,42 @@ public static class Program
                 NoExtra("help", 1);
             }
             Console.WriteLine("GUI / 查看:");
-            Console.WriteLine("  ntl-mapedit                            - 打开地图编辑器（GUI，等同 gui）");
-            Console.WriteLine("  ntl-mapedit gui [data.win]              - 打开地图编辑器（GUI）");
-            Console.WriteLine("  ntl-mapedit gui chapterN                - 直接打开第 N 章游戏文件（N=1..5；缺 live 自动退回原版基线）");
-            Console.WriteLine("  ntl-mapedit default-chapter [auto|chapterN] - 查看/设置默认启动章节（双击 exe 或无参数启动时打开哪个章节）");
-            Console.WriteLine("  ntl-mapedit chapters                    - 列出各章节 data.win 是否存在（游戏文件 / 原版基线）");
-            Console.WriteLine("  ntl-mapedit rooms <data.win>            - 列出全部房间（名字/宽高）");
-            Console.WriteLine("  ntl-mapedit inspect <data.win> <room>   - 逐层 dump 房间结构（实例/瓦片）");
-            Console.WriteLine("  ntl-mapedit room-stat <data.win> <room> - 房间汇总：尺寸/图层/实例/图块/背景/瓦片来源");
-            Console.WriteLine("  ntl-mapedit room-inst <data.win> <room> - 实例清单：id/x/y/spr/scale/color");
-            Console.WriteLine("  ntl-mapedit render <data.win> <room> [scale] [out.png] - 把房间渲染成 PNG");
-            Console.WriteLine("  ntl-mapedit render-stats <data.win> <room> [scale] [out.json] - 渲染覆盖统计（逐层绘制数/不支持项/黑像素占比）");
-            Console.WriteLine("  ntl-mapedit asset-clone-test <data.win> <room> - 复制房间深拷贝自检（Assets Sprite/NineSlice/原生 Tiles）");
-            Console.WriteLine("  ntl-mapedit sprite <data.win> [filter]   - 列出精灵帧布局（空纹理帧会跳过并告警）");
-            Console.WriteLine("  ntl-mapedit object <data.win> [filter]   - 列出游戏对象定义");
-            Console.WriteLine("  ntl-mapedit probe-room <data.win> <room> - 实例创建顺序/引用一致性探测");
-            Console.WriteLine("  ntl-mapedit texture <data.win> <outDir>  - 导出前 8 张纹理页为 PNG");
+            Console.WriteLine("  ntl-gui.exe mapedit                            - 打开地图编辑器（GUI，等同 gui）");
+            Console.WriteLine("  ntl-gui.exe mapedit gui [data.win]              - 打开地图编辑器（GUI）");
+            Console.WriteLine("  ntl-gui.exe mapedit gui chapterN                - 直接打开第 N 章游戏文件（N=1..5；缺 live 自动退回原版基线）");
+            Console.WriteLine("  ntl-gui.exe mapedit default-chapter [auto|chapterN] - 查看/设置默认启动章节（双击 exe 或无参数启动时打开哪个章节）");
+            Console.WriteLine("  ntl-gui.exe mapedit chapters                    - 列出各章节 data.win 是否存在（游戏文件 / 原版基线）");
+            Console.WriteLine("  ntl-gui.exe mapedit rooms <data.win>            - 列出全部房间（名字/宽高）");
+            Console.WriteLine("  ntl-gui.exe mapedit inspect <data.win> <room>   - 逐层 dump 房间结构（实例/瓦片）");
+            Console.WriteLine("  ntl-gui.exe mapedit room-stat <data.win> <room> - 房间汇总：尺寸/图层/实例/图块/背景/瓦片来源");
+            Console.WriteLine("  ntl-gui.exe mapedit room-inst <data.win> <room> - 实例清单：id/x/y/spr/scale/color");
+            Console.WriteLine("  ntl-gui.exe mapedit render <data.win> <room> [scale] [out.png] - 把房间渲染成 PNG");
+            Console.WriteLine("  ntl-gui.exe mapedit render-stats <data.win> <room> [scale] [out.json] - 渲染覆盖统计（逐层绘制数/不支持项/黑像素占比）");
+            Console.WriteLine("  ntl-gui.exe mapedit asset-clone-test <data.win> <room> - 复制房间深拷贝自检（Assets Sprite/NineSlice/原生 Tiles）");
+            Console.WriteLine("  ntl-gui.exe mapedit sprite <data.win> [filter]   - 列出精灵帧布局（空纹理帧会跳过并告警）");
+            Console.WriteLine("  ntl-gui.exe mapedit object <data.win> [filter]   - 列出游戏对象定义");
+            Console.WriteLine("  ntl-gui.exe mapedit probe-room <data.win> <room> - 实例创建顺序/引用一致性探测");
+            Console.WriteLine("  ntl-gui.exe mapedit texture <data.win> <outDir>  - 导出前 8 张纹理页为 PNG");
             Console.WriteLine("测试（离线，不碰游戏本体）:");
-            Console.WriteLine("  ntl-mapedit document-test <src data.win> <dst data.win>  - 编辑模型全量测试（房间/图层/实例/瓦片/剪贴板/对齐）");
-            Console.WriteLine("  ntl-mapedit mapedit-test <src data.win> <workDir>        - mer 写盘守卫自检（原版基线只读/live 可保存/sidecar/默认启动目标）");
-            Console.WriteLine("  ntl-mapedit native-tiles-test <src data.win> <workDir> - 原生 LayerTilesData 批量绘制/撤销/保存/重载闭环");
-            Console.WriteLine("  ntl-mapedit structure-test <src data.win> <dst data.win> - 房间结构复制/删除/排序往返测试");
-            Console.WriteLine("  ntl-mapedit resource-browser-test <data.win>          - 资源浏览器只读自检（12 类资源可枚举 + 源文件不变）");
-            Console.WriteLine("  ntl-mapedit stress-test <src data.win> <dst data.win>    - 大房间（room_town_north）绘制/保存/重载冒烟");
-            Console.WriteLine("  ntl-mapedit vanilla-scan-test <data.win> [outJson]       - 原版交互/对话扫描自检（反编译+条件三态+lang 解析）");
-            Console.WriteLine("  ntl-mapedit vanilla-scan <data.win> <object> [room] [x] [y] [outJson] - 扫描单个对象的原版交互/对白（只读；打印行摘要，可选导出 JSON 对账）");
-            Console.WriteLine("  ntl-mapedit settings-test <workDir>                      - 默认启动章节设置自检（读写/坏文件自愈/解析优先级）");
-            Console.WriteLine("  ntl-mapedit battle-test [data.win] [outDir]              - 战斗配置校验/sidecar 往返/生成 mod 的自检");
-            Console.WriteLine("  ntl-mapedit battle-demo [data.win] [modsDir]             - 生成可直接部署的示例战斗 mod（默认 Neutraled/mods）");
-            Console.WriteLine("  ntl-mapedit room-probe <data.win> <roomName> [instId]   - 只读探针：房间宽高/图层/实例/瓦片数，给 instId 时打印该实例字段");
-            Console.WriteLine("  ntl-mapedit manifest-test [modsDir] [outJson]            - mods.json 整包清单扫描/校验/保存重读自检");
-            Console.WriteLine("  ntl-mapedit install-ntlmod <gameRoot> <pkg.ntlmod> [leaf] - 把 .ntlmod 装进 Neutraled/mods/<id>/<author>/<leaf>");
-            Console.WriteLine("  ntl-mapedit edit-test | tile-test <src> <dst>            - 早期编辑/瓦片测试");
-            Console.WriteLine("  ntl-mapedit save-roundtrip <src> <dst>                   - 经 EditorDocument 打开→不修改→Save，校验 SHA256 不变");
-            Console.WriteLine("  ntl-mapedit roundtrip <src data.win> <dst data.win>      - data.win 读写往返");
+            Console.WriteLine("  ntl-gui.exe mapedit document-test <src data.win> <dst data.win>  - 编辑模型全量测试（房间/图层/实例/瓦片/剪贴板/对齐）");
+            Console.WriteLine("  ntl-gui.exe mapedit mapedit-test <src data.win> <workDir>        - mer 写盘守卫自检（原版基线只读/live 可保存/sidecar/默认启动目标）");
+            Console.WriteLine("  ntl-gui.exe mapedit native-tiles-test <src data.win> <workDir> - 原生 LayerTilesData 批量绘制/撤销/保存/重载闭环");
+            Console.WriteLine("  ntl-gui.exe mapedit structure-test <src data.win> <dst data.win> - 房间结构复制/删除/排序往返测试");
+            Console.WriteLine("  ntl-gui.exe mapedit resource-browser-test <data.win>          - 资源浏览器只读自检（12 类资源可枚举 + 源文件不变）");
+            Console.WriteLine("  ntl-gui.exe mapedit stress-test <src data.win> <dst data.win>    - 大房间（room_town_north）绘制/保存/重载冒烟");
+            Console.WriteLine("  ntl-gui.exe mapedit vanilla-scan-test <data.win> [outJson]       - 原版交互/对话扫描自检（反编译+条件三态+lang 解析）");
+            Console.WriteLine("  ntl-gui.exe mapedit vanilla-scan <data.win> <object> [room] [x] [y] [outJson] - 扫描单个对象的原版交互/对白（只读；打印行摘要，可选导出 JSON 对账）");
+            Console.WriteLine("  ntl-gui.exe mapedit settings-test <workDir>                      - 默认启动章节设置自检（读写/坏文件自愈/解析优先级）");
+            Console.WriteLine("  ntl-gui.exe mapedit battle-test [data.win] [outDir]              - 战斗配置校验/sidecar 往返/生成 mod 的自检");
+            Console.WriteLine("  ntl-gui.exe mapedit battle-demo [data.win] [modsDir]             - 生成可直接部署的示例战斗 mod（默认 Neutraled/mods）");
+            Console.WriteLine("  ntl-gui.exe mapedit room-probe <data.win> <roomName> [instId]   - 只读探针：房间宽高/图层/实例/瓦片数，给 instId 时打印该实例字段");
+            Console.WriteLine("  ntl-gui.exe mapedit manifest-test [modsDir] [outJson]            - mods.json 整包清单扫描/校验/保存重读自检");
+            Console.WriteLine("  ntl-gui.exe mapedit install-ntlmod <gameRoot> <pkg.ntlmod> [leaf] - 把 .ntlmod 装进 Neutraled/mods/<id>/<author>/<leaf>");
+            Console.WriteLine("  ntl-gui.exe mapedit edit-test | tile-test <src> <dst>            - 早期编辑/瓦片测试");
+            Console.WriteLine("  ntl-gui.exe mapedit save-roundtrip <src> <dst>                   - 经 EditorDocument 打开→不修改→Save，校验 SHA256 不变");
+            Console.WriteLine("  ntl-gui.exe mapedit roundtrip <src data.win> <dst data.win>      - data.win 读写往返");
             Console.WriteLine("其它:");
-            Console.WriteLine("  ntl-mapedit types [filter] | io | delegates              - 反射 UndertaleModLib 类型/接口");
+            Console.WriteLine("  ntl-gui.exe mapedit types [filter] | io | delegates              - 反射 UndertaleModLib 类型/接口");
             Console.WriteLine("退出码: 0=成功  1=运行失败（业务判据未过）  2=用法/参数/路径错误");
             Console.WriteLine("提示: 相对输出路径按当前目录解析；输出文件父目录会自动创建；Release 堆栈行号仅供参考。");
             Console.WriteLine("崩溃日志: %LOCALAPPDATA%\\DRMapEditor\\logs\\ntl-mapedit-crash.log");
@@ -1516,7 +1516,7 @@ public static class Program
             NoExtra("room-probe <data.win> <roomName> [instanceId]", 4);
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("用法: ntl-mapedit room-probe <data.win> <roomName>");
+                Console.Error.WriteLine("用法: ntl-gui.exe mapedit room-probe <data.win> <roomName>");
                 return 2;
             }
             if (!File.Exists(args[1]))

@@ -294,7 +294,7 @@ public static class Localizer
         ["权限级别: safe（安全） / risky（注意） / danger（危险）"] = "Risk levels: safe / risky / danger",
         ["Neutraled — mod 权限"] = "Neutraled — Mod Permissions",
         ["选择 Kristal mod 目录（含 *.lua）"] = "Select a Kristal mod folder (with *.lua)",
-        ["[错误] 找不到 ntl-builder.exe"] = "[Error] ntl-builder.exe not found",
+        ["[错误] 找不到 ntl-gui.exe"] = "[Error] ntl-gui.exe not found",
         ["========== Kristal 批量验证 =========="] = "========== Kristal batch validation ==========",
         ["验证完成，报告在 Neutraled/kristal-validation/REPORT.md"] =
             "Validation done; report at Neutraled/kristal-validation/REPORT.md",
@@ -320,7 +320,7 @@ public static class Localizer
             "Conflicts unchanged (already acknowledged; not shown again)",
 
         // ==================== 任务 B：裸中文接线（Program.cs）====================
-        ["[错误] 找不到 ntl-builder.exe: {0}"] = "[Error] ntl-builder.exe not found: {0}",
+        ["[错误] 找不到 ntl-gui.exe: {0}"] = "[Error] ntl-gui.exe not found: {0}",
 
         // ==================== C4 P1-13：mod 列表改读 --mod-list --json ====================
         ["--mod-list --json 没有输出 JSON（退出码 {0}）"] = "--mod-list --json printed no JSON (exit code {0})",

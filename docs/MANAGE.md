@@ -9,7 +9,7 @@
 ## 管理与扩展（MANAGE）
 
 本文覆盖 Neutraled 的管理类功能：**配置档 / 快照 / 恢复点 / 黑名单 / GameBanana 下载 / 插件 / 主题 / 语言包 / 网页界面 / 跨平台**。
-它们全部走同一个 CLI 进程（`ntl-builder`），不依赖图形界面，因此可以在服务器、CI、macOS/Linux 上原样运行。
+它们全部走同一个 CLI 进程（`ntl-gui.exe`），不依赖图形界面，因此可以在服务器、CI、macOS/Linux 上原样运行。
 
 > 约定：所有命令都可以加 `--lang en` 切换输出语言（或写进 `config.json` 的 `lang`）。
 > 主开关后面、下一个 `--` 之前的记号是**位置参数**；可选参数一律是具名开关（`--name`、`--out`、`--force` …）。
@@ -39,16 +39,16 @@
 一个配置档 = 「哪些 mod 启用」+「换档时要带走的设置」（新档默认只自动捕获 `base_mod`；旧档里记过的设置继续套用）。应用配置档 = 直接改各 `mods/<id>/mod.json` 的 `enabled` 字段（与 GUI 的勾选框改的是同一处）。
 
 ```powershell
-ntl-builder --profile-new 剧情 --name "只看剧情" --from default   # 以现有档为底
-ntl-builder --profile-list                                        # 列出全部档 + 当前生效档
-ntl-builder --profile-list --json                                 # 同一份清单的机器可读结构（GUI 只读入口读它）
-ntl-builder --profile-show 剧情                                   # 看某个档的启用集合
-ntl-builder --profile-use 剧情                                    # 应用（改 mod.json 的 enabled）
-ntl-builder --profile-copy 剧情 剧情-测试 --name "剧情（实验）"
-ntl-builder --profile-rename 剧情 story
-ntl-builder --profile-delete 剧情-测试 [--force]
-ntl-builder --profile-export 剧情 [--out out.json]
-ntl-builder --profile-import out.json [--force]
+ntl-gui.exe --profile-new 剧情 --name "只看剧情" --from default   # 以现有档为底
+ntl-gui.exe --profile-list                                        # 列出全部档 + 当前生效档
+ntl-gui.exe --profile-list --json                                 # 同一份清单的机器可读结构（GUI 只读入口读它）
+ntl-gui.exe --profile-show 剧情                                   # 看某个档的启用集合
+ntl-gui.exe --profile-use 剧情                                    # 应用（改 mod.json 的 enabled）
+ntl-gui.exe --profile-copy 剧情 剧情-测试 --name "剧情（实验）"
+ntl-gui.exe --profile-rename 剧情 story
+ntl-gui.exe --profile-delete 剧情-测试 [--force]
+ntl-gui.exe --profile-export 剧情 [--out out.json]
+ntl-gui.exe --profile-import out.json [--force]
 ```
 
 `--profile-use` 输出「改动 N 个 mod」；同 id 已存在时 `--profile-new` **不覆盖**并返回退出码 2（用 `--profile-copy` 或换 id）；`--profile-delete` 删活动档需要 `--force`，否则返回 2。
@@ -58,12 +58,12 @@ ntl-builder --profile-import out.json [--force]
 给单个 mod 的目录做时间点副本：`--snapshot-create` 记下 **版本 + 备注 + 目录树哈希**，之后可以原地切回。
 
 ```powershell
-ntl-builder --snapshot-create konami --version 1.2.0 --note "加入双人模式"
-ntl-builder --snapshot-list konami
-ntl-builder --snapshot-use konami 1.2.0 [--force]     # 切回（当前内容先自动存一份保底快照）
-ntl-builder --snapshot-import konami D:\konami-1.1.zip --version 1.1.0
-ntl-builder --snapshot-delete konami 1.1.0 [--force]
-ntl-builder --snapshot-auto                             # 给**全部已装 mod** 各建一份保底快照
+ntl-gui.exe --snapshot-create konami --version 1.2.0 --note "加入双人模式"
+ntl-gui.exe --snapshot-list konami
+ntl-gui.exe --snapshot-use konami 1.2.0 [--force]     # 切回（当前内容先自动存一份保底快照）
+ntl-gui.exe --snapshot-import konami D:\konami-1.1.zip --version 1.1.0
+ntl-gui.exe --snapshot-delete konami 1.1.0 [--force]
+ntl-gui.exe --snapshot-auto                             # 给**全部已装 mod** 各建一份保底快照
 ```
 
 > ⚠ **磁盘**：`--snapshot-auto` 会为每个 mod 建快照。实测本机 67 个 mod（含大量测试 mod）占用约 **2.7 GB**。生产机器上按需使用；同一卷内用硬链接时几乎不占空间，跨卷会退化成复制。
@@ -73,12 +73,12 @@ ntl-builder --snapshot-auto                             # 给**全部已装 mod*
 把「整个游戏当前的 mod 状态」存成一个点：逐章 data.win 的哈希 + 元数据 + 数据副本。
 
 ```powershell
-ntl-builder --restore-create [--name "通关前"] [--from live|profile] [--no-backup]
-ntl-builder --restore-list
-ntl-builder --restore-apply rp-20260926-120641 [--force]
-ntl-builder --restore-export rp-20260926-120641 D:\backup\before-boss.ntlrestore
-ntl-builder --restore-import D:\backup\before-boss.ntlrestore [--force]
-ntl-builder --restore-delete rp-20260926-120641 [--force]
+ntl-gui.exe --restore-create [--name "通关前"] [--from live|profile] [--no-backup]
+ntl-gui.exe --restore-list
+ntl-gui.exe --restore-apply rp-20260926-120641 [--force]
+ntl-gui.exe --restore-export rp-20260926-120641 D:\backup\before-boss.ntlrestore
+ntl-gui.exe --restore-import D:\backup\before-boss.ntlrestore [--force]
+ntl-gui.exe --restore-delete rp-20260926-120641 [--force]
 ```
 
 * `--restore-apply` 在 **DELTARUNE 正在运行**时拒绝执行（返回 3），并会先自动写一个 `auto-<时间戳>` 回退点，避免误操作不可逆。
@@ -90,24 +90,24 @@ ntl-builder --restore-delete rp-20260926-120641 [--force]
 在 `--search`（旧名 `--gb-search`）的结果里屏蔽不想要的条目（按 GameBanana id、名称子串或类别）。
 
 ```powershell
-ntl-builder --block-add 123456 --kind id --note "换皮包"
-ntl-builder --block-add "NFT" --kind name
-ntl-builder --block-list
-ntl-builder --block-remove 123456 --kind id
+ntl-gui.exe --block-add 123456 --kind id --note "换皮包"
+ntl-gui.exe --block-add "NFT" --kind name
+ntl-gui.exe --block-list
+ntl-gui.exe --block-remove 123456 --kind id
 ```
 
 ### 6. GameBanana 浏览与下载队列
 
 ```powershell
-ntl-builder --search "pizza tower" [--per-page 30] [--no-blocklist] [--dry-run] [--json]
-ntl-builder --gb-files 123456 [--gb-type Mod]
-ntl-builder --install-id 123456 [--file 1] [--as xdelta|datawin|ntlmod|kristal|gm3p|external] [--dry-run] [--json]   # 下载 + 自动探测包型 + 导入（--file 是 1-based 序号）
-ntl-builder --install-url https://... [--as KIND] [--dry-run]   # 直链下载并导入
-ntl-builder --route-probe <路径|目录> [--json]                # 只读探测包型（不下载/不导入）
-ntl-builder --queue-add 123456 --name "某 mod" [--file 1] [--url 直链] [--size 字节]
-ntl-builder --queue-list
-ntl-builder --queue-run [--no-install] [--delete-after]
-ntl-builder --queue-remove <条目id> [--delete-file]
+ntl-gui.exe --search "pizza tower" [--per-page 30] [--no-blocklist] [--dry-run] [--json]
+ntl-gui.exe --gb-files 123456 [--gb-type Mod]
+ntl-gui.exe --install-id 123456 [--file 1] [--as xdelta|datawin|ntlmod|kristal|gm3p|external] [--dry-run] [--json]   # 下载 + 自动探测包型 + 导入（--file 是 1-based 序号）
+ntl-gui.exe --install-url https://... [--as KIND] [--dry-run]   # 直链下载并导入
+ntl-gui.exe --route-probe <路径|目录> [--json]                # 只读探测包型（不下载/不导入）
+ntl-gui.exe --queue-add 123456 --name "某 mod" [--file 1] [--url 直链] [--size 字节]
+ntl-gui.exe --queue-list
+ntl-gui.exe --queue-run [--no-install] [--delete-after]
+ntl-gui.exe --queue-remove <条目id> [--delete-file]
 ```
 
 * 下载优先用系统 `curl`（支持断点续传、4 次重试）；非 Windows 平台或没有 curl 时回退到内置 HTTP 客户端。
@@ -180,13 +180,13 @@ public interface IPluginContext
 #### 7.3 命令
 
 ```powershell
-ntl-builder --plugin-list
-ntl-builder --plugin-info sample-hello
-ntl-builder --plugin-enable sample-hello
-ntl-builder --plugin-disable sample-hello
-ntl-builder --plugin-install <目录或 .ntlplugin 包> [--force]
-ntl-builder --plugin-remove sample-hello [--force]
-ntl-builder --plugin-hooks         # 加载全部插件并打印钩子调用记录（hook/rc/id/耗时）
+ntl-gui.exe --plugin-list
+ntl-gui.exe --plugin-info sample-hello
+ntl-gui.exe --plugin-enable sample-hello
+ntl-gui.exe --plugin-disable sample-hello
+ntl-gui.exe --plugin-install <目录或 .ntlplugin 包> [--force]
+ntl-gui.exe --plugin-remove sample-hello [--force]
+ntl-gui.exe --plugin-hooks         # 加载全部插件并打印钩子调用记录（hook/rc/id/耗时）
 ```
 
 权限是**协作式**的：未声明的 `ReadConfig`/`WriteConfig` 一定被拒并写日志，插件也不能借此访问任意文件路径——但它不是安全沙箱，别装来路不明的 DLL。
@@ -198,10 +198,10 @@ ntl-builder --plugin-hooks         # 加载全部插件并打印钩子调用记�
 内置四个：`dark`（默认，与改造前像素级一致）、`light`、`high-contrast`、`classic-deltarune`。
 
 ```powershell
-ntl-builder --theme-list
-ntl-builder --theme-use light        # 同时写出 Neutraled/console-theme.json（游戏内控制台下次启动生效）
-ntl-builder --theme-show light       # 打印主题 JSON（可导出为文件）
-ntl-builder --theme-import my.json [--force]
+ntl-gui.exe --theme-list
+ntl-gui.exe --theme-use light        # 同时写出 Neutraled/console-theme.json（游戏内控制台下次启动生效）
+ntl-gui.exe --theme-show light       # 打印主题 JSON（可导出为文件）
+ntl-gui.exe --theme-import my.json [--force]
 ```
 
 外部主题（`Neutraled/themes/<id>.json`）：
@@ -232,10 +232,10 @@ ntl-builder --theme-import my.json [--force]
 * 游戏内（GML 控制台/HUD）由 `api/ntl_lang_pack.gml` 在启动时读取同一个文件，把「符号键 → 中文」的 zh 表与语言包合成新表，因此 `ntl_t`/`ntl_ts`/`ntl_tf` 一行不改就能说任意语言。
 
 ```powershell
-ntl-builder --lang-list                  # 可用语言 + 当前语言
-ntl-builder --lang-use ja                # 切换并存进 config.json（游戏内下次启动生效）
-ntl-builder --lang-coverage [ja]         # 覆盖率：C# 侧 与 游戏内 两个域分开统计；退出码 0 = 全部 100%
-ntl-builder --lang-template ru --out ru.json   # 导出待译模板（含英文参考）
+ntl-gui.exe --lang-list                  # 可用语言 + 当前语言
+ntl-gui.exe --lang-use ja                # 切换并存进 config.json（游戏内下次启动生效）
+ntl-gui.exe --lang-coverage [ja]         # 覆盖率：C# 侧 与 游戏内 两个域分开统计；退出码 0 = 全部 100%
+ntl-gui.exe --lang-template ru --out ru.json   # 导出待译模板（含英文参考）
 ```
 
 新增一种语言的流程：`--lang-template <code>` 导出 → 填 `map` → 存成 `Neutraled/lang/lang_<code>.json` → `--lang-coverage <code>` 看还缺哪些。
@@ -243,7 +243,7 @@ ntl-builder --lang-template ru --out ru.json   # 导出待译模板（含英文�
 ### 10. 网页界面（跨平台前端）
 
 ```powershell
-ntl-builder --web [--port 7931] [--no-open] [--auto-stop]
+ntl-gui.exe --web [--port 7931] [--no-open] [--auto-stop]
 ```
 
 * 只绑 `127.0.0.1`，端口被占用时自动 +1 重试（最多 6 次）；零 CDN 依赖，静态页随包分发（`web/`）。
@@ -363,7 +363,7 @@ Back                           ← 原版第 7 行，顺移到第 8 行
   ```
 
   ```powershell
-  ntl-builder.exe --font-probe chapter4_windows\data.win   # 复核字形数与字形表自检（逆序对应为 0）
+  ntl-gui.exe --font-probe chapter4_windows\data.win   # 复核字形数与字形表自检（逆序对应为 0）
   ```
 
 * **分工**：Neutraled 只负责**字体/字形层面的支持**（能显示、不缺字、不缺标点）；
@@ -408,8 +408,8 @@ if (global.lang != "ja" && ord(mychar) > 255)
 **验收方法**（改完必须看真机，不能只看产物里有没有代码）：
 
 ```powershell
-ntl-builder.exe --deploy --chapter chapter1 --game <游戏根> --no-launch --force
-ntl-builder.exe --dump gml_Object_obj_writer_Draw_0 --chapter chapter1 | Out-File -Encoding utf8 dump.txt
+ntl-gui.exe --deploy --chapter chapter1 --game <游戏根> --no-launch --force
+ntl-gui.exe --dump gml_Object_obj_writer_Draw_0 --chapter chapter1 | Out-File -Encoding utf8 dump.txt
 ```
 
 dump 里要能看到 `if (hspace < _ntlw)`；然后真机截图 + 像素测量字距（开发期脚本（不随包）：按 y 带找墨迹、算自相关峰值 lag）。修复前后对照：墨迹宽 312 px → 600 px，步进 lag 12 px → 64 px（屏幕像素）。
@@ -499,10 +499,10 @@ dump 里要能看到 `if (hspace < _ntlw)`；然后真机截图 + 像素测量�
 **验收**：
 
 ```powershell
-ntl-builder.exe --deploy --chapter chapter1 --game <游戏根> --no-launch --force
+ntl-gui.exe --deploy --chapter chapter1 --game <游戏根> --no-launch --force
 # 日志里要有：[通过] (g) 界面增强：设置菜单/面板补丁落在产物里 —— 7 项标记全部命中
-ntl-builder.exe --deploy-all --game <游戏根> --no-launch --force     # 6/6 成功
-ntl-builder.exe --dump gml_Object_obj_darkcontroller_Draw_0 --chapter chapter1 | Out-File -Encoding utf8 dump.txt
+ntl-gui.exe --deploy-all --game <游戏根> --no-launch --force     # 6/6 成功
+ntl-gui.exe --dump gml_Object_obj_darkcontroller_Draw_0 --chapter chapter1 | Out-File -Encoding utf8 dump.txt
 ```
 
 dump 里应看到 `ntl_cfg_row(`（每行一个）、`_ntl_cfg_off`、`ntl_cfg_scrollbar_draw`、`ntl_modmenu_page_draw`；
@@ -510,7 +510,7 @@ dump 里应看到 `ntl_cfg_row(`（每行一个）、`_ntl_cfg_off`、`ntl_cfg_s
 
 ### 12. 跨平台
 
-`ntl-builder` 目标框架是 `net9.0`（非 `-windows`），Windows / macOS / Linux 同一套代码：
+builder / 编辑器 / Studio 的代码目标框架是 `net9.0`（`-windows` 只用于 GUI 外壳），Windows / macOS / Linux 同一套代码：
 
 | 平台差异 | 处理 |
 | --- | --- |
@@ -523,7 +523,7 @@ dump 里应看到 `ntl_cfg_row(`（每行一个）、`_ntl_cfg_off`、`ntl_cfg_s
 自检命令：
 
 ```bash
-ntl-builder --platform-info      # OS / Arch / Runtime / 章节目录后缀 / 可写性 / 硬链接 / curl 路径
+ntl-gui.exe --platform-info      # OS / Arch / Runtime / 章节目录后缀 / 可写性 / 硬链接 / curl 路径
 dotnet publish builder/Neutraled.Builder.csproj -c Release -r linux-x64   --self-contained true -o dist/linux
 dotnet publish builder/Neutraled.Builder.csproj -c Release -r osx-arm64   --self-contained true -o dist/macos
 ```
@@ -546,7 +546,7 @@ dotnet publish builder/Neutraled.Builder.csproj -c Release -r osx-arm64   --self
 
 > **一句话**：把「哪些 mod 开着 + 换档要带走的设置（新档默认 `base_mod`）」存成一个有名字的**配置档**，之后一条命令就能在几套组合之间来回切 —— 切换只改每个 mod 自己 `mod.json` 里的 `enabled`，**不复制、不移动、不删除任何 mod 文件**。
 
-功能概览见 [MANAGE.md](MANAGE.md) §2；本文是配置档的细节文档与实测记录。所有命令都走同一个 `ntl-builder.exe`。
+功能概览见 [MANAGE.md](MANAGE.md) §2；本文是配置档的细节文档与实测记录。所有命令都走同一个 `ntl-gui.exe`。
 
 > **关于下面的输出**：本文每个代码块都是**真跑出来的**（把 exe 放进一个沙箱游戏根，路径形如 `<演示用游戏根>`，只有演示 mod），这样测试不会动真实仓库。
 > 在你机器上第一行会是你的真实游戏根，其余格式完全一致。所有 `[配置档]` 行都写在 **stdout**，只有用法错误写 stderr。
@@ -569,13 +569,13 @@ dotnet publish builder/Neutraled.Builder.csproj -c Release -r osx-arm64   --self
 
 ```bash
 # 1) 把「现在的状态」存成一个档（不写 --from 时，以当前实际启用态为起点）
-ntl-builder.exe --profile-new mycombo --name "我的组合"
+ntl-gui.exe --profile-new mycombo --name "我的组合"
 
 # 2) 看有哪些档、当前活动档是哪个（活动档前面有 *）
-ntl-builder.exe --profile-list
+ntl-gui.exe --profile-list
 
 # 3) 切换：改各 mod.json 的 enabled + 写这档记录的设置
-ntl-builder.exe --profile-use mycombo
+ntl-gui.exe --profile-use mycombo
 ```
 
 ---
@@ -695,7 +695,7 @@ root 产物（游戏自带启动器 `data.win`，也就是**章节选择器**那
 #### 1. 列出：`--profile-list`
 
 ```bash
-ntl-builder.exe --profile-list
+ntl-gui.exe --profile-list
 ```
 
 ```
@@ -717,7 +717,7 @@ ntl-builder.exe --profile-list
 #### 2. 看详情：`--profile-show [id]`
 
 ```bash
-ntl-builder.exe --profile-show
+ntl-gui.exe --profile-show
 ```
 
 ```
@@ -742,7 +742,7 @@ ntl-builder.exe --profile-show
 #### 3. 新建：`--profile-new`
 
 ```bash
-ntl-builder.exe --profile-new docsdemo --name "文档演示档" --desc "MANAGE.md 示例：把当前启用态存成一个档"
+ntl-gui.exe --profile-new docsdemo --name "文档演示档" --desc "MANAGE.md 示例：把当前启用态存成一个档"
 ```
 
 ```
@@ -759,7 +759,7 @@ ntl-builder.exe --profile-new docsdemo --name "文档演示档" --desc "MANAGE.m
 id 已存在时不覆盖，但仍会打印「已创建」且退出码 0：
 
 ```bash
-ntl-builder.exe --profile-new docsdemo
+ntl-gui.exe --profile-new docsdemo
 ```
 
 ```
@@ -773,8 +773,8 @@ ntl-builder.exe --profile-new docsdemo
 #### 4. 复制与改名：`--profile-copy` / `--profile-rename`
 
 ```bash
-ntl-builder.exe --profile-copy docsdemo dcopy --name "复制出来的档"
-ntl-builder.exe --profile-rename dcopy drenamed
+ntl-gui.exe --profile-copy docsdemo dcopy --name "复制出来的档"
+ntl-gui.exe --profile-rename dcopy drenamed
 ```
 
 ```
@@ -793,7 +793,7 @@ ntl-builder.exe --profile-rename dcopy drenamed
 #### 5. 应用（切换）：`--profile-use`
 
 ```bash
-ntl-builder.exe --profile-use docsdemo
+ntl-gui.exe --profile-use docsdemo
 ```
 
 ```
@@ -816,7 +816,7 @@ ntl-builder.exe --profile-use docsdemo
 * **幂等**：紧接着再应用同一个档：
 
 ```bash
-ntl-builder.exe --profile-use docsdemo
+ntl-gui.exe --profile-use docsdemo
 ```
 
 ```
@@ -829,9 +829,9 @@ ntl-builder.exe --profile-use docsdemo
 #### 6. 删除：`--profile-delete`
 
 ```bash
-ntl-builder.exe --profile-delete docsalt          # 普通档，直接删
-ntl-builder.exe --profile-delete docsdemo         # 当前活动档 → 拒绝
-ntl-builder.exe --profile-delete docsdemo --force # 加 --force
+ntl-gui.exe --profile-delete docsalt          # 普通档，直接删
+ntl-gui.exe --profile-delete docsdemo         # 当前活动档 → 拒绝
+ntl-gui.exe --profile-delete docsdemo --force # 加 --force
 ```
 
 ```
@@ -849,7 +849,7 @@ ntl-builder.exe --profile-delete docsdemo --force # 加 --force
 #### 7. 导出与导入：`--profile-export` / `--profile-import`
 
 ```bash
-ntl-builder.exe --profile-export docsdemo
+ntl-gui.exe --profile-export docsdemo
 ```
 
 ```
@@ -859,7 +859,7 @@ ntl-builder.exe --profile-export docsdemo
 不写 `--out` 时落在 `profiles/<id>.export.json`；`--out` 可以是任意路径：
 
 ```bash
-ntl-builder.exe --profile-export docsdemo --out "<演示目录>\docsdemo-backup.json"
+ntl-gui.exe --profile-export docsdemo --out "<演示目录>\docsdemo-backup.json"
 ```
 
 ```
@@ -881,7 +881,7 @@ ntl-builder.exe --profile-export docsdemo --out "<演示目录>\docsdemo-backup.
 导入：
 
 ```bash
-ntl-builder.exe --profile-import "<…>\docsdemo.export.json"
+ntl-gui.exe --profile-import "<…>\docsdemo.export.json"
 ```
 
 ```
@@ -1002,16 +1002,16 @@ mod 升到新版之后想退回去，常见做法是「重装旧包」或「从�
 
 ```bash
 # 存一份（版本号缺省 = 读这个 mod 的 mod.json 的 version）
-ntl-builder.exe --snapshot-create demoa.docs --note "升级 2.0 之前"
+ntl-gui.exe --snapshot-create demoa.docs --note "升级 2.0 之前"
 
 # 看这个 mod 有哪些版本
-ntl-builder.exe --snapshot-list demoa.docs
+ntl-gui.exe --snapshot-list demoa.docs
 
 # 切回去（先把当前内容另存成 auto-<时间戳>，再覆盖）
-ntl-builder.exe --snapshot-use demoa.docs 1.0.0
+ntl-gui.exe --snapshot-use demoa.docs 1.0.0
 
 # 给所有 mod 的当前版本存保底快照（幂等）
-ntl-builder.exe --snapshot-auto
+ntl-gui.exe --snapshot-auto
 ```
 
 ---
@@ -1085,7 +1085,7 @@ ntl-builder.exe --snapshot-auto
 **位置参数必须写在选项之前**：解析器从主开关往后收集位置参数，**遇到第一个以 `--` 开头的参数就停**。实测把选项写在前面：
 
 ```bash
-ntl-builder.exe --snapshot-create --version 9.9.9 demoa.docs
+ntl-gui.exe --snapshot-create --version 9.9.9 demoa.docs
 ```
 
 ```
@@ -1105,7 +1105,7 @@ ntl-builder.exe --snapshot-create --version 9.9.9 demoa.docs
 一份都没有时：
 
 ```bash
-ntl-builder.exe --snapshot-list
+ntl-gui.exe --snapshot-list
 ```
 
 ```
@@ -1130,7 +1130,7 @@ ntl-builder.exe --snapshot-list
 #### 2. 存一份：`--snapshot-create`
 
 ```bash
-ntl-builder.exe --snapshot-create demoa.docs
+ntl-gui.exe --snapshot-create demoa.docs
 ```
 
 ```
@@ -1141,7 +1141,7 @@ ntl-builder.exe --snapshot-create demoa.docs
 版本号缺省 = 读这个 mod `mod.json` 的 `version`（读不到就用扫描结果，再兜底 `1.0.0`）。**同版本已存在时绝不覆盖**，而是自动加后缀：
 
 ```bash
-ntl-builder.exe --snapshot-create demoa.docs           # 再来一次
+ntl-gui.exe --snapshot-create demoa.docs           # 再来一次
 ```
 
 ```
@@ -1153,7 +1153,7 @@ ntl-builder.exe --snapshot-create demoa.docs           # 再来一次
 带版本号与备注：
 
 ```bash
-ntl-builder.exe --snapshot-create demoa.docs --version 2.0.0 --note "第二个版本"
+ntl-gui.exe --snapshot-create demoa.docs --version 2.0.0 --note "第二个版本"
 ```
 
 ```
@@ -1164,9 +1164,9 @@ ntl-builder.exe --snapshot-create demoa.docs --version 2.0.0 --note "第二个�
 出错时**消息在 stderr**（stdout 只有 `游戏根:` 一行），退出码 1：
 
 ```bash
-ntl-builder.exe --snapshot-create ../evil
-ntl-builder.exe --snapshot-create nosuchmod
-ntl-builder.exe --snapshot-create demoa.docs --version bad/ver
+ntl-gui.exe --snapshot-create ../evil
+ntl-gui.exe --snapshot-create nosuchmod
+ntl-gui.exe --snapshot-create demoa.docs --version bad/ver
 ```
 
 ```
@@ -1182,7 +1182,7 @@ ntl-builder.exe --snapshot-create demoa.docs --version bad/ver
 先手工把 live 改乱（改一个文件、删一个文件、加一个 `extra.tmp`），再回切：
 
 ```bash
-ntl-builder.exe --snapshot-use demoa.docs 1.0.0
+ntl-gui.exe --snapshot-use demoa.docs 1.0.0
 ```
 
 ```
@@ -1218,7 +1218,7 @@ function demo_a_step() {
 > **指纹漂移警告**：如果快照目录里的内容被就地改动过（编辑器保存、安装器原地覆盖、手改），回切前会核对内容指纹并提示 —— **只警告不中止**，因为紧接着就会把现状另存成 auto 快照，用户仍有后路。实测（往快照里的 `gml\main.gml` 追加一行后再回切）：
 
 ```bash
-ntl-builder.exe --snapshot-use demoa.docs 1.0.0 --force
+ntl-gui.exe --snapshot-use demoa.docs 1.0.0 --force
 ```
 
 ```
@@ -1234,7 +1234,7 @@ ntl-builder.exe --snapshot-use demoa.docs 1.0.0 --force
 从**目录**导入（来源 = `dir`，版本缺省读目录里 `mod.json` 的 `version`）：
 
 ```bash
-ntl-builder.exe --snapshot-import demoa.docs "<演示目录>\snapimport"
+ntl-gui.exe --snapshot-import demoa.docs "<演示目录>\snapimport"
 ```
 
 ```
@@ -1245,7 +1245,7 @@ ntl-builder.exe --snapshot-import demoa.docs "<演示目录>\snapimport"
 从**压缩包**导入（zip / 7z / rar，走 SharpCompress；来源 = `zip`）：
 
 ```bash
-ntl-builder.exe --snapshot-import demoa.docs "<演示目录>\DemoA-1.6.0.zip"
+ntl-gui.exe --snapshot-import demoa.docs "<演示目录>\DemoA-1.6.0.zip"
 ```
 
 ```
@@ -1264,7 +1264,7 @@ ntl-builder.exe --snapshot-import demoa.docs "<演示目录>\DemoA-1.6.0.zip"
 包内路径一律做越界校验，命中就打 `[快照] 压缩包内含越界路径，已拒绝: {key}` 并整体失败（防 zip-slip）；含 `:` 的路径同样拒绝。实测（故意造了一个带 `../evil.txt` 的 zip）：
 
 ```bash
-ntl-builder.exe --snapshot-import demoa.docs "…\evil.zip"
+ntl-gui.exe --snapshot-import demoa.docs "…\evil.zip"
 ```
 
 ```
@@ -1289,7 +1289,7 @@ ntl-builder.exe --snapshot-import demoa.docs "…\evil.zip"
 #### 5. 删除：`--snapshot-delete`
 
 ```bash
-ntl-builder.exe --snapshot-delete demoa.docs 2.0.0
+ntl-gui.exe --snapshot-delete demoa.docs 2.0.0
 ```
 
 ```
@@ -1299,8 +1299,8 @@ ntl-builder.exe --snapshot-delete demoa.docs 2.0.0
 **只剩最后一份**时会拦一下（退出码 1）：
 
 ```bash
-ntl-builder.exe --snapshot-delete demob.docs 2.1.0
-ntl-builder.exe --snapshot-delete demob.docs 2.1.0 --force
+ntl-gui.exe --snapshot-delete demob.docs 2.1.0
+ntl-gui.exe --snapshot-delete demob.docs 2.1.0 --force
 ```
 
 ```
@@ -1313,7 +1313,7 @@ ntl-builder.exe --snapshot-delete demob.docs 2.1.0 --force
 #### 6. 保底：`--snapshot-auto`
 
 ```bash
-ntl-builder.exe --snapshot-auto
+ntl-gui.exe --snapshot-auto
 ```
 
 ```
@@ -1394,7 +1394,7 @@ ntl-builder.exe --snapshot-auto
 `.snapshot.json` 缺失或损坏时，列表**不会整份消失**：改用目录实际内容现算，并打印一行警告。实测（把一份元数据写坏、把另一份删掉之后再列）：
 
 ```bash
-ntl-builder.exe --snapshot-list
+ntl-gui.exe --snapshot-list
 ```
 
 ```
@@ -1524,13 +1524,13 @@ rp-20260926-123843\manifest.json  515          ← --no-backup：只有清单，
 
 ```bash
 # 1) 现在建一个恢复点（默认连各章节 data.win 一起真实复制，会占盘）
-ntl-builder.exe --restore-create --name "装汉化前"
+ntl-gui.exe --restore-create --name "装汉化前"
 
 # 2) 看有哪些点
-ntl-builder.exe --restore-list
+ntl-gui.exe --restore-list
 
 # 3) 玩坏之后回退（先关掉游戏；不加 --force 时会自动把「现在」也存成一个点）
-ntl-builder.exe --restore-apply rp-20260926-123841
+ntl-gui.exe --restore-apply rp-20260926-123841
 ```
 
 ### 命令一览
@@ -1553,7 +1553,7 @@ ntl-builder.exe --restore-apply rp-20260926-123841
 #### 1. 列出：`--restore-list`
 
 ```bash
-ntl-builder.exe --restore-list
+ntl-gui.exe --restore-list
 ```
 
 一个点都没有时：
@@ -1578,7 +1578,7 @@ ntl-builder.exe --restore-list
 #### 2. 建立：`--restore-create`
 
 ```bash
-ntl-builder.exe --restore-create --name "演示恢复点"
+ntl-gui.exe --restore-create --name "演示恢复点"
 ```
 
 ```
@@ -1595,7 +1595,7 @@ id 自动生成 `rp-yyyyMMdd-HHmmss`（同一秒内重复建立会加 `-2` / `-3
 只存清单（知道当时的配置、但没有数据可回切）：
 
 ```bash
-ntl-builder.exe --restore-create --no-backup --name "只存清单"
+ntl-gui.exe --restore-create --no-backup --name "只存清单"
 ```
 
 ```
@@ -1608,7 +1608,7 @@ ntl-builder.exe --restore-create --no-backup --name "只存清单"
 #### 3. 记一套配置档的启用表：`--from profile --profile <档id>`
 
 ```bash
-ntl-builder.exe --restore-create --from profile --profile docsdemo --name "按配置档记录"
+ntl-gui.exe --restore-create --from profile --profile docsdemo --name "按配置档记录"
 ```
 
 ```
@@ -1634,7 +1634,7 @@ ntl-builder.exe --restore-create --from profile --profile docsdemo --name "按�
 #### 4. 导出与导入：`--restore-export` / `--restore-import`
 
 ```bash
-ntl-builder.exe --restore-export rp-20260926-123841 "E:\backup\before-boss.ntlrestore"
+ntl-gui.exe --restore-export rp-20260926-123841 "E:\backup\before-boss.ntlrestore"
 ```
 
 ```
@@ -1658,7 +1658,7 @@ data/chapter2/data.win  6144  22
 导入：
 
 ```bash
-ntl-builder.exe --restore-import "E:\backup\before-boss.ntlrestore"
+ntl-gui.exe --restore-import "E:\backup\before-boss.ntlrestore"
 ```
 
 同名点已存在时**不覆盖**：
@@ -1689,8 +1689,8 @@ ntl-builder.exe --restore-import "E:\backup\before-boss.ntlrestore"
 #### 5. 删除：`--restore-delete`
 
 ```bash
-ntl-builder.exe --restore-delete rp-20260926-123843
-ntl-builder.exe --restore-delete nosuchpoint
+ntl-gui.exe --restore-delete rp-20260926-123843
+ntl-gui.exe --restore-delete nosuchpoint
 ```
 
 ```
@@ -1740,10 +1740,10 @@ ntl-builder.exe --restore-delete nosuchpoint
 黑名单**与恢复点无关**：它只在 GameBanana 的搜索/浏览/下载入口过滤条目（`Blacklist.FilterOut` / `IsBlocked`）。它**不会**禁用、隐藏或删除你本地已经装好的 mod。
 
 ```bash
-ntl-builder.exe --block-add 12345 --kind id --note "不想再看到这个"
-ntl-builder.exe --block-add "Boss Rush" --kind name
-ntl-builder.exe --block-list
-ntl-builder.exe --block-remove 12345
+ntl-gui.exe --block-add 12345 --kind id --note "不想再看到这个"
+ntl-gui.exe --block-add "Boss Rush" --kind name
+ntl-gui.exe --block-list
+ntl-gui.exe --block-remove 12345
 ```
 
 实测：

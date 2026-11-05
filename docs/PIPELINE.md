@@ -85,10 +85,10 @@ Neutraled 无法从外部可靠判断一个 mod「有没有依赖控制台输入
 ### 相关命令
 
 ```powershell
-ntl-builder.exe --deploy --chapter chapter5                 # 依据 mod 声明自动选通道
-ntl-builder.exe --deploy --chapter chapter5 --full-deploy   # 强制完整档（忽略声明）
-ntl-builder.exe --deploy --chapter chapter5 --fast-deploy   # 强制快速档
-ntl-builder.exe --deploy --chapter chapter5 --self-check    # 部署后结构化自检（大产物约 +9 秒）
+ntl-gui.exe --deploy --chapter chapter5                 # 依据 mod 声明自动选通道
+ntl-gui.exe --deploy --chapter chapter5 --full-deploy   # 强制完整档（忽略声明）
+ntl-gui.exe --deploy --chapter chapter5 --fast-deploy   # 强制快速档
+ntl-gui.exe --deploy --chapter chapter5 --self-check    # 部署后结构化自检（大产物约 +9 秒）
 ```
 
 ---
@@ -100,7 +100,7 @@ ntl-builder.exe --deploy --chapter chapter5 --self-check    # 部署后结构化
 ### 一条命令
 
 ```powershell
-ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win>
+ntl-gui.exe --import-mod <包目录 | zip | xdelta | data.win>
 ```
 
 自动识别包形态，不需要你告诉它是哪种生态：
@@ -118,8 +118,8 @@ ntl-builder.exe --import-mod <包目录 | zip | xdelta | data.win>
 #### 一条龙：直接从 GameBanana 下载并转换
 
 ```powershell
-ntl-builder.exe --install-id <gamebananaId> [--file N] [--as KIND] [--dry-run] [--json]
-ntl-builder.exe --install-url <url> [--as KIND] [--dry-run]
+ntl-gui.exe --install-id <gamebananaId> [--file N] [--as KIND] [--dry-run] [--json]
+ntl-gui.exe --install-url <url> [--as KIND] [--dry-run]
 # 旧名（仍可用，会打印 [deprecated]）: --fetch <id> / --fetch-mod <id> / --gb-install <id>
 ```
 
@@ -204,7 +204,7 @@ Neutraled 会**响亮报告**而不是静默丢弃：
 ### `--extract-diff`：把整包 mod 抽成"差异层"（**会拒绝不安全的情况**）
 
 ```powershell
-ntl-builder.exe --extract-diff <mod 的 ref/data.win> --chapter chapter5 --name BossRush --author PrimeStrat
+ntl-gui.exe --extract-diff <mod 的 ref/data.win> --chapter chapter5 --name BossRush --author PrimeStrat
 ```
 
 它会对比官方基线，把"这个 mod 改了哪些代码对象"抽成 `references.codes` 层，从而叠加到任意基底上。
@@ -292,9 +292,9 @@ Kristal 是 **LÖVE 工程**（`main.lua` + `conf.lua` + `data/`），**没有 G
 ```powershell
 # 1) 把 Kristal 引擎放到 <游戏根>\Kristal-main，LÖVE 运行时放到 Neutraled\tools\love\
 #    2) 导入 Kristal 项目（自动登记外部章节 + 把项目装进引擎的 mods/）
-ntl-builder.exe --import-mod <Kristal 项目目录> --name <名字> --author <作者>
+ntl-gui.exe --import-mod <Kristal 项目目录> --name <名字> --author <作者>
 # 3) 部署（会生成 Kind=external 的章节条目，并把项目复制进 <引擎>\mods\）
-ntl-builder.exe --deploy --chapter root
+ntl-gui.exe --deploy --chapter root
 # 4) 从 GUI 点「部署并启动」（GUI 会同时起守候进程），进游戏后在章节选择里选它
 ```
 
@@ -341,7 +341,7 @@ KRISTAL RUNNING: pid=2196 title=Frostveil   ← Kristal 跑起来了
 ### 路线 2：源码级差异层 `--layer-from-base`（推荐）
 
 ```powershell
-ntl-builder.exe --layer-from-base <mod 的 ref/data.win> --chapter chapter5 --name BossRush --author PrimeStrat [--dry-run]
+ntl-gui.exe --layer-from-base <mod 的 ref/data.win> --chapter chapter5 --name BossRush --author PrimeStrat [--dry-run]
 ```
 
 #### 为什么不用字节码层
@@ -457,7 +457,7 @@ dojo 的 142 个 `dj_*` + percentage_color 的 94 个脚本因此全部落地（
 部署时（`Injector` 2.8 段，产物资源集合定型之后）自动跑这条守卫，也可以单独跑：
 
 ```
-ntl-builder.exe --asset-guard <data.win> "<层目录[;目录…]>"
+ntl-gui.exe --asset-guard <data.win> "<层目录[;目录…]>"
 ```
 
 两条判据：
@@ -503,7 +503,7 @@ ntl-builder.exe --asset-guard <data.win> "<层目录[;目录…]>"
 （内置字体包之后、2.45 references 复制之前）导入，日志打在 `着色器资源包: <mod id>` 之后。
 
 ```
-ntl-builder.exe --export-shaders "<源 data.win>" "<输出目录（mod 章节目录）>" [--base "<官方基线 data.win>"]
+ntl-gui.exe --export-shaders "<源 data.win>" "<输出目录（mod 章节目录）>" [--base "<官方基线 data.win>"]
 ```
 
 - 带 `--base` 时只导出「基线没有 / 与基线不同」的着色器（与 `--export-packs` 同款语义）；不带就全导。
@@ -650,7 +650,7 @@ chapter4 样例：`gml_Object_obj_titan_enemy_Step_0：改动块 87 处，无冲
 冲突示例 `[合并冲突] gml_Object_obj_grazebox_Collision_obj_collidebullet: 1 处（保留基底版本）`、`gml_Object_obj_heart_Step_0: 5 处`
 ⇒ 冲突时宁可少一个帧率微调，也不能把基底的改动冲掉。
 
-自检：`ntl-builder.exe --merge-selftest`（17 组用例：两侧未改 / 单边改 / 两侧改不同位置 / 同行冲突取基底 / 同点插入 /
+自检：`ntl-gui.exe --merge-selftest`（17 组用例：两侧未改 / 单边改 / 两侧改不同位置 / 同行冲突取基底 / 同点插入 /
 首尾插入 / 删除撞改动 / 空 base|patch|ours / 2200 行大文件走唯一行锚点分支 / 行数守恒）。
 
 边界：三方合并只处理「patch 覆盖的对象」与「基底改动」的重叠，**不解决层新增对象**（见上节）。
@@ -698,7 +698,7 @@ mods/<层名>/<作者>/<章节>/gml/*.gml    # 文件名 = 脚本名；名为 ma
 ### 路线 3：资源包导出 `--export-packs`
 
 ```powershell
-ntl-builder.exe --export-packs <mod 的 ref/data.win> --chapter chapter5 [--out <目录>]
+ntl-gui.exe --export-packs <mod 的 ref/data.win> --chapter chapter5 [--out <目录>]
 ```
 
 把 data.win 里**相对官方基线新增或改动**的精灵 / 声音 / 字体导出成 Neutraled 资源包
@@ -744,7 +744,7 @@ ntl-builder.exe --export-packs <mod 的 ref/data.win> --chapter chapter5 [--out 
 **① 纯代码改动 → 源码级差异层**（`blockless_mantle_holder_arena`，chapter3）
 
 ```powershell
-ntl-builder.exe --layer-from-base "Neutraled\mods\blockless_mantle_holder_arena\unknown\chapter3\ref\data.win" --chapter chapter3 --name blocklesslayer --author unknown
+ntl-gui.exe --layer-from-base "Neutraled\mods\blockless_mantle_holder_arena\unknown\chapter3\ref\data.win" --chapter chapter3 --name blocklesslayer --author unknown
 ```
 
 | 指标 | 结果 |
@@ -764,7 +764,7 @@ ntl-builder.exe --layer-from-base "Neutraled\mods\blockless_mantle_holder_arena\
 字符串多重集比对才看出实质：mod 比原版多 60 个可打印串，全是 PNG 块标记（`IHDR`/`sRGB`/`PLTE`/`tEXtSoftware`/**`Paint.NET 5.1.12`**）⇒ 内容就是**被替换的贴图**。
 
 ```powershell
-ntl-builder.exe --export-packs "Neutraled\mods\ice_e_eram_mod\unknown\chapter3\ref\data.win" --chapter chapter3
+ntl-gui.exe --export-packs "Neutraled\mods\ice_e_eram_mod\unknown\chapter3\ref\data.win" --chapter chapter3
 ```
 
 导出 **11 个资源**（`spr_board_imonfire`、`spr_shadow_mantle_bomb/dash/fire/idle…`；声音 0 导出 / 401 未变 / 115 无内嵌数据，字体 0 导出 / 17 未变）。
@@ -802,7 +802,7 @@ ntl-builder.exe --export-packs "Neutraled\mods\ice_e_eram_mod\unknown\chapter3\r
 用**反编译器当预言机**：从源文件反编译 → `RefCopy` 复制进目标 → 在目标里再反编译 → 文本比对。
 
 ```powershell
-ntl-builder.exe --verify-refcopy <源 data.win> <目标 data.win>
+ntl-gui.exe --verify-refcopy <源 data.win> <目标 data.win>
 ```
 
 实测（60fps → 官方 chapter5 基线，60 个样本）：
@@ -833,7 +833,7 @@ ntl-builder.exe --verify-refcopy <源 data.win> <目标 data.win>
 ### 冲突兜底：`--conflicts`（不部署也能查）
 
 ```powershell
-ntl-builder.exe --conflicts --chapter chapter5
+ntl-gui.exe --conflicts --chapter chapter5
 # 退出码：0 = 无冲突 / 2 = 有 Error 级冲突   ← CI / GUI 友好
 ```
 
@@ -889,12 +889,12 @@ ntl-builder.exe --conflicts --chapter chapter5
 
 ~~~powershell
 # 渲染（每个字体一轮；字符表 = 产物真正会用到的文本，与部署自检同口径）
-ntl-builder.exe --make-cjk-font <输出目录> --ttf <NotoSansSC-VF.ttf> --charset list --chars <字符表文件> --font-name ntl_font_cjk
+ntl-gui.exe --make-cjk-font <输出目录> --ttf <NotoSansSC-VF.ttf> --charset list --chars <字符表文件> --font-name ntl_font_cjk
 
 # 合并进 fonts/ntl_font_cjk.json（Page 置空 → 多 sheet 模式；sheet 改名 ntl_font_cjk_oN.png）
 
 # 复核
-ntl-builder.exe --font-probe chapter4_windows\data.win   # 字形数与字形表自检（逆序对应应为 0）
+ntl-gui.exe --font-probe chapter4_windows\data.win   # 字形数与字形表自检（逆序对应应为 0）
 node <开发期脚本>/font-audit.mjs                        # 缺字 / 空白格门禁（退出码 1 = 有缺口）
 ~~~
 
@@ -981,19 +981,19 @@ Neutraled/cache/
 
 ```bash
 # 查缓存 → 命中则硬链接复用；未命中则部署 + 存缓存；最后由 Steam 拉起游戏
-ntl-builder.exe --launch chapter4
+ntl-gui.exe --launch chapter4
 
 # 设置缓存上限（MB，默认 4096）
-ntl-builder.exe --launch chapter4 --cache-max 8192
+ntl-gui.exe --launch chapter4 --cache-max 8192
 
 # 列出缓存
-ntl-builder.exe --cache-list
+ntl-gui.exe --cache-list
 
 # 清空缓存
-ntl-builder.exe --cache-clear
+ntl-gui.exe --cache-clear
 
 # 查询当前配置是否有缓存（JSON 输出，GUI 用）
-ntl-builder.exe --cache-applied --chapter chapter4
+ntl-gui.exe --cache-applied --chapter chapter4
 ```
 
 #### GUI

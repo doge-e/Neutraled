@@ -23,7 +23,7 @@ namespace Neutraled.Builder;
 ///      没有 ref/data.win 的纯层不做 B（否则会把局部变量、函数名当资源名报出来）。
 ///
 /// 用法：部署时自动调用；也可单独跑
-///   ntl-builder.exe --asset-guard &lt;data.win&gt; &lt;层目录[;目录…]&gt;</summary>
+///   ntl-gui.exe --asset-guard &lt;data.win&gt; &lt;层目录[;目录…]&gt;</summary>
 public static class AssetNameGuard
 {
     /// <summary>「像资源名」的前缀（GameMaker 惯例）：B 判据靠它挡掉局部变量与函数名。</summary>

@@ -135,7 +135,7 @@ public static class DownloadQueue
         }
     }
 
-    /// <summary>落盘队列（Paths.SafeWrite，带退避重试；不用 File.WriteAllText —— 可能同时有别的 ntl-builder 在写）。</summary>
+    /// <summary>落盘队列（Paths.SafeWrite，带退避重试；不用 File.WriteAllText —— 可能同时有别的 ntl-gui 进程在写）。</summary>
     private static void Save(string gameRoot, List<Item> items)
     {
         Directory.CreateDirectory(Paths.DownloadsRoot(gameRoot));

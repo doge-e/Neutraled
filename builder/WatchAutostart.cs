@@ -70,8 +70,9 @@ public static class WatchAutostart
     {
         try
         {
-            var self = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(self))
+            // v1.1.0：守候进程 = ntl-gui.exe（builder 已并进 GUI）。Paths.SelfExe 会处理 dotnet 跑库的场景。
+            var self = Paths.SelfExe;
+            if (string.IsNullOrEmpty(self) || !File.Exists(self))
             {
                 if (!quiet) Console.WriteLine(L("  [警告] 拿不到自身 exe 路径，无法启动守候进程"));
                 return false;
@@ -231,7 +232,7 @@ public static class WatchAutostart
         catch (Exception ex) { Console.WriteLine(L("  [警告] 删除开机启动项失败: {0}", ex.Message)); }
 
         Console.WriteLine(IsWatcherAlive()
-            ? L("  注意：当前正在跑的守候进程**没有**被杀掉（它只影响下次登录/兜底）；要立刻停它请在任务管理器结束 ntl-builder.exe。")
+            ? L("  注意：当前正在跑的守候进程**没有**被杀掉（它只影响下次登录/兜底）；要立刻停它请在任务管理器结束 ntl-gui.exe（命令行里带 --watch-external 那个）。")
             : L("  当前没有守候进程在跑。"));
         return 0;
     }
@@ -256,7 +257,7 @@ public static class WatchAutostart
 
     private static string WatcherVbsBody(string gameRoot)
     {
-        var self = Environment.ProcessPath ?? Path.Combine(Paths.NeutraledRoot(gameRoot), "builder", "bin", "Release", "net9.0", "ntl-builder.exe");
+        var self = Paths.SelfExe;   // v1.1.0：唯一 exe = ntl-gui.exe（兜底路径也在 Paths 里）
         var root = Paths.NeutraledRoot(gameRoot);
         // ★ --game 必须是**游戏根**，不是 Neutraled 目录：这里曾经把 root 传下去（1.0.3 / 1.0.4 出厂件
         //   就带这个毛病），于是「登录 / 解锁 / 每分钟兜底」拉起的守候全程把 Neutraled 当游戏根 ——
@@ -267,7 +268,7 @@ public static class WatchAutostart
         //   root 只留给 CurrentDirectory —— 守候的工作目录仍在 Neutraled 下，日志与相对路径照旧。
         var game = Path.GetFullPath(gameRoot);
         var sb = new StringBuilder();
-        sb.Append("' Neutraled 守候进程启动器（由 ntl-builder --watch-autostart on 生成，可随时重新生成）\r\n");
+        sb.Append("' Neutraled 守候进程启动器（由 ntl-gui.exe --watch-autostart on 生成，可随时重新生成）\r\n");
         sb.Append("' 作用：无窗口、无弹窗地启动 --watch-external。选中 Kristal 等外部章节时，只有它在跑才能接管。\r\n");
         sb.Append("Option Explicit\r\n");
         sb.Append("Dim fso, sh, ntl, root, game\r\n");
@@ -286,7 +287,7 @@ public static class WatchAutostart
     {
         var target = WatcherVbs(gameRoot);
         var sb = new StringBuilder();
-        sb.Append("' Neutraled 开机自启蹦床（由 ntl-builder --watch-autostart on 生成）\r\n");
+        sb.Append("' Neutraled 开机自启蹦床（由 ntl-gui.exe --watch-autostart on 生成）\r\n");
         sb.Append("' 只负责把 scripts\\watch-external.vbs 跑起来，真正的启动逻辑在那边（单一来源）。\r\n");
         sb.Append("Option Explicit\r\n");
         sb.Append("Dim fso, sh, target\r\n");
@@ -348,7 +349,7 @@ public static class WatchAutostart
     //
     // ★ 踩过的坑：用 Process.Start 起守候时，子进程会继承父进程的 stdout/stderr 句柄。
     //   守候是常驻进程（默认活 12 小时），于是**父进程的调用方**永远等不到 EOF：
-    //   实测在 PowerShell 里 `& ntl-builder --ensure-watcher ... *> log` 直接卡死整条流水线
+    //   实测在 PowerShell 里 `& ntl-gui.exe --ensure-watcher ... *> log` 直接卡死整条流水线
     //   （GUI 的 RunBuilderAsync 读 stdout 到 EOF、部署脚本重定向输出，都会同样中招）。
     //   这里用 DETACHED_PROCESS + bInheritHandles=false 起进程：不继承任何句柄、没有控制台，
     //   子进程的标准句柄无效 ⇒ .NET 退化成丢弃写入（守候本来就在 GoSilent 里把输出改到日志文件）。

@@ -2,14 +2,17 @@
 
   <PropertyGroup>
     <ApplicationIcon>..\tools\icon.ico</ApplicationIcon>
-    <OutputType>WinExe</OutputType>
+    <!-- v1.1.0：Studio 并进 ntl-gui.exe，不再单独产出 exe（Program.Main 保留为库入口）。 -->
+    <OutputType>Library</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ntl-studio</AssemblyName>
     <RootNamespace>Neutraled.Studio</RootNamespace>
-    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
   </PropertyGroup>
 
 </Project>

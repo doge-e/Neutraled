@@ -70,14 +70,14 @@ Steam 更新游戏时会把活跃的 `data.win` **换回原版**（我们注入�
 ## 4. 命令速查
 
 ```powershell
-ntl-builder --update-check                     # 只读检测：0=没变 2=要处理 3=检测失败（不写任何文件）
-ntl-builder --adopt-current                    # 预览：会归档哪些旧备份、会采纳哪些新原版（不改盘）
-ntl-builder --adopt-current --yes              # 采纳当前原版为新基线（旧备份移进 backup/history/，不删）
-ntl-builder --deploy-all --force               # 用新基线重新注入全部章节
-ntl-builder --deploy-all --yes                 # 检测到更新时：先采纳、再继续部署（不加 --yes 会停下）
-ntl-builder --base-mod none                    # 不使用整包 mod 的 data.win（整包 mod 还没适配新版时）
-ntl-builder --accept-base-drift                # 明知整包基底与游戏版本不匹配仍继续
-ntl-builder --no-update-check                  # 跳过前置检测（并行 worker 内部使用）
+ntl-gui.exe --update-check                     # 只读检测：0=没变 2=要处理 3=检测失败（不写任何文件）
+ntl-gui.exe --adopt-current                    # 预览：会归档哪些旧备份、会采纳哪些新原版（不改盘）
+ntl-gui.exe --adopt-current --yes              # 采纳当前原版为新基线（旧备份移进 backup/history/，不删）
+ntl-gui.exe --deploy-all --force               # 用新基线重新注入全部章节
+ntl-gui.exe --deploy-all --yes                 # 检测到更新时：先采纳、再继续部署（不加 --yes 会停下）
+ntl-gui.exe --base-mod none                    # 不使用整包 mod 的 data.win（整包 mod 还没适配新版时）
+ntl-gui.exe --accept-base-drift                # 明知整包基底与游戏版本不匹配仍继续
+ntl-gui.exe --no-update-check                  # 跳过前置检测（并行 worker 内部使用）
 ```
 
 > `--yes` 只代表「我确认这次操作」：它不会跳过归档，也不会删掉任何备份。
@@ -89,13 +89,13 @@ ntl-builder --no-update-check                  # 跳过前置检测（并行 wor
 ### 5.1 Steam 更新了游戏
 
 ```text
-$ ntl-builder --update-check
+$ ntl-gui.exe --update-check
   ⛔ 结论：检测到游戏更新（活跃 data.win 已被换回原版 / buildid 变了）
   退出码 2 = 需要处理
 
-$ ntl-builder --adopt-current --yes        # 采纳新原版（旧备份进 backup/history/<buildid>/）
-$ ntl-builder --deploy-all --force         # 重新注入
-$ ntl-builder --update-check               # 应变成 退出码 0
+$ ntl-gui.exe --adopt-current --yes        # 采纳新原版（旧备份进 backup/history/<buildid>/）
+$ ntl-gui.exe --deploy-all --force         # 重新注入
+$ ntl-gui.exe --update-check               # 应变成 退出码 0
 ```
 
 直接跑 `--deploy-all` 而不加 `--yes` 时，它会在**写任何文件之前**停下并打印上面这几步。
@@ -104,15 +104,15 @@ $ ntl-builder --update-check               # 应变成 退出码 0
 
 - `--update-check` → 退出码 2，报告里写 `新章节: chapter6（已登记，等待确认后才注入）`；
 - `--deploy-all` 会**跳过**未确认的新章节（打印 `跳过未确认的新章节: chapter6`），其余章节照常；
-- 确认要注入：`ntl-builder --adopt-current --yes`（只是登记确认 + 给新章节建立原版备份）→ 再 `--deploy-all`。
+- 确认要注入：`ntl-gui.exe --adopt-current --yes`（只是登记确认 + 给新章节建立原版备份）→ 再 `--deploy-all`。
 
 ### 5.3 整包 `data.win` 型 mod（汉化包等）还没适配新版
 
 整包 mod 的 `ref/data.win` 是绑定游戏版本的。游戏更新后继续用它 = 把本体回退到旧版本，因此检测会拦下：
 
 ```powershell
-ntl-builder --deploy-all --base-mod none        # 只用新原版（该 mod 的字体/文本不会进产物）
-ntl-builder --deploy-all --accept-base-drift    # 或者：确认过差异，明知风险继续
+ntl-gui.exe --deploy-all --base-mod none        # 只用新原版（该 mod 的字体/文本不会进产物）
+ntl-gui.exe --deploy-all --accept-base-drift    # 或者：确认过差异，明知风险继续
 ```
 
 等 mod 作者更新后，把它的文件换掉，检测会自动认为「已适配当前版本」（记录里那份 `baseModFp` 变了即视为适配）。
@@ -123,7 +123,7 @@ ntl-builder --deploy-all --accept-base-drift    # 或者：确认过差异，明
 
 ```powershell
 Copy-Item Neutraled\backup\history\<buildid>\neutraled\* Neutraled\backup\ -Recurse -Force
-ntl-builder --uninstall --force     # 用旧备份还原（会把游戏降级）
+ntl-gui.exe --uninstall --force     # 用旧备份还原（会把游戏降级）
 ```
 
 > `--uninstall` 在检测到「备份陈旧」时会**拒绝**执行（退出码 3），避免一次误操作把游戏降级。
@@ -151,5 +151,5 @@ ntl-builder --uninstall --force     # 用旧备份还原（会把游戏降级）
 | `--update-check` 退出码 3 | 检测本身失败（读不到 acf / 权限）。命令会打印 `[错误] 更新检测失败: …`；`--no-update-check` 可绕过（不推荐） |
 | 报告里 `Steam : （未找到 appmanifest_*.acf）` | 非 Steam 安装 / acf 被删：此时只能靠 `data.win` 指纹判更新，章节与本体仍然能判 |
 | `--deploy-all` 一直退出码 2 | 检测到更新但没给 `--yes`；按打印的三步执行即可 |
-| 检测说没更新，但游戏里 mod 不见了 | 跑 `ntl-builder --update-check`，再看报告里各槽位是不是「产物缺失」→ `--deploy-all` 重建 |
+| 检测说没更新，但游戏里 mod 不见了 | 跑 `ntl-gui.exe --update-check`，再看报告里各槽位是不是「产物缺失」→ `--deploy-all` 重建 |
 | `backup/history/` 越来越大 | 每次采纳归档一份旧备份（设计如此，**不删**）；确认不再需要旧版本时手动清理对应 `<buildid>` 目录 |

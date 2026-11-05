@@ -45,11 +45,11 @@ dotnet build sdk\samples\SampleHello\SampleHello.csproj -c Release
 ## 验证
 
 ```
-ntl-builder.exe --plugin-list                        # 状态应为 enabled，且无「入口程序集缺失」
-ntl-builder.exe --plugin-hooks                       # 应打印 [加载] sample-hello 与 register 行
-ntl-builder.exe --plugin-info sample-hello
-ntl-builder.exe --plugin-disable sample-hello        # plugin.json 里 enabled 变 false
-ntl-builder.exe --plugin-enable  sample-hello        # 再变回 true
+ntl-gui.exe --plugin-list                        # 状态应为 enabled，且无「入口程序集缺失」
+ntl-gui.exe --plugin-hooks                       # 应打印 [加载] sample-hello 与 register 行
+ntl-gui.exe --plugin-info sample-hello
+ntl-gui.exe --plugin-disable sample-hello        # plugin.json 里 enabled 变 false
+ntl-gui.exe --plugin-enable  sample-hello        # 再变回 true
 ```
 
 开发第三方插件的完整指南见 `sdk/README.md`；管理文档见 `docs/MANAGE.md` 第 7 节「插件与钩子」。

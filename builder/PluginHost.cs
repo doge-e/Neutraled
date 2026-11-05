@@ -13,7 +13,7 @@ namespace Neutraled.Builder;
 /// （插件是最不可控的第三方代码，这里绝不能让它把 builder 带崩）。
 ///
 /// 三个实测教训，写在这里免得后来人再踩：
-///   1) **宿主程序集必须解析回主程序那一份**。插件目录里常见「顺手拷一份 ntl-builder.exe」，
+///   1) **宿主程序集必须解析回主程序那一份**。插件目录里常见「顺手拷一份 ntl-gui.exe」，
 ///      如果让解析器按目录解析，INeutraledPlugin 会出现**两份类型** → 强转静默失败（报「没有实现接口的类型」）。
 ///      所以 Resolving 里对宿主程序集名直接短路返回 typeof(PluginHost).Assembly。
 ///   2) **SetResult 每次调用前必须清空**。插件的 Reason 是「上一次调用写下的」这种串台，

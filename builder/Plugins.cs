@@ -444,7 +444,7 @@ public static class Plugins
         if (list.Count == 0)
         {
             Paths.Log(L("  （无插件）"));
-            Paths.Log(L("  装法: ntl-builder --plugin-install <目录或 .ntlplugin>"));
+            Paths.Log(L("  装法: ntl-gui.exe --plugin-install <目录或 .ntlplugin>"));
             return;
         }
 

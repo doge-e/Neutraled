@@ -21,16 +21,16 @@
 ## 2. 启动
 
 ```powershell
-ntl-builder --web                                   # 默认端口 7931，并自动打开浏览器
-ntl-builder --web --port 8000                       # 换端口
-ntl-builder --web --no-open                         # 不自动开浏览器
-ntl-builder --web --no-open --port 7933 --auto-stop # 空闲自动退出（脚本 / 短测用）
+ntl-gui.exe --web                                   # 默认端口 7931，并自动打开浏览器
+ntl-gui.exe --web --port 8000                       # 换端口
+ntl-gui.exe --web --no-open                         # 不自动开浏览器
+ntl-gui.exe --web --no-open --port 7933 --auto-stop # 空闲自动退出（脚本 / 短测用）
 ```
 
 也可以直接跑发布出来的 exe（Windows 上加不加 `.exe` 都行）：
 
 ```powershell
-& 'E:\steam\steamapps\common\DELTARUNE\Neutraled\builder\bin\Release\net9.0\ntl-builder.exe' --web --no-open --port 7933 --auto-stop
+& 'E:\steam\steamapps\common\DELTARUNE\Neutraled\gui\bin\Release\net9.0-windows\ntl-gui.exe' --web --no-open --port 7933 --auto-stop
 ```
 
 真实输出（实测，工作目录 = 游戏根）：
@@ -90,7 +90,7 @@ LocalAddress LocalPort  State
 
 ```powershell
 $env:NTL_WEB_IDLE_MS = '1500'    # 演示用：1.5 秒空闲
-ntl-builder --web --no-open --port 7933 --auto-stop
+ntl-gui.exe --web --no-open --port 7933 --auto-stop
 ```
 
 ```
@@ -331,4 +331,4 @@ Get-NetTCPConnection -LocalPort 7933 -State Listen -ErrorAction SilentlyContinue
 - **破坏性操作没有服务端二次确认**：`window.confirm` 是前端行为，直接 POST 就会执行。
 - **未实测**（源码行为，未在本机复现）：非本机访问的 403、未注入钩子时的 501、macOS / Linux 的 `open` / `xdg-open` 分支、Ctrl+C 退出、`--port` 的取值边界、`HEAD` 请求。
 - 本机只在 **Windows** 上验证过（默认 7931 与实测用的 7933 / 7935 / 7936 端口）。界面是零依赖原生 JS，理论上跨平台，但没有在其它平台上跑过。
-- 本文档的实测输出取自 2026-09-26 的 `builder/bin/Release/net9.0/ntl-builder.exe`（该二进制在文档写作期间被 Captain 反复重建）。行为以 `builder/WebUi.cs` 与 `web/app.js` 的当前源码为准。
+- 本文档的实测输出取自 2026-09-26 的 `gui/bin/Release/net9.0-windows/ntl-gui.exe`（该二进制在文档写作期间被 Captain 反复重建）。行为以 `builder/WebUi.cs` 与 `web/app.js` 的当前源码为准。

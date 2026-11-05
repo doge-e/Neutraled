@@ -53,7 +53,7 @@ public static class Localizer
             "Hot reload requested (applies on the next frame; launch the game first if it is not running)",
         ["符号表已加载: {0} 项（Ctrl+Space 触发补全）"] = "Symbol table loaded: {0} entries (Ctrl+Space for completion)",
         ["[警告] 符号表加载失败: {0}"] = "[Warning] failed to load symbol table: {0}",
-        ["[错误] 找不到 ntl-builder.exe"] = "[Error] ntl-builder.exe not found",
+        ["[错误] 找不到 ntl-gui.exe"] = "[Error] ntl-gui.exe not found",
         ["启动游戏失败: {0}"] = "Failed to launch game: {0}",
         ["启动失败（退出码 {0}）；详见日志"] = "Launch failed (exit code {0}); see the log",
 

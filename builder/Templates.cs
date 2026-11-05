@@ -216,9 +216,9 @@ public static class Templates
             tasks.Add("  \"version\": \"2.0.0\",");
             tasks.Add("  \"tasks\": [");
             tasks.Add("    { \"label\": \"Neutraled: 部署并启动\", \"type\": \"shell\", \"command\": \"${workspaceFolder}/launch.ps1\" },");
-            tasks.Add("    { \"label\": \"Neutraled: 静态检查\", \"type\": \"shell\", \"command\": \"${workspaceFolder}/builder/bin/Release/net9.0/ntl-builder.exe\", \"args\": [\"--lint\"] },");
-            tasks.Add("    { \"label\": \"Neutraled: 自检\", \"type\": \"shell\", \"command\": \"${workspaceFolder}/builder/bin/Release/net9.0/ntl-builder.exe\", \"args\": [\"--selftest\", \"--no-launch\"] },");
-            tasks.Add("    { \"label\": \"Neutraled: 可用模板\", \"type\": \"shell\", \"command\": \"${workspaceFolder}/builder/bin/Release/net9.0/ntl-builder.exe\", \"args\": [\"--templates\"] }");
+            tasks.Add("    { \"label\": \"Neutraled: 静态检查\", \"type\": \"shell\", \"command\": \"${workspaceFolder}/gui/bin/Release/net9.0-windows/ntl-gui.exe\", \"args\": [\"--lint\"] },");
+            tasks.Add("    { \"label\": \"Neutraled: 自检\", \"type\": \"shell\", \"command\": \"${workspaceFolder}/gui/bin/Release/net9.0-windows/ntl-gui.exe\", \"args\": [\"--selftest\", \"--no-launch\"] },");
+            tasks.Add("    { \"label\": \"Neutraled: 可用模板\", \"type\": \"shell\", \"command\": \"${workspaceFolder}/gui/bin/Release/net9.0-windows/ntl-gui.exe\", \"args\": [\"--templates\"] }");
             tasks.Add("  ]");
             tasks.Add("}");
             File.WriteAllText(Path.Combine(vsc, "tasks.json"), string.Join("\n", tasks));

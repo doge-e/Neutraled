@@ -355,7 +355,7 @@ public sealed class EditorForm : Form
             root.DropDownItems.Add(item);
         }
         root.DropDownItems.Add(new ToolStripSeparator());
-        var note = Theme.Item("说明: 双击 exe / 无参数启动时打开该章节；也可用 ntl-mapedit default-chapter 设置");
+        var note = Theme.Item("说明: 双击 exe / 无参数启动时打开该章节；也可用 ntl-gui.exe mapedit default-chapter 设置");
         note.Enabled = true;
         root.DropDownItems.Add(note);
         root.DropDownOpening += (s, e) =>
@@ -3545,10 +3545,10 @@ public sealed class EditorForm : Form
             System.IO.Compression.ZipFile.CreateFromDirectory(gen.ModDir, dst,
                 System.IO.Compression.CompressionLevel.Optimal, false);
             long kb = new FileInfo(dst).Length / 1024;
-            string text = "已导出 mod 包：\n" + dst + "\n\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-builder --mod-install。";
+            string text = "已导出 mod 包：\n" + dst + "\n\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-gui.exe --mod-install。";
             // 状态栏先落「已导出」：后面还有安装询问框，脚本/用户可能先读状态栏（QA full10 S14.3 卡在这）。
             SetStatusLine($"已导出 .ntlmod：{Path.GetFileName(dst)}（{kb} KB）",
-            "mod 包: " + dst + "\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-builder --mod-install");
+            "mod 包: " + dst + "\n安装：把 .ntlmod 放进 Neutraled/mods/，或用 ntl-gui.exe --mod-install");
             var install = MessageBox.Show(this, text + "\n\n现在同时安装到 Neutraled/mods/ 吗？（会替换同名 id 的旧安装）",
                 "导出 .ntlmod", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (install == DialogResult.Yes)

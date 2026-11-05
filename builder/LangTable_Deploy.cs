@@ -10,10 +10,10 @@ public static class LangTable_Deploy
         d["           ……（还有更多，已省略）"] = "           ...(more items omitted)";
         d["           部署时 ByName() 会命中旧条目，改动静默不生效。"] = "           At deploy time ByName() hits the old entry, so the change silently has no effect.";
         d["           （Neutraled/templates 不存在 —— 安装包不完整？）"] = "           (Neutraled/templates does not exist -- is the package incomplete?)";
-        d["         ntl-builder.exe --new-chapter \"我的第一个章节\""] = "         ntl-builder.exe --new-chapter 'My First Chapter'";
+        d["         ntl-gui.exe --new-chapter \"我的第一个章节\""] = "         ntl-gui.exe --new-chapter 'My First Chapter'";
         d["         → 说明 RefCopy 是**新建条目**而不是**替换同名条目**；"] = "         → means RefCopy makes a **new entry** rather than **replacing the same-named entry**;";
-        d["         先跑 ntl-builder.exe --new-chapter help 看可 fork 的清单，或见下面的列表"] = "         Run ntl-builder.exe --new-chapter help to see the forkable list, or see the list below";
-        d["         先跑一次：ntl-builder.exe --deploy --chapter {0}   （它会自动备份原版）"] = "         Run this once: ntl-builder.exe --deploy --chapter {0}   (it backs up the original automatically)";
+        d["         先跑 ntl-gui.exe --new-chapter help 看可 fork 的清单，或见下面的列表"] = "         Run ntl-gui.exe --new-chapter help to see the forkable list, or see the list below";
+        d["         先跑一次：ntl-gui.exe --deploy --chapter {0}   （它会自动备份原版）"] = "         Run this once: ntl-gui.exe --deploy --chapter {0}   (it backs up the original automatically)";
         d["         其它候选："] = "         Other candidates:";
         d["         可 fork 的 mod 章节目录："] = "         Forkable mod chapter directories:";
         d["         可用模板："] = "         Available templates:";
@@ -23,7 +23,7 @@ public static class LangTable_Deploy
         d["         请把它作为**基底**（references.assets=inherit），或改用精灵/声音包重新打包。"] = "         Use it as the **base** (references.assets=inherit), or repackage it as a sprite/sound pack instead.";
         d["         （Mods.IsChapterFolder 的硬性要求；fork 时说明源 mod 的目录结构不标准）"] = "         (hard requirement of Mods.IsChapterFolder; when forking it means the source mod directory layout is non-standard)";
         d["      --slot N  --fork <mod>[:作者[:chapterN]]  --template room|empty  --force"] = "      --slot N  --fork <mod>[:author[:chapterN]]  --template room|empty  --force";
-        d["      ntl-builder.exe --new-chapter help            看这份帮助"] = "      ntl-builder.exe --new-chapter help            show this help";
+        d["      ntl-gui.exe --new-chapter help            看这份帮助"] = "      ntl-gui.exe --new-chapter help            show this help";
         d["    (无)"] = "    (none)";
         d["    ...已处理 {0}/{1}"] = "    ...processed {0}/{1}";
         d["    1) 把它作为该章的**基底**（Neutraled 里它就是合理的整包 mod）"] = "    1) Use it as the **base** for that chapter (in Neutraled it is a legitimate full-package mod)";
@@ -65,8 +65,8 @@ public static class LangTable_Deploy
         d["  --- 前 12 个改动对象的语义差异 ---"] = "  --- semantic diff of the first 12 changed objects ---";
         d["  --- 差异指令明细（Kind / ReferenceType / 值）---"] = "  --- diff instruction details (Kind / ReferenceType / value) ---";
         d["  --- 问题明细（前 10）---"] = "  --- problem details (first 10) ---";
-        d["  1) ntl-builder.exe --deploy --chapter root --force           生成章节产物（平行时间线会自动一起生成）"] = "  1) ntl-builder.exe --deploy --chapter root --force           generate the chapter output (parallel timelines are generated along with it)";
-        d["  1) ntl-builder.exe --deploy --chapter {0} --force     把 mod 叠加进官方第 {1} 章"] = "  1) ntl-builder.exe --deploy --chapter {0} --force     overlay the mod onto official chapter {1}";
+        d["  1) ntl-gui.exe --deploy --chapter root --force           生成章节产物（平行时间线会自动一起生成）"] = "  1) ntl-gui.exe --deploy --chapter root --force           generate the chapter output (parallel timelines are generated along with it)";
+        d["  1) ntl-gui.exe --deploy --chapter {0} --force     把 mod 叠加进官方第 {1} 章"] = "  1) ntl-gui.exe --deploy --chapter {0} --force     overlay the mod onto official chapter {1}";
         d["  2) 启动 DELTARUNE（Steam）→ 章节选择器里翻到你的章节"] = "  2) Launch DELTARUNE (via Steam) → page to your chapter in the chapter selector";
         d["  2) 启动 DELTARUNE（Steam），进第 {0} 章看效果"] = "  2) Launch DELTARUNE (via Steam) and enter chapter {0} to see the result";
         d["  JSON 报告: "] = "  JSON report: ";
@@ -242,7 +242,7 @@ public static class LangTable_Deploy
         d["失败"] = "FAIL";
         d["找不到代码条目: "] = "Code entry not found: ";
         d["找不到引导目标代码条目: {0}"] = "Boot target code entry not found: {0}";
-        d["用法：ntl-builder.exe --new-chapter <章节名字> [选项]"] = "usage: ntl-builder.exe --new-chapter <chapter name> [options]";
+        d["用法：ntl-gui.exe --new-chapter <章节名字> [选项]"] = "usage: ntl-gui.exe --new-chapter <chapter name> [options]";
         d["结果: "] = "Result: ";
         d["结果: 全部通过（用时 "] = "Result: all passed (elapsed ";
         d["结果: 发现严重问题（失败 "] = "Result: found serious problems (failed ";

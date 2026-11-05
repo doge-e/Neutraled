@@ -33,7 +33,7 @@ DELTARUNE 的 Everest 式 mod 管理器 / API：mod 平等叠加、**绝不修�
 | Kristal 兼容层 | 类系统（22 基类）/对象/敌人/LOVE 桥接 |
 | 外部章节 | 成品程序（Kristal / 冰封帷幕）注册为章节，窗口隐藏 + 0.7 s 回程 |
 | 安装器 | `--install` / `--uninstall`，沙箱往返实测 data.win **逐字节还原** |
-| 地图 / 战斗 / 剧情编辑器 | `mapedit/`（`ntl-mapedit.exe`）：原版 data 直编（房间/图层/实例/瓦片）、原版对话文本覆盖、战斗与剧情步骤（含原版 event/script）；**地图/房间改动差分成 `roomPatches`/`rooms` 进 mod**（房间头字段 / 实例增删改 / 瓦片逐格 / 图层增删 / LegacyTiles / 改名 / **删除 = 从 RoomOrder 摘除** / 新房间带内容）；保存不再另存 data.win；保存即生成 mod、可导出并安装 `.ntlmod`（`install-ntlmod`）；字段口径见 `docs/ROOM_PATCHES.md`；CLI 自检 mapedit-test / battle-test（97）/ settings-test（25）/ vanilla-scan-test / room-probe 全绿 |
+| 地图 / 战斗 / 剧情编辑器 | `mapedit/`（`ntl-gui.exe mapedit`）：原版 data 直编（房间/图层/实例/瓦片）、原版对话文本覆盖、战斗与剧情步骤（含原版 event/script）；**地图/房间改动差分成 `roomPatches`/`rooms` 进 mod**（房间头字段 / 实例增删改 / 瓦片逐格 / 图层增删 / LegacyTiles / 改名 / **删除 = 从 RoomOrder 摘除** / 新房间带内容）；保存不再另存 data.win；保存即生成 mod、可导出并安装 `.ntlmod`（`install-ntlmod`）；字段口径见 `docs/ROOM_PATCHES.md`；CLI 自检 mapedit-test / battle-test（97）/ settings-test（25）/ vanilla-scan-test / room-probe 全绿 |
 | 中文字体 | 内置 **OFL 开源字体（Noto Sans SC/JP/KR/Symbols 2/Emoji）离屏渲染**的字形包：**4974 字形 / 4 张位图页**（2026-09-30 全量重渲；许可见 `fonts/OFL-NOTICE.txt`）；内容级自检保证「文本 × 字体」匹配 |
 | 启动性能 | 冷启动 **2.94 s** 出窗口并接管章节选择器（修复前 22.39 s） |
 
@@ -68,8 +68,8 @@ powershell -ExecutionPolicy Bypass -File _test\fulltest-external.ps1 # 需独占
 与**产物字体的字形集合**求覆盖，以 `fnt_main` 为准判定。
 
 ```
-ntl-builder --content-check all [--out report.json]
-ntl-builder --verify --chapter chapter1     # 已并入部署后自检 (f) 项
+ntl-gui.exe --content-check all [--out report.json]
+ntl-gui.exe --verify --chapter chapter1     # 已并入部署后自检 (f) 项
 ```
 
 事故原型：汉化把文本换成中文，基底却选成原版 → `fnt_main` 只有 95 个 ASCII 字形
@@ -272,7 +272,7 @@ powershell -ExecutionPolicy Bypass -File _test\autotest.ps1 `
 ### 🛠 单独运行某一项
 
 ```powershell
-$exe = ".\builder\bin\Release\net9.0\ntl-builder.exe"
+$exe = ".\gui\bin\Release\net9.0-windows\ntl-gui.exe"
 
 & $exe --lint                        # 静态检查
 & $exe --doctor                      # 自检

@@ -360,7 +360,7 @@ public sealed class MainForm : Form
         Application.DoEvents();
     }
 
-    /// <summary>刷新 mod 列表（C4 P1-13：数据源 = ntl-builder --mod-list --json，与部署共用同一套叶子
+    /// <summary>刷新 mod 列表（C4 P1-13：数据源 = ntl-gui.exe --mod-list --json，与部署共用同一套叶子
     /// 扫描规则 ModScanner；GUI 不再自己写第三套扫描，避免"GUI 里看得到、部署却扫不到"）。</summary>
     private async Task RefreshModsAsync()
     {
@@ -710,7 +710,7 @@ public sealed class MainForm : Form
     /// <summary>跑 builder，并把拼好的完整命令行打进日志（便于核对参数确实带上了）。</summary>
     private async Task<int> RunBuilderCmdAsync(string args)
     {
-        Log("> ntl-builder.exe " + args);
+        Log("> ntl-gui.exe " + args);
         return await Program.RunBuilderAsync(args, Log);
     }
 
@@ -777,7 +777,7 @@ public sealed class MainForm : Form
 
         if (adopt)
         {
-            Log("> ntl-builder.exe --adopt-current --yes");
+            Log("> ntl-gui.exe --adopt-current --yes");
             var arc = await Program.RunBuilderAsync("--adopt-current --yes", Log);
             if (arc != 0)
             {
@@ -1170,6 +1170,11 @@ public sealed class MainForm : Form
             y += 42 + h.Height + 8;
             return b;
         }
+        // v1.1.0：地图编辑器和 Studio 都并进本 exe 了 —— 这里是最容易找到的入口（用户只需要打开这一个 exe）。
+        Add(Localizer.T("地图 / 战斗 / 剧情编辑器"), Localizer.T("直接编辑原版 data：房间、对话、战斗、剧情；保存即生成 ntl mod（不写原版 data）"))
+            .Click += (_, _) => LaunchTool("mapedit");
+        Add(Localizer.T("Studio 脚本编辑器"), Localizer.T("编辑 Lua / NTL live 脚本，带热重载、日志与部署"))
+            .Click += (_, _) => LaunchTool("studio");
         Add(Localizer.T("Kristal 宿主合并"), Localizer.T("项目 + 插件 → 一个 mod（插件型 mod 缺宿主时用）"))
             .Click += async (_, _) => await KristalMergeAsync(dlg);
         Add(Localizer.T("制作 B 面存档"), Localizer.T("任意章节直接开 B 面，不用从第二章重打"))
@@ -1751,8 +1756,28 @@ public sealed class MainForm : Form
 
     private string? FindBuilderExe()
     {
-        var p = Path.Combine(Program.NeutraledRoot, "builder", "bin", "Release", "net9.0", "ntl-builder.exe");
+        // v1.1.0：builder 并进 ntl-gui.exe 了，"builder 可执行文件"就是当前这个 exe（用命令行参数区分行为）。
+        var p = Program.SelfExe;
         return File.Exists(p) ? p : null;
+    }
+
+    /// <summary>打开合并进本 exe 的子工具（mapedit = 地图/战斗/剧情编辑器，studio = 脚本编辑器）。
+    /// 起一个自己的子进程（保留各自的窗口/生命周期），而不是进程内直接调 Main（否则主界面会被子工具的
+    /// Application.Run 接管，关掉编辑器就连管理器一起退出）。</summary>
+    private void LaunchTool(string sub)
+    {
+        try
+        {
+            Log("> ntl-gui.exe " + sub);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Program.SelfExe,
+                Arguments = sub,
+                UseShellExecute = false,
+                WorkingDirectory = Program.NeutraledRoot
+            });
+        }
+        catch (Exception ex) { Log(Localizer.T("启动 builder 失败") + ": " + ex.Message); }
     }
 
     /// <summary>运行 builder 命令（诊断/恢复/安装用）</summary>

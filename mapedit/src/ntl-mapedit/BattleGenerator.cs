@@ -307,7 +307,7 @@ public static class BattleGenerator
         sb.AppendLine("## 用法");
         sb.AppendLine();
         sb.AppendLine("1. 把本目录（含 mod.json 的这层）放进 Neutraled/mods/<mod>/<author>/<leaf>/。");
-        sb.AppendLine("2. ntl-builder.exe --deploy-all --force（或 --launch <leaf>）部署。");
+        sb.AppendLine("2. ntl-gui.exe --deploy-all --force（或 --launch <leaf>）部署。");
         sb.AppendLine("3. 游戏里按 F2 打开控制台：");
         sb.AppendLine("   - battle list / battle start <id> / battle ow <id> / battle info <id> / battle stop");
         sb.AppendLine("   - dialogue list / dialogue start <id> / dialogue stop");

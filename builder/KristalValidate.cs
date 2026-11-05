@@ -10,7 +10,7 @@ namespace Neutraled.Builder;
 ///   第 2 层：API 覆盖率 —— 统计用了哪些 NTL 没实现的 API
 ///   第 3 层：风险分级 —— 标出最可能出问题的脚本（按未实现 API 数量排序）
 ///
-/// 用法：ntl-builder --validate-kristal <Kristal mod 目录>
+/// 用法：ntl-gui.exe --validate-kristal <Kristal mod 目录>
 /// </summary>
 public static class KristalValidate
 {
