@@ -1,4 +1,4 @@
-﻿# Neutraled multi-chapter deploy + runtime verification
+# Neutraled multi-chapter deploy + runtime verification
 # Deploys each chapter, launches the game, uses the AutoTest mod to jump into that
 # chapter automatically, then collects log/screenshot evidence into a report.
 
@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Continue'
 $game = $env:DELTARUNE_DIR
 if ([string]::IsNullOrEmpty($game)) {
     foreach ($cand in @('E:\steam\steamapps\common\DELTARUNE', 'C:\Program Files (x86)\Steam\steamapps\common\DELTARUNE')) {
-        if (Test-Path -LiteralPath (Join-Path $cand 'DELTARUNE.exe')) { $game = $cand; break }
+        if (Test-Path -LiteralPath ([IO.Path]::Combine($cand, 'DELTARUNE.exe'))) { $game = $cand; break }
     }
 }
 if ([string]::IsNullOrEmpty($game)) { Write-Host '[ERROR] cannot find DELTARUNE; set DELTARUNE_DIR' -ForegroundColor Red; exit 1 }

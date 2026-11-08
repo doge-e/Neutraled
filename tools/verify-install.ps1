@@ -1,4 +1,4 @@
-﻿# Verify the packaged release: install + uninstall into a sandbox game dir
+# Verify the packaged release: install + uninstall into a sandbox game dir
 # Usage: powershell -ExecutionPolicy Bypass -File tools\verify-install.ps1
 param(
     [string]$Out = '',
@@ -13,7 +13,7 @@ if ([string]::IsNullOrEmpty($Out)) {
 }
 if ([string]::IsNullOrEmpty($Game)) {
     foreach ($cand in @($env:DELTARUNE_DIR, 'E:\steam\steamapps\common\DELTARUNE', 'C:\Program Files (x86)\Steam\steamapps\common\DELTARUNE')) {
-        if (-not [string]::IsNullOrEmpty($cand) -and (Test-Path -LiteralPath (Join-Path $cand 'DELTARUNE.exe'))) { $Game = $cand; break }
+        if (-not [string]::IsNullOrEmpty($cand) -and (Test-Path -LiteralPath ([IO.Path]::Combine($cand, 'DELTARUNE.exe')))) { $Game = $cand; break }
     }
 }
 if ([string]::IsNullOrEmpty($Sandbox)) { $Sandbox = Join-Path $Out 'sandbox-game' }
