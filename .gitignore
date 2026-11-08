@@ -34,6 +34,7 @@ restore/
 logs/
 .tmp/
 _test/
+live-edits/
 *.log
 *.tmp
 

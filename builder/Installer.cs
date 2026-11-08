@@ -183,13 +183,30 @@ public static class Installer
             //   sdk = 插件 SDK 契约源码。原来只复制 api/live/mods/docs 等，从发布包安装会缺这几样。
             string[] copyDirs = { "api", "live", "mods", "docs", "tools", "bside", "scripts", "lang", "themes", "plugins", "web", "fonts", "templates", "kristal", "kristal-maps", "sdk", "console-theme.json" };
             int copied = 0;
+            var copyErrors = new List<string>();
             foreach (var d in copyDirs)
             {
                 var s = Path.Combine(srcRoot, d);
-                if (!Directory.Exists(s)) continue;
                 var t = Path.Combine(ntlRoot, d);
-                try { CopyDir(s, t); copied++; }
-                catch (Exception ex) { Console.WriteLine(L("  [警告] 复制 {0} 出错: {1}", d, ex.Message)); }
+                // ★ mods/ 是玩家数据：升级安装只补缺，绝不覆盖同名文件（发布包里的示例 mod 曾覆盖用户的改动）
+                bool overwrite = !(d == "mods" && Directory.Exists(t));
+                try
+                {
+                    if (Directory.Exists(s)) { CopyDir(s, t, overwrite, copyErrors); copied++; }
+                    else if (File.Exists(s))
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(t)!);
+                        File.Copy(s, t, overwrite);
+                        copied++;
+                    }
+                }
+                catch (Exception ex) { copyErrors.Add(d + ": " + ex.Message); }
+            }
+            if (copyErrors.Count > 0)
+            {
+                Console.WriteLine(L("  [警告] 有 {0} 个文件复制失败（安装可能不完整）：", copyErrors.Count));
+                foreach (var e in copyErrors.Take(8)) Console.WriteLine("    " + e);
+                if (copyErrors.Count > 8) Console.WriteLine(L("    … 其余 {0} 条见日志", copyErrors.Count - 8));
             }
             // 可执行文件：**两种布局都要认**
             //   开发布局：gui/bin/Release/net9.0-windows（v1.1.0 起 builder/studio/mapedit 都是库，
@@ -202,8 +219,8 @@ public static class Installer
                 var s = Path.Combine(srcRoot, rel.Replace('/', Path.DirectorySeparatorChar));
                 if (Directory.Exists(s))
                 {
-                    try { CopyDir(s, Path.Combine(ntlRoot, rel.Replace('/', Path.DirectorySeparatorChar))); copied++; exeCopied = true; }
-                    catch (Exception ex) { Console.WriteLine(L("  [警告] 复制 {0} 出错: {1}", rel, ex.Message)); }
+                    try { CopyDir(s, Path.Combine(ntlRoot, rel.Replace('/', Path.DirectorySeparatorChar)), true, copyErrors); copied++; exeCopied = true; }
+                    catch (Exception ex) { copyErrors.Add(rel + ": " + ex.Message); }
                 }
             }
             // 新发布包布局（install/ + src/）里没有 bin/：把安装器自身装进 <游戏>\Neutraled\bin\
@@ -249,6 +266,17 @@ public static class Installer
 
         // 4) 桌面 / 开始菜单快捷方式（用户是从桌面打开 GUI 管理器的）
         var guiExe = FindGui(ntlRoot);
+        // ★ 刷新守候启动器：旧机/旧发布包留下的 VBS 会硬编码**别人机器**的 exe 路径，
+        //   登录时 FileExists 失败直接退出 ⇒ 外部章节永远等不到守候。这里用**装好的** GUI 重写。
+        if (guiExe != null)
+        {
+            try
+            {
+                if (WatchAutostart.RefreshScripts(gameRoot, guiExe))
+                    Console.WriteLine(L("  守候启动器已指向: {0}", guiExe));
+            }
+            catch (Exception ex) { Console.WriteLine(L("  [警告] 刷新守候启动器失败: {0}", ex.Message)); }
+        }
         if (guiExe != null)
         {
             CreateShortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
@@ -310,7 +338,7 @@ public static class Installer
         {
             var q = (string s) => "'" + s.Replace("'", "''") + "'";
             var script = "$s=(New-Object -ComObject WScript.Shell).CreateShortcut(" + q(lnkPath) + ");" +
-                         "$s.TargetPath=" + q(target) + ";$s.WorkingDirectory=" + q(Path.GetDirectoryName(target)!) + ";" +
+                         "$s.TargetPath=" + q(target) + ";$s.WorkingDirectory=" + q(workDir) + ";" +
                          "$s.IconLocation=" + q(target + ",0") + ";$s.Description=" + q("Neutraled - DELTARUNE Mod Manager") + ";$s.Save()";
             var psi = new ProcessStartInfo("powershell",
                 "-NoProfile -ExecutionPolicy Bypass -Command \"" + script + "\"")
@@ -427,16 +455,18 @@ public static class Installer
         return 0;
     }
 
-    private static void CopyDir(string src, string dst)
+    /// <summary>递归复制；overwrite=false 时只补缺（用于 mods/ 这类玩家数据）。失败收集到 errors，不再静默吞掉。</summary>
+    private static void CopyDir(string src, string dst, bool overwrite, List<string> errors)
     {
         Directory.CreateDirectory(dst);
         foreach (var f in Directory.GetFiles(src))
         {
-            try { File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true); }
-            catch (IOException) { /* 目标被占用，跳过 */ }
-            catch (UnauthorizedAccessException) { }
+            var to = Path.Combine(dst, Path.GetFileName(f));
+            if (!overwrite && File.Exists(to)) continue;
+            try { File.Copy(f, to, true); }
+            catch (Exception ex) { errors.Add(Path.GetFileName(f) + ": " + ex.Message); }
         }
         foreach (var d in Directory.GetDirectories(src))
-            CopyDir(d, Path.Combine(dst, Path.GetFileName(d)));
+            CopyDir(d, Path.Combine(dst, Path.GetFileName(d)), overwrite, errors);
     }
 }

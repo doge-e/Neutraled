@@ -1,4 +1,4 @@
-# Neutraled 发布打包器 -> <Out>\Neutraled-<Version>\{install,src}
+﻿# Neutraled 发布打包器 -> <Out>\Neutraled-<Version>\{install,src}
 #   install/ = 单文件自包含安装器（ntl-gui.exe：管理器 + builder CLI + 编辑器 + Studio 的唯一入口）
 #   src/     = 源码 + 运行期载荷（也是 --install 的复制源）
 # 用法: powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-Out <输出目录>] [-Version 1.1.0] [-Flavor full|trim] [-NoPublish]
@@ -15,15 +15,23 @@ param(
 $ErrorActionPreference = 'Stop'
 $N = Split-Path $PSScriptRoot -Parent
 $dotnet = 'C:\Program Files\dotnet\dotnet.exe'
-if (-not (Test-Path -LiteralPath $dotnet)) { $dotnet = 'dotnet' }
+if (-not (Test-Path -LiteralPath $dotnet)) {
+    $userDotnet = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'
+    if (Test-Path -LiteralPath $userDotnet) { $dotnet = $userDotnet } else { $dotnet = 'dotnet' }
+}
 
-# 会话输出约定：默认 <E:\aiwork\out\<会话名>>\release
+# 会话输出约定：默认 <aiwork>\out\<会话名>\release；E: 盘不存在时退回用户目录（换机不再写死）
 if ([string]::IsNullOrEmpty($Out)) {
-    $sessFile = 'E:\aiwork\out\.current-session'
+    $outRoot = $env:NTL_OUT_ROOT
+    if ([string]::IsNullOrEmpty($outRoot)) {
+        if (Test-Path -LiteralPath 'E:\aiwork\out') { $outRoot = 'E:\aiwork\out' }
+        else { $outRoot = Join-Path $env:USERPROFILE 'Desktop\aiwork\out' }
+    }
+    $sessFile = Join-Path $outRoot '.current-session'
     $sess = 'default'
     if (Test-Path -LiteralPath $sessFile) { $sess = (Get-Content -LiteralPath $sessFile -Raw).Trim() }
     if ([string]::IsNullOrEmpty($sess)) { $sess = 'default' }
-    $Out = Join-Path (Join-Path 'E:\aiwork\out' $sess) 'release'
+    $Out = Join-Path (Join-Path $outRoot $sess) 'release'
 }
 $rel        = Join-Path $Out ('Neutraled-' + $Version)
 $installDir = Join-Path $rel 'install'

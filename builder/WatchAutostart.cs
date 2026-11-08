@@ -214,6 +214,20 @@ public static class WatchAutostart
         return (scriptOk && (taskOk || startupOk)) ? 0 : 1;
     }
 
+    /// <summary>把守候启动器（以及已存在的开机项）重写成指向 <paramref name="guiExe"/>。
+    /// 安装器用：它自己不是将来要跑守候的那个 exe，不能让 Paths.SelfExe 冒充。</summary>
+    public static bool RefreshScripts(string gameRoot, string? guiExe = null)
+    {
+        var self = string.IsNullOrWhiteSpace(guiExe) ? Paths.SelfExe : guiExe!;
+        if (string.IsNullOrWhiteSpace(self) || !File.Exists(self)) return false;
+        var vbs = WatcherVbs(gameRoot);
+        Directory.CreateDirectory(Path.GetDirectoryName(vbs)!);
+        WriteScript(vbs, WatcherVbsBody(gameRoot, self));
+        var sv = StartupVbs();
+        if (File.Exists(sv)) WriteScript(sv, StartupVbsBody(gameRoot));
+        return true;
+    }
+
     public static int Disable(string gameRoot)
     {
         Console.WriteLine(L("===== 守候进程自启：关闭 ====="));
@@ -255,29 +269,29 @@ public static class WatchAutostart
 
     // ───────────────────────── 脚本与计划任务内容 ─────────────────────────
 
-    private static string WatcherVbsBody(string gameRoot)
+    private static string WatcherVbsBody(string gameRoot) => WatcherVbsBody(gameRoot, Paths.SelfExe);
+
+    private static string WatcherVbsBody(string gameRoot, string self)
     {
-        var self = Paths.SelfExe;   // v1.1.0：唯一 exe = ntl-gui.exe（兜底路径也在 Paths 里）
-        var root = Paths.NeutraledRoot(gameRoot);
+        // v1.1.0：唯一 exe = ntl-gui.exe。脚本自定位到 <游戏根>\Neutraled\scripts\，
+        // 由 here/root/game 反推，避免把安装盘符写死（旧版曾在 E: 与 C: 之间来回改）。
         // ★ --game 必须是**游戏根**，不是 Neutraled 目录：这里曾经把 root 传下去（1.0.3 / 1.0.4 出厂件
-        //   就带这个毛病），于是「登录 / 解锁 / 每分钟兜底」拉起的守候全程把 Neutraled 当游戏根 ——
-        //   config / lang 读不到（日志整篇回退英文）、Kristal 中文回退路径拼成 ...\Neutraled\Kristal-main、
-        //   chapters.json 判定失效、面板「重新部署」会往 ...\Neutraled\Neutraled\ 里部署，还留下垃圾日志目录。
-        //   （外部章节本身仍能被拉起：游戏写的 launch-request.json 还有 %LOCALAPPDATA% 那条与根无关的路径；
-        //     2026-10-03 实测垃圾日志里确实成功启动过冰封帷幕。）
-        //   root 只留给 CurrentDirectory —— 守候的工作目录仍在 Neutraled 下，日志与相对路径照旧。
-        var game = Path.GetFullPath(gameRoot);
+        //   就带这个毛病），于是「登录 / 解锁 / 每分钟兜底」拉起的守候全程把 Neutraled 当游戏根。
+        //   自定位后 game 一定是 root 的父目录，天然满足；root 仍作为守候的工作目录。
         var sb = new StringBuilder();
         sb.Append("' Neutraled 守候进程启动器（由 ntl-gui.exe --watch-autostart on 生成，可随时重新生成）\r\n");
         sb.Append("' 作用：无窗口、无弹窗地启动 --watch-external。选中 Kristal 等外部章节时，只有它在跑才能接管。\r\n");
         sb.Append("Option Explicit\r\n");
-        sb.Append("Dim fso, sh, ntl, root, game\r\n");
+        sb.Append("Dim fso, sh, here, root, game, ntl\r\n");
         sb.Append("Set fso = CreateObject(\"Scripting.FileSystemObject\")\r\n");
         sb.Append("Set sh  = CreateObject(\"WScript.Shell\")\r\n");
-        sb.Append("ntl = \"" + self + "\"\r\n");
+        // 自定位：脚本永远在 <游戏根>\Neutraled\scripts\ 下，不写死安装盘符/路径。
+        // 这样同一份 .vbs 可以直接进仓库与发布包，换机 / 换安装目录都不需要重写。
+        sb.Append("here = fso.GetParentFolderName(WScript.ScriptFullName)\r\n");
+        sb.Append("root = fso.GetParentFolderName(here)\r\n");
+        sb.Append("game = fso.GetParentFolderName(root)\r\n");
+        sb.Append("ntl = root & \"\\bin\\ntl-gui.exe\"\r\n");
         sb.Append("If Not fso.FileExists(ntl) Then WScript.Quit 0\r\n");
-        sb.Append("root = \"" + root + "\"\r\n");
-        sb.Append("game = \"" + game + "\"\r\n");
         sb.Append("sh.CurrentDirectory = root\r\n");
         sb.Append("sh.Run \"\"\"\" & ntl & \"\"\" --watch-external --game \"\"\" & game & \"\"\"\", 0, False\r\n");
         return sb.ToString();

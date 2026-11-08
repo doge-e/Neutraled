@@ -90,7 +90,7 @@ ntl-gui.exe --no-update-check                  # 跳过前置检测（并行 wor
 
 ```text
 $ ntl-gui.exe --update-check
-  ⛔ 结论：检测到游戏更新（活跃 data.win 已被换回原版 / buildid 变了）
+  ⛔ 结论：检测到游戏更新（原版数据 / Steam 元数据 / 可执行文件有变化）
   退出码 2 = 需要处理
 
 $ ntl-gui.exe --adopt-current --yes        # 采纳新原版（旧备份进 backup/history/<buildid>/）

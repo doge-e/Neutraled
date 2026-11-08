@@ -1,8 +1,8 @@
-# rebuild the single GUI exe (ntl-gui; builder/editor/studio are libraries inside it) safely:
+﻿# rebuild the single GUI exe (ntl-gui; builder/editor/studio are libraries inside it) safely:
 #   - stop the external watcher (the same exe running with --watch-external) -> otherwise MSB3021/MSB3027
 #   - build gui/Neutraled.Gui.csproj (ProjectReferences builder + studio + mapedit)
 #   - restart the watcher via scripts\watch-external.vbs (windowless)
-$N = 'E:\steam\steamapps\common\DELTARUNE\Neutraled'
+$N = Split-Path $PSScriptRoot -Parent
 
 function Stop-Watcher {
     Get-CimInstance Win32_Process -Filter "Name = 'ntl-gui.exe'" -ErrorAction SilentlyContinue |
@@ -14,7 +14,12 @@ function Stop-Watcher {
 
 Stop-Watcher
 Start-Sleep -Seconds 2
-& "C:\Program Files\dotnet\dotnet.exe" build "$N\gui\Neutraled.Gui.csproj" -c Release -v q --nologo
+$dotnet = 'C:\Program Files\dotnet\dotnet.exe'
+if (-not (Test-Path -LiteralPath $dotnet)) {
+    $userDotnet = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'
+    if (Test-Path -LiteralPath $userDotnet) { $dotnet = $userDotnet } else { $dotnet = 'dotnet' }
+}
+& $dotnet build "$N\gui\Neutraled.Gui.csproj" -c Release -v q --nologo
 Write-Host ("BUILD EXIT: " + $LASTEXITCODE)
 if ($LASTEXITCODE -eq 0) {
     & wscript.exe //B //Nologo "$N\scripts\watch-external.vbs"

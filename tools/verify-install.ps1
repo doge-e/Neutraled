@@ -1,12 +1,23 @@
-# Verify the packaged release: install + uninstall into a sandbox game dir
+﻿# Verify the packaged release: install + uninstall into a sandbox game dir
 # Usage: powershell -ExecutionPolicy Bypass -File tools\verify-install.ps1
 param(
-    [string]$Out = 'E:\aiwork\out',
-    [string]$Game = 'E:\steam\steamapps\common\DELTARUNE',
-    [string]$Sandbox = 'E:\aiwork\sandbox-game',
+    [string]$Out = '',
+    [string]$Game = '',
+    [string]$Sandbox = '',
     [string]$Src = ''
 )
 $ErrorActionPreference = 'Continue'
+if ([string]::IsNullOrEmpty($Out)) {
+    if (Test-Path -LiteralPath 'E:\aiwork\out') { $Out = 'E:\aiwork\out' }
+    else { $Out = Join-Path $env:USERPROFILE 'Desktop\aiwork\out' }
+}
+if ([string]::IsNullOrEmpty($Game)) {
+    foreach ($cand in @($env:DELTARUNE_DIR, 'E:\steam\steamapps\common\DELTARUNE', 'C:\Program Files (x86)\Steam\steamapps\common\DELTARUNE')) {
+        if (-not [string]::IsNullOrEmpty($cand) -and (Test-Path -LiteralPath (Join-Path $cand 'DELTARUNE.exe'))) { $Game = $cand; break }
+    }
+}
+if ([string]::IsNullOrEmpty($Sandbox)) { $Sandbox = Join-Path $Out 'sandbox-game' }
+if ([string]::IsNullOrEmpty($Game)) { Write-Host '  [ERROR] cannot find DELTARUNE; pass -Game <dir>' -ForegroundColor Red; exit 1 }
 Write-Host '===== verify packaged release =====' -ForegroundColor Cyan
 if (Test-Path -LiteralPath $Sandbox) { Remove-Item $Sandbox -Recurse -Force }
 New-Item -ItemType Directory -Force -Path (Join-Path $Sandbox 'chapter1_windows') | Out-Null

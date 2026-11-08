@@ -100,6 +100,7 @@ ntl-gui.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 | [docs/WEBUI.md](docs/WEBUI.md) | Web 界面（接口、端口、自动停止） |
 | [mapedit/README.md](mapedit/README.md) | 编辑器（mapedit/）：房间编辑 / 原版文本改写 / 战斗与剧情 / 启动方式 / 测试 |
 | [docs/UPDATE.md](docs/UPDATE.md) | 游戏更新：检测 / 提示 / 采纳新基线（Steam 更新后不静默降级） |
+| [docs/PORTABILITY.md](docs/PORTABILITY.md) | 换机 / 可移植性：新机器安装、自定位守候、DOTNET_ROOT、测试脚本路径 |
 
 ## 从源码构建
 
@@ -111,11 +112,13 @@ ntl-gui.exe --import-mod <包目录 | zip | xdelta | data.win> [--dry-run]
 # （1.1.0 起不再产出 ntl-builder.exe / ntl-mapedit.exe / ntl-studio.exe）
 dotnet build gui\Neutraled.Gui.csproj -c Release   # → gui\bin\Release\net9.0-windows\ntl-gui.exe
 # 运行：ntl-gui.exe（管理器） / ntl-gui.exe <builder 开关> / ntl-gui.exe mapedit / ntl-gui.exe studio
+# 用户目录装的 SDK（%USERPROFILE%\.dotnet）：直接跑框架依赖的 apphost 前要设 DOTNET_ROOT，
+# 否则报 "Failed to resolve hostfxr.dll"。发布包是 self-contained，无此要求。
 
 # 一键测试（静态套件；不启动游戏）
 test.bat                # = _test/fulltest-static.ps1：构建/lint/doctor/smoke/部署/验证/打包/安装往返
 test.bat -SkipPackage   # 跳过打包与安装往返
-test.bat -OutDir <目录>  # 结果目录（默认 E:\aiwork\out\Neutraled2\fulltest）
+test.bat -OutDir <目录>  # 结果目录（默认 E:\aiwork\out\Neutraled2\fulltest；E: 不存在时退到 %USERPROFILE%\Desktop\aiwork\out\...）
 # 真机 / 外部章节 / 安装器套件：_test/fulltest-game.ps1、_test/fulltest-external.ps1、tools/verify-install.ps1
 ```
 

@@ -35,7 +35,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0_test\fulltest-static.
 set RC=%ERRORLEVEL%
 echo.
 if not "%RC%"=="0" (
-  echo Result: FAILED ^(exit %RC%^) - see the log under E:\aiwork\out\Neutraled2\fulltest
+  echo Result: FAILED ^(exit %RC%^) - see the output dir passed via -OutDir
 ) else (
   echo Result: all static checks passed
 )

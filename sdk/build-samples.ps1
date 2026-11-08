@@ -1,4 +1,4 @@
-# Build the Neutraled plugin SDK and both sample plugins, then package sample-clock.
+﻿# Build the Neutraled plugin SDK and both sample plugins, then package sample-clock.
 # Usage:  powershell -ExecutionPolicy Bypass -File sdk\build-samples.ps1
 # Pure ASCII on purpose (PowerShell 5.1 reads BOM-less UTF-8 as ANSI).
 $ErrorActionPreference = 'Stop'
@@ -7,6 +7,10 @@ $sdk    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root   = Split-Path -Parent $sdk
 $dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
 if (-not $dotnet) { $dotnet = 'C:\Program Files\dotnet\dotnet.exe' }
+if (-not (Test-Path -LiteralPath $dotnet)) {
+    $userDotnet = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'
+    if (Test-Path -LiteralPath $userDotnet) { $dotnet = $userDotnet } else { $dotnet = 'dotnet' }
+}
 
 function Build([string]$proj) {
     Write-Host ('=== build ' + $proj)

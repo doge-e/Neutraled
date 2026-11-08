@@ -135,7 +135,8 @@ public static class SelfTest
 
             try
             {
-                Process.Start(new ProcessStartInfo { FileName = "E:\\DELTARUNE.url", UseShellExecute = true });
+                // 必须走 Steam 启动（计时/云存档/成就），且不能假设 .url 在某个固定盘符（换机后 E: 不存在）。
+                Process.Start(new ProcessStartInfo { FileName = "steam://rungameid/1671210", UseShellExecute = true });
                 // 等游戏启动并跑一会儿
                 for (int i = 0; i < 50; i++) { Thread.Sleep(1000); if (File.Exists(logPath)) break; }
                 Thread.Sleep(15000);

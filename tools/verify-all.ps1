@@ -1,10 +1,23 @@
-# Neutraled multi-chapter deploy + runtime verification
+﻿# Neutraled multi-chapter deploy + runtime verification
 # Deploys each chapter, launches the game, uses the AutoTest mod to jump into that
 # chapter automatically, then collects log/screenshot evidence into a report.
 
 $ErrorActionPreference = 'Continue'
-$game = 'E:\steam\steamapps\common\DELTARUNE'
-$exe  = Join-Path $game 'Neutraled\gui\bin\Release\net9.0-windows\ntl-gui.exe'
+$game = $env:DELTARUNE_DIR
+if ([string]::IsNullOrEmpty($game)) {
+    foreach ($cand in @('E:\steam\steamapps\common\DELTARUNE', 'C:\Program Files (x86)\Steam\steamapps\common\DELTARUNE')) {
+        if (Test-Path -LiteralPath (Join-Path $cand 'DELTARUNE.exe')) { $game = $cand; break }
+    }
+}
+if ([string]::IsNullOrEmpty($game)) { Write-Host '[ERROR] cannot find DELTARUNE; set DELTARUNE_DIR' -ForegroundColor Red; exit 1 }
+$exe = $null
+foreach ($cand in @(
+    (Join-Path $game 'Neutraled\bin\ntl-gui.exe'),
+    (Join-Path $game 'Neutraled\gui\bin\Release\net9.0-windows\ntl-gui.exe'),
+    (Join-Path $PSScriptRoot '..\gui\bin\Release\net9.0-windows\ntl-gui.exe'))) {
+    if (Test-Path -LiteralPath $cand) { $exe = $cand; break }
+}
+if (-not $exe) { Write-Host '[ERROR] cannot find ntl-gui.exe; build first' -ForegroundColor Red; exit 1 }
 $log  = Join-Path $env:LOCALAPPDATA 'DELTARUNE\Neutraled\dr-api.log'
 $shotDir = Join-Path $env:LOCALAPPDATA 'DELTARUNE'
 $reportPath = Join-Path $game 'Neutraled\_test\verify_report.txt'
@@ -36,7 +49,7 @@ foreach ($ch in 1..5) {
     if (Test-Path $log) { Remove-Item $log -Force }
     Get-ChildItem $shotDir -Filter 'ntl_ch*.png' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
-    Start-Process 'E:\DELTARUNE.url'
+    Start-Process 'steam://rungameid/1671210'
     Start-Sleep -Seconds 38
 
     $proc = Get-Process -Name 'DELTARUNE' -ErrorAction SilentlyContinue

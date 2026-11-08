@@ -428,6 +428,22 @@ public static class Chapters
 			});
 			Paths.Log(L("  [外部章节] {0} → {1}（--add-external 注册）", eName, Path.GetFileName(exePath)));
 		}
+		// 去重：同一个外部 exe 既被 mod.json 的 kristal_external 声明、又通过 --add-external 手动登记时，
+		// 章节选择器会出现两个同名条目（实测 2026-11-08：frostveil 的 timeline:1 + external:...，两个都指向同一个 exe）。
+		// 保留带 Mods 的那份（来自 mod 声明，顺序/名称与 mod 一致），丢掉手动登记的那份。
+		static string _extKey(string p) { try { return Path.GetFullPath(p); } catch { return p; } }
+		var keptExternal = new Dictionary<string, ChapterEntry>(StringComparer.OrdinalIgnoreCase);
+		foreach (var ce in list)
+		{
+			if (ce.Kind != "external" || string.IsNullOrEmpty(ce.Exe)) continue;
+			var key = _extKey(ce.Exe);
+			if (!keptExternal.TryGetValue(key, out var kept) || ce.Mods.Count > kept.Mods.Count) keptExternal[key] = ce;
+		}
+		if (keptExternal.Count > 0)
+		{
+			list = list.Where(x => x.Kind != "external" || string.IsNullOrEmpty(x.Exe) ||
+				ReferenceEquals(keptExternal[_extKey(x.Exe)], x)).ToList();
+		}
 		return (from chapterEntry4 in list
 			orderby chapterEntry4.Order, (!(chapterEntry4.Kind == "official")) ? 1 : 0, chapterEntry4.Name
 			select chapterEntry4).ToList();

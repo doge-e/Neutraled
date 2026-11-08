@@ -374,7 +374,7 @@ public static class LangTable_Extra
         d["           ③ 明知风险继续：加 --accept-base-drift（只在游戏已能跑、你确认过差异时才用）"] = "           (3) accept the risk: add --accept-base-drift (only when the game already runs and you have reviewed the diff)";
         d["    （该 mod 的文件与上次记录不同 ⇒ 视为已适配当前游戏版本）"] = "    (this mod's files differ from the last record => treated as adapted to the current game version)";
         d["  ℹ 结论：还没有基线。用 --deploy（或 --adopt-current）建立基线后，后续更新就能被判出来。"] = "  i Conclusion: no baseline yet. Run --deploy (or --adopt-current) to establish one; later updates can then be detected.";
-        d["  ⛔ 结论：检测到游戏更新（活跃 data.win 已被换回原版 / buildid 变了）"] = "  ⛔ Conclusion: a game update was detected (the live data.win was reverted to vanilla / buildid changed)";
+        d["  ⛔ 结论：检测到游戏更新（原版数据 / Steam 元数据 / 可执行文件有变化）"] = "  ⛔ Conclusion: a game update was detected (vanilla data, Steam metadata, or the executable changed)";
         d["     直接部署会用**旧的原版备份**当基底 ⇒ 静默回退游戏版本。按顺序处理："] = "     Deploying now would use the OLD vanilla backup as the base => silently rolling the game version back. Do this in order:";
         d["       1) 退出游戏"] = "       1) quit the game";
         d["       2) ntl-gui.exe --adopt-current --yes      采纳当前原版为新基底（旧备份移到 backup/{0}/，不删）"] = "       2) ntl-gui.exe --adopt-current --yes      adopt the current vanilla as the new base (old backups move to backup/{0}/, never deleted)";

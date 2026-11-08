@@ -14,7 +14,7 @@
 DELTARUNE 的 Everest 式 mod 管理器 / API：mod 平等叠加、**绝不修改原版文件**、
 启动始终走 Steam（保留计时与云存档）、可一键还原。
 
-- 游戏根：`E:\steam\steamapps\common\DELTARUNE`
+- 游戏根：任意 Steam 库（`--install` 自动检测；也可用 `DELTARUNE_DIR` / `--game` 指定）
 - 项目区：`Neutraled/`（api / builder / gui / studio / mapedit / mods / live / docs / _test）
 - 日志：`%LOCALAPPDATA%\DELTARUNE\Neutraled\dr-api.log`
 
@@ -99,7 +99,7 @@ GameMaker 的字符串 `+=` **每次复制整个累积串（O(n²)）**，20480 
 - 注册表生成（第 5.5 步）从「自检之后」移到**自检之前**，否则自检 (e) 读不到刚生成的文件。
 
 测量方式（日志由沙箱重定向到 `%LOCALAPPDATA%\DELTARUNE\Neutraled\dr-api.log`）：
-杀进程 → 删日志 → `Start-Process 'E:\DELTARUNE.url'` → 每 30 ms 轮询日志行数与
+杀进程 → 删日志 → `Start-Process 'steam://rungameid/1671210'` → 每 30 ms 轮询日志行数与
 `MainWindowHandle`，记录每条日志出现的相对时刻。
 
 ### 已知限制
@@ -158,10 +158,10 @@ GameMaker 的字符串 `+=` **每次复制整个累积串（O(n²)）**，20480 
 或者命令行：
 
 ```powershell
-cd E:\steam\steamapps\common\DELTARUNE\Neutraled
+cd <游戏根>\Neutraled
 .\test.bat                      # 静态套件（不启动游戏）
 .\test.bat -SkipPackage         # 跳过打包与安装往返（更快）
-.\test.bat -OutDir E:\tmp\ft     # 结果目录（默认 E:\aiwork\out\Neutraled2\fulltest）
+.\test.bat -OutDir <目录>       # 结果目录（默认 E:\aiwork\out\Neutraled2\fulltest；E: 不存在时用桌面 aiwork）
 ```
 
 > `test.bat` 只是 `_test/fulltest-static.ps1` 的薄转发。它接受的参数是 `-OutDir` / `-ImportDir` / `-RelOut` / `-SkipPackage`；**没有** `--deploy` / `--full`（旧文档写错过）。

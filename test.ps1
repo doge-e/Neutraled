@@ -1,4 +1,4 @@
-# Neutraled 一键测试（test.ps1）
+﻿# Neutraled 一键测试（test.ps1）
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File test.ps1            快速检查（不启动游戏）
@@ -80,7 +80,9 @@ Step "5. 存档快照" {
 }
 
 # ---------- 6. Kristal 兼容性（可选） ----------
-$kristal = "E:\steam\steamapps\common\DELTARUNE\Kristal-main\mods\chapter5wr_windows"
+$gameRoot = Split-Path $root -Parent
+if ([string]::IsNullOrEmpty($env:DELTARUNE_DIR) -eq $false -and (Test-Path -LiteralPath (Join-Path $env:DELTARUNE_DIR 'DELTARUNE.exe'))) { $gameRoot = $env:DELTARUNE_DIR }
+$kristal = Join-Path $gameRoot 'Kristal-main\mods\chapter5wr_windows'
 if (Test-Path $kristal) {
     Step "6. Kristal 脚本验证" {
         & $exe --validate-kristal $kristal 2>&1 | Select-String -Pattern "文件:|语法检查通过|未实现" | Select-Object -First 4
@@ -114,7 +116,7 @@ if ($Full) {
 
         $log = Join-Path $env:LOCALAPPDATA "DELTARUNE\Neutraled\dr-api.log"
         if (Test-Path $log) { Remove-Item $log -Force }
-        Start-Process "E:\DELTARUNE.url"
+        Start-Process 'steam://rungameid/1671210'
         Write-Host "  等待游戏启动（50 秒）..." -ForegroundColor DarkGray
         Start-Sleep -Seconds 50
 

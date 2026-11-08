@@ -226,11 +226,30 @@ public static class GameUpdate
         try
         {
             var exe = Path.Combine(gameRoot, "DELTARUNE.exe");
-            var fi = new FileInfo(exe);
-            if (!fi.Exists) return "noexe";
-            return fi.Length + "@" + fi.LastWriteTimeUtc.Ticks;
+            if (!File.Exists(exe)) return "noexe";
+            // ★ 只读文件内容，不读时间戳：Steam 校验/复制会把 mtime 改掉而内容不变，
+            //   旧实现据此误报“游戏更新”，把普通启动挡在 deploy 之前（2026-11-08 新机实测）。
+            return FileFp(exe);
         }
         catch { return "?"; }
+    }
+
+    /// <summary>比较记录里的 exe 指纹。兼容旧格式 "长度@mtimeTicks"（只比长度，因为当时没存内容）；
+    /// 新格式是 FileFp（sha256 前 16 hex:长度）。</summary>
+    static bool ExeFpMatches(string recorded, string gameRoot, string current)
+    {
+        if (string.Equals(recorded, current, StringComparison.Ordinal)) return true;
+        if (recorded.Length == 0 || recorded.IndexOf('@') < 0) return false;
+        var parts = recorded.Split('@');
+        if (parts.Length != 2 || !long.TryParse(parts[0], out var len)) return false;
+        try
+        {
+            var fi = new FileInfo(Path.Combine(gameRoot, "DELTARUNE.exe"));
+            if (!fi.Exists) return false;
+            // 旧格式无法区分“同长度不同内容”，只按长度判：避免升级到本版后的第一次部署被误阻断。
+            return fi.Length == len;
+        }
+        catch { return false; }
     }
 
     // ==================== 章节目录发现 ====================
@@ -269,7 +288,8 @@ public static class GameUpdate
 
     static string AcfVal(string txt, string key)
     {
-        var m = Regex.Match(txt, "\"" + Regex.Escape(key) + "\"\\s+\"([^\"]*)\"");
+        // Steam 的 appmanifest 键名大小写并不统一（实测 lastupdated 全小写，其它是 PascalCase）
+        var m = Regex.Match(txt, "\"" + Regex.Escape(key) + "\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
         return m.Success ? m.Groups[1].Value : "";
     }
 
@@ -451,7 +471,7 @@ public static class GameUpdate
         rep.SteamChanged = rep.HasBaseline && rep.Steam.Found &&
             ((st.SteamBuildId.Length > 0 && !string.Equals(st.SteamBuildId, rep.Steam.BuildId, StringComparison.Ordinal)) ||
              (st.SteamDepotManifest.Length > 0 && !string.Equals(st.SteamDepotManifest, rep.Steam.DepotManifest, StringComparison.Ordinal)));
-        rep.ExeChanged = rep.HasBaseline && st.ExeFp.Length > 0 && !string.Equals(st.ExeFp, rep.ExeFp, StringComparison.Ordinal);
+        rep.ExeChanged = rep.HasBaseline && st.ExeFp.Length > 0 && !ExeFpMatches(st.ExeFp, gameRoot, rep.ExeFp);
 
         var rootSlot = rep.Slots.First(s => s.Slot == "root");
         rep.CurrentVanillaFp = rootSlot.Kind == SlotKind.Vanilla && rootSlot.LiveExists ? rootSlot.LiveFp
@@ -504,10 +524,16 @@ public static class GameUpdate
         try
         {
             var modsRoot = Path.Combine(Paths.NeutraledRoot(gameRoot), "mods");
+            // 整包 mod 每个目标各有一个叶子（root/chapter1…），各自带不同的 ref/data.win。
+            // 这里必须优先取 root 叶子：deploy-state 的 baseModFp 只记录 root 基底，
+            // 若按扫描顺序取到 chapter1 的 ref，指纹永远对不上，会把“没变”误报成“mod 更新过”。
             var mods = Mods.ScanMods(modsRoot, "root", true, true);
-            var hit = mods.FirstOrDefault(m => string.Equals(m.Id, baseModId, StringComparison.OrdinalIgnoreCase))
-                   ?? mods.FirstOrDefault(m => string.Equals(m.Name, baseModId, StringComparison.OrdinalIgnoreCase))
-                   ?? mods.FirstOrDefault(m => string.Equals(Path.GetFileName(m.Dir), baseModId, StringComparison.OrdinalIgnoreCase));
+            var matches = mods.Where(m => string.Equals(m.Id, baseModId, StringComparison.OrdinalIgnoreCase)
+                                       || string.Equals(m.Name, baseModId, StringComparison.OrdinalIgnoreCase)
+                                       || string.Equals(Path.GetFileName(m.Dir), baseModId, StringComparison.OrdinalIgnoreCase))
+                               .ToList();
+            var hit = matches.FirstOrDefault(m => string.Equals(Path.GetFileName(m.Dir), "root", StringComparison.OrdinalIgnoreCase))
+                   ?? matches.FirstOrDefault();
             if (hit == null) return "";
             var rel = !string.IsNullOrWhiteSpace(hit.RefSource) ? hit.RefSource! : "ref/data.win";
             var path = Path.Combine(hit.Dir, rel.Replace('/', Path.DirectorySeparatorChar));
@@ -571,7 +597,7 @@ public static class GameUpdate
                 Console.WriteLine(L("  ℹ 结论：还没有基线。用 --deploy（或 --adopt-current）建立基线后，后续更新就能被判出来。"));
                 break;
             case "update":
-                Console.WriteLine(L("  ⛔ 结论：检测到游戏更新（活跃 data.win 已被换回原版 / buildid 变了）"));
+                Console.WriteLine(L("  ⛔ 结论：检测到游戏更新（原版数据 / Steam 元数据 / 可执行文件有变化）"));
                 Console.WriteLine(L("     直接部署会用**旧的原版备份**当基底 ⇒ 静默回退游戏版本。按顺序处理："));
                 Console.WriteLine(L("       1) 退出游戏"));
                 Console.WriteLine(L("       2) ntl-gui.exe --adopt-current --yes      采纳当前原版为新基底（旧备份移到 backup/{0}/，不删）", HistoryDirName));
